@@ -693,6 +693,25 @@ function AppContent(): React.ReactElement {
 
   // Admin-Cleanup einmal pro App-Session: Abgelaufene Events (EndDate < jetzt)
   // mit Status='Active' werden automatisch auf 'Completed' gesetzt.
+  // v32.0.3: Event-Assistent und Organizer Center für Organizer/Admins im
+  // Leerlauf VORLADEN (Nutzer-Befund 28.09.2026: „Event-Assistent wird
+  // geladen … dauert ganz schön lange"). Die Chunks bleiben lazy — wer nie
+  // Events anlegt, lädt sie nie —, aber wer es kann, bekommt sie nach dem
+  // Start im Hintergrund. webpack merkt sich das Promise; der spätere
+  // React.lazy-Import derselben Datei ist dann sofort erfüllt.
+  const didPrefetchWizard = React.useRef(false);
+  React.useEffect(() => {
+    if (didPrefetchWizard.current) return;
+    if (isEventsLoading || isRolesLoading) return;
+    if (!isAdmin && !canCreateEvents) return;
+    didPrefetchWizard.current = true;
+    const t = window.setTimeout(() => {
+      import('./AdminPage').catch(() => { /* wird beim Öffnen erneut versucht */ });
+      import('./EventCreationPage').catch(() => { /* s. o. */ });
+    }, 2500);
+    return () => window.clearTimeout(t);
+  }, [isEventsLoading, isRolesLoading, isAdmin, canCreateEvents]);
+
   const didExpireCheck = React.useRef(false);
   React.useEffect(() => {
     if (didExpireCheck.current) return;

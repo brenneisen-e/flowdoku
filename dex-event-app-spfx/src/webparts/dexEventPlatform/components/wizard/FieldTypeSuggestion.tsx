@@ -30,7 +30,11 @@ export function FieldTypeSuggestion(props: {
   // v29.21 (Audit): 'daterange' matcht die Heuristik (Anreise/Abreise/Check-in)
   // naturgemaess — der Tipp hätte das Feld auf 'date' zurueckgestuft und
   // damit rangeStart/rangeEnd/maxNights beim Save verworfen.
-  else if (allowPerson && labelLooksLikeName(label) && field.type !== 'user' && field.type !== 'roommate') kind = 'person';
+  // v32.0.3: Nur bei Feldarten, die einen Namen AUFNEHMEN (Text, Auswahl).
+  // „Bringst du eine Begleitung mit?" als Checkbox ist eine Ja/Nein-Frage —
+  // der Tipp „auf Person umstellen" hätte aus ihr eine Personensuche gemacht
+  // (gesehen im Harness mit ausgefüllten Fragen, 28.09.2026).
+  else if (allowPerson && labelLooksLikeName(label) && (field.type === 'text' || field.type === 'select')) kind = 'person';
   if (!kind) return null;
   const body = kind === 'stay'
     ? (isDe

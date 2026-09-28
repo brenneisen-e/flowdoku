@@ -19,7 +19,7 @@ import { useEvents } from '../../../context/EventContext';
 export interface DangerZoneModalProps {
   confirmDeleteEvent: DeloitteEvent;
   confirmDeleteText: string;
-  deleteEvent: (eventId: string) => Promise<boolean>;
+  deleteEvent: (eventId: string, onProgress?: (_done: number, _total: number, _label: string) => void) => Promise<boolean>;
   deletePolicy: { loading: true; } | { loading: false; allowed: boolean; requiresTitle: boolean; externalCount: number; reason?: string; };
   isDe: boolean;
   isDeleting: boolean;
@@ -39,7 +39,13 @@ export const DangerZoneModal: React.FC<DangerZoneModalProps> = (p) => {
   const expected = (confirmDeleteEvent.title || '').trim().toLowerCase();
   const typed = confirmDeleteText.trim().toLowerCase();
   const matches = !!expected && expected === typed;
-  const close = (): void => { setConfirmDeleteEvent(null); setConfirmDeleteText(''); };
+  // v32.0: Fortschritt und Ergebnis IM Dialog (Nutzer-Ansage 28.09.2026:
+  // „auch als Progress-Bar und Fenster nicht schließen"). Vorher stand
+  // minutenlang nur „Wird gelöscht…", danach verschwand das Fenster
+  // kommentarlos — ob es geklappt hat, sah man erst an der Liste.
+  const [fortschritt, setFortschritt] = React.useState<{ done: number; total: number; label: string } | null>(null);
+  const [ergebnis, setErgebnis] = React.useState<{ ok: boolean; text: string } | null>(null);
+  const close = (): void => { setConfirmDeleteEvent(null); setConfirmDeleteText(''); setFortschritt(null); setErgebnis(null); };
   // v24.0: Narrowing in Primitive auflösen — sonst verliert TS die
   // Discriminated-Union-Verengung in den verschachtelten JSX-Closures.
   const pol = deletePolicy;
@@ -54,21 +60,28 @@ export const DangerZoneModal: React.FC<DangerZoneModalProps> = (p) => {
     if (!canDelete || !confirmDeleteEvent) return;
     setIsDeleting(true);
     setDeletingId(confirmDeleteEvent.id);
+    setFortschritt({ done: 0, total: 1, label: '' });
     try {
-      const ok = await deleteEvent(confirmDeleteEvent.id);
-      if (!ok) {
+      const ok = await deleteEvent(confirmDeleteEvent.id, (done, total, label) => setFortschritt({ done, total, label }));
+      if (ok) {
+        setErgebnis({ ok: true, text: isDe
+          ? `„${confirmDeleteEvent.title}" ist gelöscht. Subsite und Event liegen 93 Tage im Papierkorb.`
+          : `"${confirmDeleteEvent.title}" is deleted. Subsite and event stay in the recycle bin for 93 days.` });
+      } else {
         const why = getLastEventDeleteError(isDe ? 'de' : 'en');
-        showAlert(why || (isDe ? 'Das Event konnte nicht gelöscht werden.' : 'The event could not be deleted.'), { variant: 'error' });
+        setErgebnis({ ok: false, text: why || (isDe ? 'Das Event konnte nicht gelöscht werden.' : 'The event could not be deleted.') });
       }
+    } catch {
+      showAlert(isDe ? 'Das Event konnte nicht gelöscht werden.' : 'The event could not be deleted.', { variant: 'error' });
+      close();
     } finally {
       setIsDeleting(false);
       setDeletingId(null);
-      close();
     }
   };
   return (
     <Modal
-      open onClose={close} maxWidth={560} dismissable={!isDeleting}
+      open onClose={close} maxWidth={560} dismissable={!isDeleting} hideClose={isDeleting}
       ariaLabel={isDe ? 'Event löschen' : 'Delete event'}
       title={isDe ? 'Event löschen' : 'Delete event'}
       subtitle={confirmDeleteEvent.title}
@@ -77,7 +90,9 @@ export const DangerZoneModal: React.FC<DangerZoneModalProps> = (p) => {
       // Das innere Feld deckt `dex-ui-modal-head-icon` vollflächig ab, weil
       // es dafür (noch) keinen Modifier `--danger` in dexUi.ts gibt.
       icon={<span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', borderRadius: 12, background: 'var(--dex-red-light, #fce8e6)', color: 'var(--dex-red, #da291c)' }}><Trash2 size={20} /></span>}
-      footer={polLoading ? null : !polAllowed ? (
+      footer={ergebnis ? (
+        <button type="button" className="btn btn-primary" onClick={close}>{isDe ? 'Schließen' : 'Close'}</button>
+      ) : polLoading ? null : !polAllowed ? (
         <button type="button" className="btn btn-secondary" onClick={close}>{isDe ? 'Schließen' : 'Close'}</button>
       ) : (
         <>
@@ -93,7 +108,29 @@ export const DangerZoneModal: React.FC<DangerZoneModalProps> = (p) => {
         </>
       )}
     >
-      {polLoading ? (
+      {ergebnis ? (
+        <div className={cx('dex-ui-callout', ergebnis.ok ? 'dex-ui-callout--success' : 'dex-ui-callout--danger')}>
+          <span className="dex-ui-callout-icon"><Trash2 size={16} /></span>
+          <div>{ergebnis.text}</div>
+        </div>
+      ) : fortschritt ? (
+        <div style={{ padding: '6px 0' }}>
+          <div className="dex-ui-progress" style={{ marginBottom: 8 }}>
+            <div className="dex-ui-progress-bar" style={{ width: `${Math.max(4, Math.round((fortschritt.done / Math.max(1, fortschritt.total)) * 100))}%` }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+            <span>
+              {fortschritt.done >= fortschritt.total - 1 && !fortschritt.label
+                ? (isDe ? 'Ansicht wird aktualisiert…' : 'Refreshing view…')
+                : (isDe ? `Wird gelöscht: ${fortschritt.label || '…'}` : `Deleting: ${fortschritt.label || '…'}`)}
+            </span>
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fortschritt.done} / {fortschritt.total}</span>
+          </div>
+          <p className="dex-ui-help" style={{ marginTop: 10 }}>
+            {isDe ? 'Bitte das Fenster offen lassen, bis das Löschen fertig ist.' : 'Please keep this window open until deletion has finished.'}
+          </p>
+        </div>
+      ) : polLoading ? (
         <p className="dex-ui-muted" style={{ margin: 0, padding: '8px 0' }}>
           {isDe ? 'Prüfe, ob das Event gelöscht werden darf …' : 'Checking whether this event may be deleted …'}
         </p>

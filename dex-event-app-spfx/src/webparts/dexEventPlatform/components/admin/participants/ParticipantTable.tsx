@@ -354,9 +354,20 @@ export const ParticipantTable: React.FC<ParticipantTableProps> = (p) => {
                   // v26.31: Beim Filtern die laufende Treffer-Nr. „#n" voranstellen
                   // und die echte TeilnehmerID (Platz) in Klammern zeigen — analog zur
                   // Warteliste; ohne Filter unverändert nur die TeilnehmerID.
+                  // v32.0: Ohne TeilnehmerID stand hier die ZEILENNUMMER (i + 1) —
+                  // eine leere Nummer sortiert nach oben und erschien als zweite
+                  // „1" (Nutzer-Befund 28.09.2026). Jetzt sichtbar als fehlend.
+                  const ohneNr = (
+                    <span
+                      className="dex-ui-pill dex-ui-pill--orange dex-ui-pill--sm"
+                      title={isDe ? 'Diese Anmeldung hat noch keine TeilnehmerID (Zähler war gedrosselt). „IDs jetzt korrigieren" vergibt sie.' : 'This registration has no participant ID yet (counter was throttled). “Fix IDs now” assigns it.'}
+                    >
+                      {isDe ? 'ohne Nr.' : 'no ID'}
+                    </span>
+                  );
                   const idCell = query
                     ? `#${i + 1}${reg.TeilnehmerID ? ` (#${reg.TeilnehmerID})` : ''}`
-                    : (reg.TeilnehmerID || (i + 1));
+                    : (reg.TeilnehmerID || ohneNr);
                   return <td key={id} className="is-num" style={{ color: 'var(--dex-gray-500)' }}>{idCell}</td>;
                 }
                 // v23.33: eingeklappte „Teilnehmer"-Zelle — Foto + zweizeilig

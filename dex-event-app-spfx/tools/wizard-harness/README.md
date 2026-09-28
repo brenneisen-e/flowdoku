@@ -43,6 +43,7 @@ gebaute `out/index.html` mit Parametern — im Browser oder in Playwright:
 | `?page=register` | Anmeldeseite (Beispiel-Event „Sommerfest Köln 2026") |
 | `?page=register&event=ev-umb` | Anmeldeseite der Klammer — mit Termin-Auswahl |
 | `?page=myevents` | Meine Events |
+| `?page=search` | Nur die Suchleiste (seit v32.0.3) — Treffer gruppiert: Aktion/Person → Hauptevent → Sub-Events, Kurzantworten |
 | `&event=<id>` | anderes Beispiel-Event auf der Anmeldeseite (`ev-open`, `ev-wait`, `ev-qr`, `ev-umb`, `ev-past`, `ev-can`) |
 | `&mobile=1` | Handy-Zweige — setzt `window.__dexForceMobile` VOR dem ersten Render |
 

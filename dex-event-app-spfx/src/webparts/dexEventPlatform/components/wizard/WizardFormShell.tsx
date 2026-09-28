@@ -157,6 +157,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
    */
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const stickyPhRef = React.useRef<HTMLDivElement | null>(null);
+  const [hintAnchor, setHintAnchor] = React.useState<{ x: number; y: number } | null>(null);
   const [stickyPin, setStickyPin] = React.useState<null | { top: number; left: number; width: number; height: number }>(null);
   React.useEffect(() => {
     const update = (): void => {
@@ -215,9 +216,13 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
             das deckt sich exakt mit der Mitte der 40-px-Kreise. */}
         {/* v31.64: Platzhalter + pinnbarer Block (Schritt-Leiste UND Scope-
             Karte), s. stickyPin oben. */}
-        <div ref={stickyPhRef} style={stickyPin ? { height: stickyPin.height } : undefined}>
+        {/* v32.0.3: Die Leiste steht IMMER in der weißen Box im kompakten
+            Stil des gepinnten Kopfs (Nutzer-Ansage 28.09.2026: „die 10 Schritte
+            in der Sticky-Box finde ich schöner — pack die immer in diese weiße
+            Box"). Ungepinnt nur ohne fixed/Schatten-Kante. */}
+        <div ref={stickyPhRef} style={stickyPin ? { height: stickyPin.height, marginBottom: 16 } : { marginBottom: 16 }}>
         <div
-          className={stickyPin ? 'dex-wizard-sticky is-pinned' : 'dex-wizard-sticky'}
+          className="dex-wizard-sticky is-pinned"
           style={stickyPin ? {
             position: 'fixed', top: stickyPin.top, left: stickyPin.left, width: stickyPin.width,
             zIndex: 800, background: '#fff', boxSizing: 'border-box',
@@ -227,7 +232,10 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
             // Sicherung gegen sehr viele Sub-Event-Reiter: der Block darf
             // nie den ganzen Bildschirm einnehmen — dann scrollt er innen.
             maxHeight: `calc(100vh - ${stickyPin.top}px - 32px)`, overflowY: 'auto',
-          } : undefined}
+          } : {
+            background: '#fff', boxSizing: 'border-box', padding: '10px 16px 0',
+            borderRadius: 14, boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+          }}
         >
         <div className="dex-wizard-steps" style={{ marginBottom: 32 }}>
           {/* v22.22: Hover-Effekt auf den Schritt-Punkten — hebt den Schritt
@@ -333,6 +341,19 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                 key={idx}
                 className="dex-wizard-step"
                 data-tour={`wizard-step-${idx}`}
+                // v32.0.3: Die Hinweise kommen beim Überfahren des Schritts —
+                // das i-Symbol darunter ist entfallen (Nutzer-Ansage 28.09.2026:
+                // „der Infotext kommt eher bei Mouseover"). Position fixed am
+                // Schritt, weil die gepinnte Box innen scrollt (overflowY) und
+                // ein absolut positionierter Kasten dort abgeschnitten würde.
+                onMouseEnter={e => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  const half = 250;
+                  const x = Math.min(Math.max(r.left + r.width / 2, half + 8), window.innerWidth - half - 8);
+                  setHintAnchor({ x, y: r.bottom + 8 });
+                  setHintStepIdx(idx);
+                }}
+                onMouseLeave={() => setHintStepIdx(null)}
                 onClick={() => {
                   // v29.21 (Audit B3): Zurück ist immer frei; nach vorn nur,
                   // wenn ALLE übersprungenen Schritte fehlerfrei sind. Vorher
@@ -386,40 +407,15 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                     Hover zeigt die Hints für diesen Step.
                     v9.37: Styling identisch zur InfoTooltip-Komponente (serif, 20x20,
                     1.5px-Border) — sonst wirkt das wizard-i im Vergleich klobig. */}
-                <span
-                  className="dex-step-hint"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={isDe ? 'Hinweise zu diesem Schritt' : 'Hints for this step'}
-                  onMouseEnter={() => setHintStepIdx(idx)}
-                  onMouseLeave={() => setHintStepIdx(null)}
-                  onFocus={() => setHintStepIdx(idx)}
-                  onBlur={() => setHintStepIdx(null)}
-                  onClick={e => { e.stopPropagation(); setHintStepIdx(prev => prev === idx ? null : idx); }}
-                  style={{
-                    position: 'relative',
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 20, height: 20, borderRadius: '50%',
-                    background: hintStepIdx === idx ? 'var(--dex-gray-100, #f0f0f0)' : 'transparent',
-                    color: 'var(--dex-gray-700, #555)',
-                    border: `1.5px solid ${hintStepIdx === idx ? 'var(--dex-gray-700, #555)' : 'var(--dex-gray-500, #888)'}`,
-                    fontSize: '0.7rem', fontWeight: 700, fontFamily: 'serif',
-                    cursor: 'help',
-                    marginTop: 4,
-                    userSelect: 'none',
-                    transition: 'background 0.15s, border-color 0.15s',
-                  }}
-                >
-                  i
-                  {hintStepIdx === idx && (
+                {hintStepIdx === idx && hintAnchor && (
                     <div
                       role="tooltip"
                       style={{
                         // v9.40: Styling 1:1 wie InfoTooltip (siehe InfoTooltip.tsx),
                         // damit die zwei Tooltip-Varianten optisch konsistent wirken.
-                        position: 'absolute',
-                        top: 'calc(100% + 8px)',
-                        left: '50%',
+                        position: 'fixed',
+                        top: hintAnchor.y,
+                        left: hintAnchor.x,
                         transform: 'translateX(-50%)',
                         width: 'max-content',
                         maxWidth: 480,
@@ -455,7 +451,6 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                       </ul>
                     </div>
                   )}
-                </span>
               </div>
             ))}
           </div>
@@ -476,10 +471,11 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
         {!isEditMode && draftSavedAt !== null && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '6px 2px 2px' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                <polyline points="17 21 17 13 7 13 7 21" />
-                <polyline points="7 3 7 8 15 8" />
+              {/* v32.0.3: Wolke mit Haken statt Diskette (Nutzer 28.09.2026:
+                  „die Diskette ist hässlich") — Lucide „cloud-check". */}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, color: 'var(--dex-green, #86bc25)' }}>
+                <path d="m17 15-5.5 5.5L9 18" />
+                <path d="M5 17.743A7 7 0 1 1 15.71 10h1.79a4.5 4.5 0 0 1 1.5 8.742" />
               </svg>
               {isDe
                 ? `Zwischengespeichert am ${new Date(draftSavedAt).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })} um ${new Date(draftSavedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`

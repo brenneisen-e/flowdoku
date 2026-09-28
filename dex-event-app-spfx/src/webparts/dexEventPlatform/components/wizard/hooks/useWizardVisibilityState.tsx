@@ -10,7 +10,7 @@ import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
 import { readOutlookLogo, reinsertOrganizerPlaceholder } from '../../wizard/wizardHelpers';
 import { reinsertProgramPlaceholder } from '../../../utils/programPlaceholder';
 import { compressImage } from '../../../utils/imageCompress';
-import { LOGO_MAX_BREITE, formRegelKopf } from '../../../utils/mailHeaderImage';
+import { KOPF_RUND, LOGO_MAX_BREITE, bildMasseSync, formRegelKopf, istVolleBreite, kopfMasseFuerBild } from '../../../utils/mailHeaderImage';
 import { applyEventPhotoToLogoImpl } from '../../wizard/logic/wizardMisc';
 import { renderHeaderSizeControlImpl } from '../../wizard/logic/wizardRenderHelpers';
 import { AgendaItem } from '../../../types';
@@ -183,12 +183,19 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
   // ungefragt anders aus.
   const [headerImageLayout, setHeaderImageLayout] = React.useState<{ width: number; paddingV: number; paddingH: number }>(() => {
     const legacyDef = { width: 180, paddingV: 30, paddingH: 30 };
-    const fullWidth = { width: 600, paddingV: 0, paddingH: 0 };
-    if (!editEvent) return fullWidth;
+    // v32.0.3: Ohne eigenes Mail-Logo ist Standard (300/24/24) die Vorgabe.
+    // Vorher starteten neue Events mit „Volle Breite" — angezeigt als aktiv,
+    // gerendert aber als Orb mit max. 180 px (headerLayoutFor). Nutzer-Ansage
+    // 28.09.2026: „Standard sollte doch dort 300 px sein". Ein Banner-Logo
+    // setzt kopfMasseNachLogo beim Upload auf volle Breite.
+    const standard = { ...KOPF_RUND };
+    if (!editEvent) return standard;
     if (!editEvent.emailTemplateOverrides) return legacyDef;
     try {
       const o = JSON.parse(editEvent.emailTemplateOverrides);
       const il = o._headerImageLayout || {};
+      const eigenesLogo = (typeof o._eventLogo === 'string' && o._eventLogo.trim()) || (editEvent.mailImageBase64 || '').trim();
+      if (!eigenesLogo && istVolleBreite({ width: il.width, paddingV: il.paddingV, paddingH: il.paddingH })) return standard;
       // v31.78: rundes Logo mit automatischer Vollbreite → 300 px (formRegelKopf),
       // damit die Größensteuerung dasselbe zeigt, was die Mails rendern.
       return formRegelKopf({
@@ -206,7 +213,15 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
    */
   const kopfMasseNachLogo = (b64: string): void => {
     if (!b64) return;
-    setHeaderImageLayout(prev => formRegelKopf(prev, b64));
+    // v32.0.3: Steht noch eine der beiden Voreinstellungen, entscheidet die
+    // Bildform (Banner → volle Breite, rund/quadratisch → 300 px) — seit der
+    // Standard 300 px ist, bliebe ein Banner sonst klein. Eigene Werte bleiben.
+    setHeaderImageLayout(prev => {
+      const m = bildMasseSync(b64);
+      const preset = istVolleBreite(prev) || (prev.width === KOPF_RUND.width && prev.paddingV === KOPF_RUND.paddingV && prev.paddingH === KOPF_RUND.paddingH);
+      if (preset && m && m.width && m.height) return { ...prev, ...kopfMasseFuerBild(m.width, m.height) };
+      return formRegelKopf(prev, b64);
+    });
   };
   // v19.20: Snapshot des initialen Header-Bild-Layouts (Breite/Innenabstand)
   // beim Edit-Mount. Eine reine Layout-Änderung verändert NICHT den rohen

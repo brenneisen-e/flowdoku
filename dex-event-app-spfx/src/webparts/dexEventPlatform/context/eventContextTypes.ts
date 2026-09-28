@@ -229,7 +229,8 @@ export interface EventContextType {
   checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
   // v30.37: optionaler onHttpError — 403/404 ist NICHT „keine Teilnehmer".
   getAllRegistrations: (eventId: string, onHttpError?: (_status: number) => void) => Promise<SPRegistration[]>;
-  deleteEvent: (eventId: string) => Promise<boolean>;
+  /** v32.0: `onProgress` — Schritte für den Fortschrittsbalken im Lösch-Dialog. */
+  deleteEvent: (eventId: string, onProgress?: (_done: number, _total: number, _label: string) => void) => Promise<boolean>;
   /** v24.0: Anzahl der Anmeldungen über das Organizer-Team hinaus (echte
    *  Teilnehmer, Haupt- + Sub-Events, status-unabhängig). >0 ⇒ Lösch-Sperre
    *  (nur Admin, frühestens 1 Jahr nach Event-Ende). */

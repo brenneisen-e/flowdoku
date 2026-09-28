@@ -27,6 +27,23 @@ import { sessionIdentities } from '../../utils/sessionIdentities';
  * Registrierung für ein Event erstellen.
  * Operiert auf der Subsite des Events.
  */
+/** v32.0: TeilnehmerID einer ohne Nummer angelegten Zeile nachziehen
+ *  (s. Aufruf in registerForEvent). Drei Versuche mit wachsendem Abstand,
+ *  danach bleibt es beim Hinweis „ohne Nr." im Organizer Center. */
+async function nummerNachziehen(svc: EventService, subsiteUrl: string, itemId: number): Promise<void> {
+  for (const warte of [5000, 20000, 60000]) {
+    await new Promise<void>(res => window.setTimeout(res, warte));
+    try {
+      const id = await svc.getNextTeilnehmerId(subsiteUrl);
+      if (typeof id !== 'number' || id <= 0) continue;
+      const r = await svc._merge(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`, { 'TeilnehmerID': id });
+      if (r && (r as { ok?: boolean }).ok === false) continue;
+      return;
+    } catch { /* nächster Versuch */ }
+  }
+  console.warn(`[DEX] TeilnehmerID für Item ${itemId} konnte nicht nachgezogen werden — „IDs jetzt korrigieren" im Organizer Center.`);
+}
+
 export async function registerForEvent(
   svc: EventService,
   subsiteUrl: string,
@@ -72,7 +89,7 @@ export async function registerForEvent(
   // v30.58: `detail` trägt die Klartext-Antwort von SharePoint bei einem
   // abgelehnten Insert (z.B. „The field or property 'X' does not exist") —
   // der `reason` bleibt maschinenlesbar, die Ursache geht nicht verloren.
-): Promise<{ ok: boolean; reason?: 'not-allowed' | 'deadline' | 'insert-failed' | 'error'; detail?: string }> {
+): Promise<{ ok: boolean; reason?: 'not-allowed' | 'deadline' | 'insert-failed' | 'error'; detail?: string; ohneNummer?: boolean }> {
   try {
     // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
     // Serverseitige Prüfungen — nicht perfekt (SPFx läuft im Browser),
@@ -418,7 +435,18 @@ export async function registerForEvent(
       await svc.trySetItemAuthor(subsiteUrl, REG_LIST_NAME, insertedId, participantEmail);
     }
 
-    return { ok: true };
+    // v32.0: Hat der Zähler keine Nummer geliefert (Drosselung, 40 Versuche
+    // erschöpft), stand die Zeile ohne TeilnehmerID da — und NICHTS stieß
+    // eine Korrektur an (Nutzer-Befund 28.09.2026: „1 Eintrag ohne Nummer",
+    // obwohl der Flow sauber lief; in der Tabelle als zweite „1"). Jetzt holt
+    // die App die Nummer im Hintergrund nach — NICHT über DEX_IDReorder: der
+    // sortiert nach `TeilnehmerID asc`, eine leere Nummer landete dort
+    // VORN und hätte alle verschoben (auf der Warteliste: vorgedrängelt).
+    // Der Zähler vergibt dagegen die nächste freie Nummer am Ende.
+    if (typeof nextId !== 'number' && insertedId > 0) {
+      void nummerNachziehen(svc, subsiteUrl, insertedId);
+    }
+    return { ok: true, ohneNummer: typeof nextId !== 'number' };
   } catch {
     return { ok: false, reason: 'error' };
   }

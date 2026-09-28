@@ -1314,7 +1314,7 @@ export class EventService {
     // v30.58: `detail` trägt die Klartext-Antwort von SharePoint bei einem
     // abgelehnten Insert (z.B. „The field or property 'X' does not exist") —
     // der `reason` bleibt maschinenlesbar, die Ursache geht nicht verloren.
-  ): Promise<{ ok: boolean; reason?: 'not-allowed' | 'deadline' | 'insert-failed' | 'error'; detail?: string }> {
+  ): Promise<{ ok: boolean; reason?: 'not-allowed' | 'deadline' | 'insert-failed' | 'error'; detail?: string; ohneNummer?: boolean }> {
     return registration.registerForEvent(this, subsiteUrl, firstName, surname, participantEmail, customData, status, customFieldMap, starterType, preferredStarterType, registeredByName, registeredByEmail, proxyConsent, actorIsEventOrganizer, clientAssistantAllowed, walkIn);
   }
 
