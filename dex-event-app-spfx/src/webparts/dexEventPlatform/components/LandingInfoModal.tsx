@@ -135,17 +135,17 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
   ];
 
   const useCases: UseCase[] = isDE ? [
-    { icon: 'Presentation', title: 'Leadership- & Strategie-Meetings', sub: 'z. B. SR&T P/MD/D Meeting mit 450 Teilnehmenden' },
+    { icon: 'Presentation', title: 'Leadership- & Strategie-Meetings', sub: 'z. B. SR&T P/MD/D Meeting, TG-Events' },
     { icon: 'Emoji2', title: 'Firmen-Events', sub: 'Sommerfeste, Weihnachtsfeiern, Bereichs-Offsites' },
     { icon: 'Hotel', title: 'Assistenz- & Team-Meetings', sub: 'mit Transfer- und Hotelbuchung' },
     { icon: 'Running', title: 'Lauf-Events', sub: 'B2Run, JPMorgan Corporate Challenge — mit Startblöcken und geteilten Kapazitäten' },
-    { icon: 'CalendarAgenda', title: 'Alles dazwischen', sub: 'vom Lunch mit 10 Personen bis zur Großveranstaltung mit über 500' },
+    { icon: 'CalendarAgenda', title: 'Alles dazwischen', sub: 'vom kleinen Lunch bis zur Großveranstaltung' },
   ] : [
-    { icon: 'Presentation', title: 'Leadership & strategy meetings', sub: 'e.g. SR&T P/MD/D meeting with 450 participants' },
+    { icon: 'Presentation', title: 'Leadership & strategy meetings', sub: 'e.g. SR&T P/MD/D meeting, TG events' },
     { icon: 'Emoji2', title: 'Company events', sub: 'summer parties, Christmas celebrations, team offsites' },
     { icon: 'Hotel', title: 'Assistant & team meetings', sub: 'with transfer and hotel booking' },
     { icon: 'Running', title: 'Running events', sub: 'B2Run, JPMorgan Corporate Challenge — with start blocks and split capacities' },
-    { icon: 'CalendarAgenda', title: 'Everything in between', sub: 'from a lunch with 10 people to a flagship event with 500+' },
+    { icon: 'CalendarAgenda', title: 'Everything in between', sub: 'from a small lunch to a flagship event' },
   ];
 
   // v31.2: Ablauf als nummerierte Schritt-Zeilen (Titel + Folge) statt einer
