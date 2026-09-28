@@ -37,7 +37,12 @@ const demoUser: User = {
   isAdmin: false,
   role: 'Organizer',
   location: 'Köln',
-  jobTitle: 'Senior',
+  jobTitle: 'Senior Consultant',
+  // v32.3: Ohne diese beiden Felder zeigte die Anmelde-Vorschau
+  // „Geschäftsbereich — nicht hinterlegt" (Screenshot 28.09.2026) — das lag an
+  // der Demo-Person, nicht an den echten Profildaten.
+  department: 'Technology & Transformation',
+  company: 'Deloitte Consulting GmbH',
 };
 
 interface DemoPerson {

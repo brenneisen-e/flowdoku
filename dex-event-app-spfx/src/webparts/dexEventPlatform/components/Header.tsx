@@ -20,12 +20,16 @@ import ImpersonateModal from './ImpersonateModal';
 import LandingInfoModal from './LandingInfoModal';
 import GlobalSearch from './GlobalSearch';
 import QuestionButton from './QuestionButton';
+import { cx, ensureDexUiStyles } from './dexUi';
 import { useTutorial } from './tutorial/TutorialGuide';
 import { useIsMobile } from '../utils/useIsMobile';
 // v28.98: „Zurück" waehrend eines laufenden Speichervorgangs sperren.
 import { isSaveInProgress, subscribeSaveInProgress } from '../utils/saveGuard';
 
 export default function Header(): React.ReactElement {
+  // v32.3: Das Burger-Menü nutzt dex-ui-menuitem — das Stylesheet muss auch
+  // dann da sein, wenn noch kein Modal es eingefügt hat (idempotent).
+  ensureDexUiStyles();
   // v28.98: Laeuft gerade ein Speichervorgang? Dann ist „Zurück" gesperrt —
   // ein Abbruch mittendrin hinterlaesst ein halb angelegtes Event.
   const [saveBusy, setSaveBusy] = React.useState<boolean>(isSaveInProgress());
@@ -59,15 +63,6 @@ export default function Header(): React.ReactElement {
   // Info-Modal wird hier verwaltet statt auf der Landing Page.
   const [showAbout, setShowAbout] = React.useState(false);
   const [showPopup, setShowPopup] = React.useState(false);
-  // v24.69: Tutorial-CTA im Header ist per X ausblendbar — Zustand bleibt in
-  // localStorage erhalten (einmal weggeklickt = bleibt weg).
-  const [tutorialCtaHidden, setTutorialCtaHidden] = React.useState<boolean>(() => {
-    try { return window.localStorage.getItem('dex_tutorial_cta_hidden') === '1'; } catch { return false; }
-  });
-  const dismissTutorialCta = (): void => {
-    try { window.localStorage.setItem('dex_tutorial_cta_hidden', '1'); } catch { /* */ }
-    setTutorialCtaHidden(true);
-  };
   const isLanding = currentPage === 'landing';
 
   // v18.35: Hinweis-Chip, wenn die Anmeldeseite in einer festen Sprache
@@ -308,13 +303,16 @@ export default function Header(): React.ReactElement {
                   : 'Saving is in progress — please wait. Leaving now would leave the event half-created.')
                 : undefined}
               style={{
-                width: 'auto', borderRadius: 999, padding: '0 16px 0 10px', fontSize: '0.85rem', fontWeight: 600,
+                width: 'auto', borderRadius: 999, padding: '0 16px 0 10px', fontSize: '0.85rem', fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap',
                 ...(saveBusy ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
               }}
             >
               <ChevronLeft size={20} /> {locale === 'de' ? 'Zurück' : 'Back'}
             </button>
-            <span className="header-title" style={{ border: 'none', paddingLeft: 0, fontWeight: 500 }}>
+            {/* v32.3: eine Zeile, notfalls gekürzt — seit der Header eine Mitte
+                hat, ist links weniger Platz, und in der Vorschau (Rahmen) brach
+                „Aktuelle Events | Verfügbar an deinem Standort" wortweise um. */}
+            <span className="header-title" title={getTitle()} style={{ border: 'none', paddingLeft: 0, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, flex: '0 1 auto' }}>
               {getTitle()}
             </span>
           </>
@@ -334,56 +332,21 @@ export default function Header(): React.ReactElement {
       {isMobile ? (!isLanding && <GlobalSearch />) : (
         <div className="header-center" style={{ flex: isLanding ? '0 1 auto' : '0 1 780px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, minWidth: 0 }}>
           {!isLanding && <GlobalSearch />}
-          {isLanding && !tutorialCtaHidden && !isMobile && currentUserRole !== 'Admin' && currentUserRole !== 'IT-Admin' && currentUserRole !== 'Organizer' && (
-            <div
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
-                background: 'var(--dex-green)', borderRadius: 999,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.10)', maxWidth: 'min(46vw, 460px)',
-              }}
-            >
-              <button
-                type="button"
-                onClick={openTutorial}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-                  background: 'transparent', color: '#fff',
-                  padding: '9px 6px 9px 18px', borderRadius: 999,
-                  fontSize: '0.95rem', lineHeight: 1.2, fontFamily: 'inherit',
-                  border: 'none', cursor: 'pointer', overflow: 'hidden',
-                }}
-                title={locale === 'de' ? 'Geführtes Tutorial starten' : 'Start the guided tutorial'}
-              >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {locale === 'de'
-                    ? <><strong>Neu hier?</strong> Starte das DEX Tutorial</>
-                    : <><strong>New here?</strong> Start the DEX tutorial</>}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={dismissTutorialCta}
-                aria-label={locale === 'de' ? 'Tutorial-Hinweis ausblenden' : 'Hide tutorial hint'}
-                title={locale === 'de' ? 'Ausblenden (nicht mehr anzeigen)' : 'Hide (do not show again)'}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: 26, height: 26, marginRight: 6, borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.2)', color: '#fff',
-                  border: 'none', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, fontFamily: 'inherit',
-                }}
-              >
-                ×
-              </button>
-            </div>
-          )}
+          {/* v32.3: Die Pille „Neu hier? Starte das DEX Tutorial" ist weg — der
+              Einstieg steckt jetzt im Zwischendialog von „Hast du Fragen?"
+              (Nutzer-Ansage 28.09.2026). */}
           {langToggle}
-          <span style={{ flexShrink: 0, whiteSpace: 'nowrap', display: 'inline-flex' }}><QuestionButton isMobile={isMobile} /></span>
+          <span style={{ flexShrink: 0, whiteSpace: 'nowrap', display: 'inline-flex' }}><QuestionButton isMobile={isMobile} onAbout={() => setShowAbout(true)} /></span>
         </div>
       )}
-      <div className="header-right" style={isMobile ? undefined : { flex: '1 1 0', justifyContent: 'flex-end' }}>
+      {/* v32.3: Aktualisieren, Menü und Profil schließen direkt an „Hast du
+          Fragen?" an (Nutzer-Ansage 28.09.2026) statt am rechten Rand zu
+          kleben — auf breiten Schirmen lag dazwischen eine halbe Seite. Die
+          Gruppe bleibt flex 1 1 0, damit die Mitte weiter mittig steht. */}
+      <div className="header-right" style={isMobile ? undefined : { flex: '1 1 0', justifyContent: 'flex-start', paddingLeft: 12, minWidth: 0 }}>
         {/* v26: Grüner „Hast du Fragen?"-Button — Ticketsystem für alle User.
             v26.34: jetzt auch auf der Landing Page im Header sichtbar. */}
-        {isMobile && <QuestionButton isMobile={isMobile} />}
+        {isMobile && <QuestionButton isMobile={isMobile} onAbout={() => setShowAbout(true)} />}
         {/* v9.29: Refresh-Button im Header. v32.2.1: nur das Symbol (Nutzer-
             Ansage 28.09.2026: „Aktualisieren braucht man nicht ausschreiben,
             da reicht das Symbol"); der Name steht im Tooltip. */}
@@ -442,9 +405,8 @@ export default function Header(): React.ReactElement {
                 { key: 'manual', icon: <Book size={16} />, title: t('header.manual'), sub: locale === 'de' ? 'Anleitungen zu allen Funktionen.' : 'Guides for every feature.', onClick: () => navigate('manual') },
                 { key: 'about', icon: <Info size={16} />, title: locale === 'de' ? 'Über die App' : 'About the app', sub: locale === 'de' ? 'Wofür DEX gedacht ist, Ablauf und Tutorial.' : 'What DEX is for, the flow and the tutorial.', onClick: () => setShowAbout(true) },
               ]).map(it => (
-                <button key={it.key} type="button" role="menuitem" className="dex-ui-row"
-                  onClick={() => { setDemoOpen(false); it.onClick(); }}
-                  style={{ width: '100%', border: 'none', background: 'transparent', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <button key={it.key} type="button" role="menuitem" className="dex-ui-menuitem"
+                  onClick={() => { setDemoOpen(false); it.onClick(); }}>
                   <span style={{ width: 16, flexShrink: 0, color: 'var(--dex-gray-600)', paddingTop: 2 }}>{it.icon}</span>
                   <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>{it.title}</span>
@@ -461,9 +423,8 @@ export default function Header(): React.ReactElement {
                   { key: 'org' as const, active: !previewAsUser, title: locale === 'de' ? 'Organizer-Ansicht' : 'Organizer view', sub: locale === 'de' ? 'Mit allen Hinweisen und Rechten.' : 'With all notices and rights.' },
                   { key: 'user' as const, active: previewAsUser, title: locale === 'de' ? 'User-Ansicht' : 'User view', sub: locale === 'de' ? 'So sehen Teilnehmer die App — reine Ansicht, anmelden geht darin nicht.' : 'How attendees see the app — view only, no registering.' },
                 ]).map(it => (
-                  <button key={it.key} type="button" role="menuitemradio" aria-checked={it.active} className="dex-ui-row"
-                    onClick={() => { setPreviewAsUser(it.key === 'user'); setDemoOpen(false); }}
-                    style={{ width: '100%', border: 'none', background: it.active ? 'rgba(134,188,37,0.09)' : 'transparent', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <button key={it.key} type="button" role="menuitemradio" aria-checked={it.active} className={cx('dex-ui-menuitem', it.active && 'is-active')}
+                    onClick={() => { setPreviewAsUser(it.key === 'user'); setDemoOpen(false); }}>
                     <span style={{ width: 16, flexShrink: 0, color: 'var(--dex-green-dark, #4a7c1f)', paddingTop: 2 }}>{it.active && <Check size={14} />}</span>
                     <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <span style={{ fontSize: '0.86rem', fontWeight: it.active ? 700 : 600, color: 'var(--dex-gray-800)' }}>{it.title}</span>
@@ -472,9 +433,8 @@ export default function Header(): React.ReactElement {
                   </button>
                 ))}
                 {originalIsAdmin && (
-                  <button type="button" role="menuitem" className="dex-ui-row"
-                    onClick={() => { setDemoOpen(false); setShowImpersonate(true); }}
-                    style={{ width: '100%', border: 'none', background: 'transparent', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <button type="button" role="menuitem" className="dex-ui-menuitem"
+                    onClick={() => { setDemoOpen(false); setShowImpersonate(true); }}>
                     <span style={{ width: 16, flexShrink: 0, color: 'var(--dex-gray-600)', paddingTop: 2 }}><Users size={16} /></span>
                     <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <span style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>{locale === 'de' ? 'Als bestimmte Person testen' : 'Test as a specific person'}</span>

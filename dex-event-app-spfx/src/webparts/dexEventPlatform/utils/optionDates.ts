@@ -88,3 +88,18 @@ export function optionsAsDates(options: string[] | undefined, eventStart?: strin
 export function dayKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+
+/**
+ * Soll dieses Feld als Kalender erscheinen? Schalter aus (`asCalendar: false`)
+ * gewinnt; sonst Kalender, wenn alle Optionen Daten sind. Bei Schalter an mit
+ * Nicht-Daten bleibt es das Dropdown — ein Kalender ohne Tage wäre leer.
+ */
+export function calendarDatesFor(field: { type?: string; options?: string[]; asCalendar?: boolean }, eventStart?: string): Date[] | null {
+  if (field.type !== 'select' || field.asCalendar === false) return null;
+  const opts = (field.options || []).filter(o => (o || '').trim());
+  if (field.asCalendar === true && opts.length === 1) {
+    const one = optionsAsDates([opts[0], opts[0]], eventStart);
+    return one ? [one[0]] : null;
+  }
+  return optionsAsDates(field.options, eventStart);
+}

@@ -542,6 +542,8 @@ export async function mapSPEventToDeloitteEvent(e: SPEvent, subsiteMap: { curren
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       showForPositions: (cf as any).showForPositions,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      asCalendar: typeof (cf as any).asCalendar === 'boolean' ? (cf as any).asCalendar : undefined,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       spInternalName: (cf as any).spInternalName || '',
       // v7.11: multi-Flag durchreichen, damit RegistrationPage Mehrfachauswahl rendern kann
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

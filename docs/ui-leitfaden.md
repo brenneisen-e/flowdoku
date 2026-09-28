@@ -244,6 +244,7 @@ Zustände als zusätzliche Klasse: `is-active`, `is-open`, `is-disabled`,
 | Klasse | Wofür |
 |---|---|
 | `dex-ui-row` | Zeile mit Hover-Grund: `dex-ui-row-main` (`-title`, `-sub`), `dex-ui-row-actions` (erscheinen kräftiger bei Hover). `--bordered` mit Trennlinie |
+| `dex-ui-menuitem` (`.is-active`) | Eintrag eines Aufklapp-Menüs (Burger-Menü im Header): Knopf ohne Rahmen, Hover wie eine Zeile, aktiver Eintrag grün hinterlegt. Keinen Inline-Hintergrund setzen — der überschreibt den Hover (v32.3). |
 | `dex-ui-drag-handle` | Griff zum Sortieren (≡), `cursor: grab` |
 | `dex-ui-table` | Tabelle mit ruhigem Kopf und Zeilen-Hover; in `dex-ui-table-wrap` für Rand und Scroll |
 | `dex-ui-avatar` | Runde Foto-Kachel 32 px (`--lg` 44 px); `dex-ui-avatar-stack` überlappt mehrere |

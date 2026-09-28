@@ -292,6 +292,7 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
       ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
       ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
       ...(f.showForPositions ? { showForPositions: { mode: f.showForPositions.mode, values: [...f.showForPositions.values] } } : {}),
+      ...(typeof f.asCalendar === 'boolean' ? { asCalendar: f.asCalendar } : {}),
       ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
       // v11.94: confirmLabel beim Edit-Mount mit-übernehmen.
       ...(f.confirmLabel ? { confirmLabel: f.confirmLabel } : {}),

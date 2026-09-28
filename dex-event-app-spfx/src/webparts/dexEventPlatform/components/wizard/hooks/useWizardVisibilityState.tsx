@@ -544,6 +544,7 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
         helpTextStyle: f.helpTextStyle,
         showIf: f.showIf,
         showForPositions: f.showForPositions, // v32.2.2
+        asCalendar: f.asCalendar, // v32.3
         // v29.20 (Audit A3): Dieser Mapper übernahm nur eine Teilmenge der
         // Feld-Eigenschaften — der nächste Save eines Klammer-Events schrieb
         // die Sub-Event-CustomFields dann OHNE den Rest zurück (die

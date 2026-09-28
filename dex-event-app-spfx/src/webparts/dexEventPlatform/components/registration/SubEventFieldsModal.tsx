@@ -13,7 +13,7 @@ import { Locale } from '../../context/LanguageContext';
 import { cx } from '../dexUi';
 import { MessageSquare, AlertCircle, Check } from '../Icons';
 import { positionRuleAllows } from '../../utils/positionRule';
-import { optionsAsDates } from '../../utils/optionDates';
+import { calendarDatesFor } from '../../utils/optionDates';
 import { OptionDateCalendar } from './OptionDateCalendar';
 
 /** Custom-Fields eines Sub-Events (v10.12). */
@@ -141,11 +141,11 @@ export const SubEventFieldsModal: React.FC<SubEventFieldsModalProps> = (p) => {
                   return (
                     <div key={f.id} className="dex-ui-field">
                       <label className="dex-ui-label">{labelBody(f)}</label>
-                      {f.type === 'select' && optionsAsDates(f.options, ce.startDate) ? (
+                      {calendarDatesFor(f, ce.startDate) ? (
                         // v32.2.2: Antworten sind Daten → Kalender (utils/optionDates).
                         <OptionDateCalendar
                           options={f.options || []}
-                          dates={optionsAsDates(f.options, ce.startDate) || []}
+                          dates={calendarDatesFor(f, ce.startDate) || []}
                           labels={(f.options || []).map((o, i) => fOpt(f, o, i))}
                           multi={!!f.multi}
                           value={val}

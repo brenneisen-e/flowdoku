@@ -814,6 +814,36 @@ export function promotionEmail(recipientName: string, eventTitle: string): { sub
  * nicht mehr verlinkt — der SharePoint-Teilnehmerlisten-Link wurde entfernt
  * (alle Aktionen laufen über die App).
  */
+/** v32.3: Die fünf Startschritte — EINE Quelle für „Event angelegt" und
+ *  „Du bist jetzt Co-Organizer" (vorher bekam ein nachträglich benannter
+ *  Co-Organizer nur zwei Sätze, der beim Anlegen Benannte die ganze Liste). */
+const STARTKLAR_SCHRITTE_DE = `<ol style="line-height:1.6;padding-left:20px;margin:0 0 16px;">
+        <li><strong>Event finalisieren</strong> &ndash; &uuml;ber &bdquo;Event bearbeiten&ldquo; Felder, Bild und Texte vervollst&auml;ndigen.</li>
+        <li><strong>Test-An- und Abmeldung</strong> &ndash; einmal selbst an- und wieder abmelden, um zu pr&uuml;fen, ob die automatische Kommunikation (Best&auml;tigungs-Mail, Outlook-Termin, Abmelde-Mail) richtig ankommt.</li>
+        <li><strong>Event live schalten</strong> &ndash; im Organizer Center &uuml;ber den Knopf &bdquo;Live schalten&ldquo; (neben dem Titel oder unter &bdquo;N&auml;chste Schritte&ldquo;). Danach ist es f&uuml;r die berechtigten Gruppen sichtbar.</li>
+        <li><strong>Einladung verschicken</strong> &ndash; optional die Einladung mit Anmelde-Link direkt aus der App versenden (zum Weiterleiten oder an den Verteiler).</li>
+        <li><strong>Anmeldungen verfolgen</strong> &ndash; sobald sich Teilnehmer anmelden, stehen im Organizer Center alle Infos: Anzahl, Status und die komplette Teilnehmerliste.</li>
+      </ol>`;
+const STARTKLAR_SCHRITTE_EN = `<ol style="line-height:1.6;padding-left:20px;margin:0 0 16px;">
+        <li><strong>Finalize the event</strong> &ndash; complete fields, image and texts via &bdquo;Edit event&ldquo;.</li>
+        <li><strong>Test registration and cancellation</strong> &ndash; register and cancel once yourself to check the automatic emails and the Outlook invite.</li>
+        <li><strong>Publish the event</strong> &ndash; in the Organizer Center via &bdquo;Go live&ldquo;. It is then visible to the eligible groups.</li>
+        <li><strong>Send the invitation</strong> &ndash; optionally send the invitation with the registration link directly from the app.</li>
+        <li><strong>Track registrations</strong> &ndash; the Organizer Center shows count, status and the full participant list.</li>
+      </ol>`;
+
+/**
+ * v32.3: Vorname für die Anrede. Namen aus SharePoint stehen oft als
+ * „Nachname, Vorname" — das erste Wort davon ergab „Hallo Staben,,"
+ * (Screenshot 28.09.2026).
+ */
+export function anredeVorname(name: string): string {
+  const n = (name || '').trim();
+  if (!n) return '';
+  const teil = n.indexOf(',') >= 0 ? n.split(',').slice(1).join(',').trim() : n;
+  return (teil.split(/\s+/)[0] || n).replace(/,+$/, '');
+}
+
 export function eventCreatedEmail(
   recipientName: string,
   eventTitle: string,
@@ -832,14 +862,8 @@ export function eventCreatedEmail(
       'Event angelegt',
       eventTitle,
       `<p>Hallo ${recipientName},</p>
-      <p>dein Event <strong>${eventTitle}</strong> wurde erfolgreich angelegt. So machst du es startklar:</p>
-      <ol style="line-height:1.6;padding-left:20px;margin:0 0 16px;">
-        <li><strong>Event finalisieren</strong> &ndash; &uuml;ber &bdquo;Event bearbeiten&ldquo; Felder, Bild und Texte vervollst&auml;ndigen.</li>
-        <li><strong>Test-An- und Abmeldung</strong> &ndash; melde dich einmal selbst an und wieder ab, um zu pr&uuml;fen, ob die automatische Kommunikation (Best&auml;tigungs-Mail, Outlook-Termin, Abmelde-Mail) richtig ankommt.</li>
-        <li><strong>Event live schalten</strong> &ndash; im Organizer Center &uuml;ber den Knopf &bdquo;Live schalten&ldquo; (neben dem Titel oder unter &bdquo;N&auml;chste Schritte&ldquo;). Danach ist es f&uuml;r die berechtigten Gruppen sichtbar.</li>
-        <li><strong>Einladung verschicken</strong> &ndash; optional die Einladung mit Anmelde-Link direkt aus der App versenden (an dich zum Weiterleiten oder an den Verteiler).</li>
-        <li><strong>Anmeldungen verfolgen</strong> &ndash; sobald sich Teilnehmer anmelden, siehst du im Organizer Center alle Infos: Anzahl, Status und die komplette Teilnehmerliste.</li>
-      </ol>
+      <p>${recipientName === 'zusammen' ? 'euer' : 'dein'} Event <strong>${eventTitle}</strong> wurde erfolgreich angelegt. So macht ihr es startklar:</p>
+      ${STARTKLAR_SCHRITTE_DE}
       <p>Teilnehmerliste &amp; Verwaltung &ndash; alles direkt in der App (Organizer Center):</p>
       <ul>
         <li><a href="${APP_URL}" style="color:${GREEN};font-weight:600;">DEX App</a> (Admin / Organizer)</li>
@@ -971,7 +995,9 @@ export function coOrganizerAddedEmail(
   eventTitle: string,
   actorName: string,
   isDe: boolean,
-  appUrl?: string
+  appUrl?: string,
+  // v32.3: Outlook-Satz nur, wenn wirklich eine Einladung rausgeht.
+  outlookInvite = true,
 ): { subject: string; body: string } {
   const link = appUrl || APP_URL;
   if (isDe) {
@@ -980,8 +1006,11 @@ export function coOrganizerAddedEmail(
       body: wrapTemplate(GREEN, 'Du bist jetzt Co-Organizer', eventTitle,
         `<p>Hallo ${recipientName},</p>
         <p>${actorName ? `<strong>${actorName}</strong> hat dich` : 'Du wurdest'} als <strong>Co-Organizer</strong> für das Event <strong>${eventTitle}</strong> hinzugefügt.</p>
-        <p>Du kannst das Event ab sofort mitverwalten und hast <strong>Zugriff auf die Teilnehmerliste</strong> — öffne dazu das <a href="${link}" style="color:${GREEN};font-weight:600;">Organizer Center der DEX App</a>.</p>
-        <p>Außerdem hast du eine <strong>Outlook-Kalendereinladung</strong> zum Event erhalten.</p>
+        <p>Du verwaltest das Event mit und bekommst <strong>Zugriff auf die Teilnehmerliste</strong> — im <a href="${link}" style="color:${GREEN};font-weight:600;">Organizer Center der DEX App</a>.</p>
+        <p style="background:#f4f9ea;border-left:3px solid ${GREEN};padding:10px 12px;margin:0 0 16px;">Die Freischaltung deiner Rechte kann <strong>ein paar Minuten dauern</strong>. Siehst du das Event oder die Teilnehmerliste noch nicht, lade die App etwas später neu.</p>
+        <p>So macht ihr das Event startklar:</p>
+        ${STARTKLAR_SCHRITTE_DE}
+        ${outlookInvite ? '<p>Außerdem bekommst du eine <strong>Outlook-Kalendereinladung</strong> zum Event.</p>' : ''}
         <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
       ),
     };
@@ -991,8 +1020,11 @@ export function coOrganizerAddedEmail(
     body: wrapTemplate(GREEN, 'You are now a co-organizer', eventTitle,
       `<p>Dear ${recipientName},</p>
       <p>${actorName ? `<strong>${actorName}</strong> has added you` : 'You have been added'} as a <strong>co-organizer</strong> for the event <strong>${eventTitle}</strong>.</p>
-      <p>You can now help manage the event and have <strong>access to the participant list</strong> — open the <a href="${link}" style="color:${GREEN};font-weight:600;">Organizer Center in the DEX App</a>.</p>
-      <p>You have also received an <strong>Outlook calendar invitation</strong> for the event.</p>
+      <p>You help manage the event and get <strong>access to the participant list</strong> — in the <a href="${link}" style="color:${GREEN};font-weight:600;">Organizer Center in the DEX App</a>.</p>
+      <p style="background:#f4f9ea;border-left:3px solid ${GREEN};padding:10px 12px;margin:0 0 16px;">Activating your permissions can <strong>take a few minutes</strong>. If you do not see the event or the participant list yet, reload the app a little later.</p>
+      <p>Next steps:</p>
+      ${STARTKLAR_SCHRITTE_EN}
+      ${outlookInvite ? '<p>You will also receive an <strong>Outlook calendar invitation</strong> for the event.</p>' : ''}
       <p style="margin-top:24px;"><strong>Best regards</strong><br><br><strong>Your Event Team</strong></p>`
     ),
   };

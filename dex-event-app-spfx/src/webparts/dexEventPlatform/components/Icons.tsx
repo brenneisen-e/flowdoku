@@ -225,6 +225,14 @@ export const ChevronRight = ({ size = 16 }: IconProps): React.ReactElement => (
   </svg>
 );
 
+// v32.3: Vorschau (schwebende Leiste im Assistenten), Lucide „eye".
+export const Eye = ({ size = 16 }: IconProps): React.ReactElement => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
 // v31.2: Bild (Quiz-Frage, Kopfbild, Upload).
 export const ImageIcon = ({ size = 18 }: IconProps): React.ReactElement => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
