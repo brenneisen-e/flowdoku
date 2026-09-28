@@ -927,6 +927,17 @@ function gleicherWert(spalte: string, alt: unknown, neu: unknown): boolean {
   if (typeof alt === 'object' || typeof neu === 'object') {
     try { return JSON.stringify(alt) === JSON.stringify(neu); } catch { return false; }
   }
+  // v32.10: Rich-Text-Spalten (z. B. Organizer, OrganizerEmail) legt
+  // SharePoint verpackt ab: <div class="ExternalClass…">Inhalt</div>. Der
+  // Inhalt ist derselbe, nur die Hülle nicht — ohne diesen Vergleich galten
+  // beide Spalten bei jedem Speichern als geändert (Tenant-Log 28.09.2026).
+  if (typeof alt === 'string' && typeof neu === 'string' && alt.indexOf('<div class="ExternalClass') === 0 && neu.indexOf('<') < 0) {
+    const klar = alt.replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;|&#160;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+      .replace(/\u200b/g, '').trim();
+    return klar === neu.trim();
+  }
   // Datumswerte: SharePoint liefert „…T10:00:00Z", die App schreibt „…T10:00:00.000Z".
   const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
   if (typeof alt === 'string' && typeof neu === 'string' && iso.test(alt) && iso.test(neu)) {
