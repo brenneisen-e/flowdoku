@@ -87,6 +87,8 @@ export interface SubEventsSectionProps {
   setAgendaTermPlural: React.Dispatch<React.SetStateAction<string>>;
   setAgendaTermSingular: React.Dispatch<React.SetStateAction<string>>;
   goToProgramStep: () => void;
+  /** v31.99: Die Termine stammen aus einer Serie (Schritt 1, beim Datum). */
+  seriesActive?: boolean;
 }
 /** v31.2: Auswahl-Kachel „eine von mehreren" (Leitfaden 2b). Ein `<button>`
  *  mit `aria-pressed` statt verstecktem Radio plus 30 Zeilen Inline-Style je
@@ -291,6 +293,19 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                   seit v22 Anzeige und wird hier zur Check-in-Liste. Nur
                   sichtbar, solange keine Sub-Events aktiv sind (entweder/oder). */}
               {!subEventsOptIn && (
+              <>
+              {/* v32.0: Eigene Zwischenüberschrift mit grauem Balken wie bei
+                  den Sub-Events (Nutzer-Ansage 28.09.2026) — Programmpunkte
+                  sind der zweite Weg, ein Event zu gliedern, und standen bis
+                  dahin optisch als Anhängsel unter der Sub-Event-Frage. */}
+              <h3 className="dex-step-sub-head">
+                {isDe ? 'Nutzung von Programmpunkten' : 'Using agenda items'}
+              </h3>
+              <p className="dex-step-sub-lead">
+                {isDe
+                  ? 'Soll sich jeder einmal fürs ganze Event anmelden — und du erfasst je Programmpunkt nur, wer da war?'
+                  : 'Should everyone register once for the whole event — while you only record who attended each agenda item?'}
+              </p>
               <div className="dex-ui-section">
                 <label className={cx('dex-ui-toggle-row', agendaCheckIn && 'is-active')}>
                   <input
@@ -406,6 +421,7 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                   );
                 })()}
               </div>
+              </>
               )}
 
               {/* v28.84: Bezeichnung und Anmelde-Modus gehoeren zur
@@ -750,6 +766,9 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                   <div className="dex-ui-grid-2">
                     <Choice
                       active={!subEventCalendar}
+                      // v31.99: Eine Serie besteht aus Kalender-Terminen; die
+                      // Liste würde die Regel beim Speichern verwerfen.
+                      disabled={!!p.seriesActive}
                       onPick={() => setSubEventCalendar(false)}
                       icon={<Columns size={18} />}
                       title={isDe ? 'Einzeln als Liste' : 'One by one as a list'}
@@ -767,6 +786,13 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                         : 'Click a day, done. Attendees pick their days in a calendar on the registration page instead of a long list.'}
                     />
                   </div>
+                  {subEventCalendar && p.seriesActive && (
+                    <p className="dex-ui-help">
+                      {isDe
+                        ? 'Die Termine stammen aus der Serie oben beim Datum. Einzelne Tage kannst du hier im Kalender dazu- oder abwählen; die Liste darunter öffnet einen Termin zum Bearbeiten.'
+                        : 'The dates come from the series above, next to the dates. Add or remove single days in the calendar here; the list below opens a date for editing.'}
+                    </p>
+                  )}
                   {subEventCalendar && (
                     <p className="dex-ui-help">
                       {isDe

@@ -3,6 +3,7 @@ import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { AgendaItem } from '../../../types';
 import { SubEventDraft } from '../../wizard/wizardTypes';
 import { EmailOverrideEntry } from '../../wizard/emailOverrideEntry';
+import { parseSeriesRule } from '../../../utils/seriesRule';
 
 /* applyDraftPayload — aus EventCreationPage.tsx ausgelagert (Zeilen 4314-4372 des
  * urspruenglichen Stands). Der Funktionskoerper ist zeichengleich uebernommen;
@@ -63,6 +64,8 @@ export interface ApplyDraftPayloadCtx {
   setRequireSubEventSelection: React.Dispatch<React.SetStateAction<boolean>>;
   setStartDate: React.Dispatch<React.SetStateAction<string>>;
   setSubEventCalendar: React.Dispatch<React.SetStateAction<boolean>>;
+  /** v31.99: Serien-Regel des Entwurfs. */
+  setSeriesRule: React.Dispatch<React.SetStateAction<import('../../../types').SeriesRule | null>>;
   setSubEvents: React.Dispatch<React.SetStateAction<SubEventDraft[]>>;
   setSubEventSingleChoice: React.Dispatch<React.SetStateAction<boolean>>;
   setSubEventsOnlyMode: React.Dispatch<React.SetStateAction<boolean>>;
@@ -79,7 +82,7 @@ export interface ApplyDraftPayloadCtx {
 }
 
 export function applyDraftPayloadImpl(ctx: ApplyDraftPayloadCtx, d: Record<string, unknown>): void {
-  const { canBilling, setActiveFrom, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setAgenda, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular, setAskSalutation, setAskTeamName, setAudience, setBillingFields, setBillingRelevant, setBillingSendMode, setCancelRuleAfter, setCancelRuleAmount, setCancelRuleEnabled, setCancelRuleUnit, setContactEmail, setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDisableEmails, setDisableOutlook, setEmailTemplateOverrides, setEndDate, setExcludedUsers, setFilterMode, setKlammerDeadline, setLastDeregisterDate, setLocation, setLocationFilter, setMaxParticipants, setNoCancelAfterDeadline, setOnlineMeetingMode, setOpenRuleDays, setOpenRuleEnabled, setOpenRuleFixedDate, setOpenRuleMode, setOrganizer, setOrganizerEmails, setRegistrationDeadline, setRegRuleAmount, setRegRuleEnabled, setRegRuleUnit, setRequireSubEventSelection, setStartDate, setSubEventCalendar, setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setTeamRegistrationEnabled, setTeamSize, setTeamsLink, setTitle, setUserCancelAllowed, setVisAllSubs, setWaitlistEnabled, setTcAccepted } = ctx;
+  const { canBilling, setActiveFrom, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setAgenda, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular, setAskSalutation, setAskTeamName, setAudience, setBillingFields, setBillingRelevant, setBillingSendMode, setCancelRuleAfter, setCancelRuleAmount, setCancelRuleEnabled, setCancelRuleUnit, setContactEmail, setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDisableEmails, setDisableOutlook, setEmailTemplateOverrides, setEndDate, setExcludedUsers, setFilterMode, setKlammerDeadline, setLastDeregisterDate, setLocation, setLocationFilter, setMaxParticipants, setNoCancelAfterDeadline, setOnlineMeetingMode, setOpenRuleDays, setOpenRuleEnabled, setOpenRuleFixedDate, setOpenRuleMode, setOrganizer, setOrganizerEmails, setRegistrationDeadline, setRegRuleAmount, setRegRuleEnabled, setRegRuleUnit, setRequireSubEventSelection, setStartDate, setSubEventCalendar, setSeriesRule, setSubEvents, setSubEventSingleChoice, setSubEventsOnlyMode, setSubEventsOptIn, setTeamRegistrationEnabled, setTeamSize, setTeamsLink, setTitle, setUserCancelAllowed, setVisAllSubs, setWaitlistEnabled, setTcAccepted } = ctx;
     const str = (v: unknown): string => (typeof v === 'string' ? v : '');
     const bool = (v: unknown, dflt: boolean): boolean => (typeof v === 'boolean' ? v : dflt);
     const num = (v: unknown, dflt: number): number => (typeof v === 'number' && isFinite(v) ? v : dflt);
@@ -101,6 +104,7 @@ export function applyDraftPayloadImpl(ctx: ApplyDraftPayloadCtx, d: Record<strin
     setSubEventsOptIn(bool(d.subEventsOptIn, false));
     setSubEventsOnlyMode(bool(d.subEventsOnlyMode, false));
     setSubEventCalendar(bool(d.subEventCalendar, false));
+    setSeriesRule(parseSeriesRule(d.seriesRule) || null);
     setSubEventSingleChoice(bool(d.subEventSingleChoice, false));
     // v30.86: Programmpunkte mit Check-in.
     setAgendaCheckIn(bool(d.agendaCheckIn, false));

@@ -19,6 +19,8 @@ import { LOGO_MAX_BREITE } from '../../../utils/mailHeaderImage';
 import { ImgView, SubEventDraft } from '../../wizard/wizardTypes';
 export interface BasicsStepProps {
   visible: boolean;
+  /** v31.99: „Als Serie anlegen" (Klammer) bzw. Serien-Hinweis (Termin), unter dem Zeitraum. */
+  seriesSlot?: React.ReactNode;
   activeFrom: string;
   activeScopeIdx: number;
   applyDraftPayload: (d: Record<string, unknown>) => void;
@@ -537,7 +539,10 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     wrapperClassName="dex-datepicker-wrapper"
                     calendarClassName="dex-datepicker-calendar"
                     popperPlacement="bottom-start"
-                    maxDate={scopeSub ? (scEnd || undefined) : undefined}
+                    // v31.99.1: kein maxDate mehr beim Sub-Event — es sperrte
+                    // jeden Tag nach dem Ende und damit das Verschieben des
+                    // Termins (Nutzer-Befund 28.09.2026). Rutscht der Beginn
+                    // hinter das Ende, zieht setScStart das Ende mit.
                     isClearable
                     autoComplete="off"
                   />
@@ -653,6 +658,8 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                       ? 'Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.'
                       : 'The time is used for the attendees’ Outlook calendar entry.')}
               </p>
+              {/* v31.99: Serie — direkt beim Datum, wo die Frage „wann?" gestellt wird. */}
+              {p.seriesSlot}
               </div>
 
               <div className="dex-ui-section">

@@ -836,7 +836,7 @@ export function eventCreatedEmail(
       <ol style="line-height:1.6;padding-left:20px;margin:0 0 16px;">
         <li><strong>Event finalisieren</strong> &ndash; &uuml;ber &bdquo;Event bearbeiten&ldquo; Felder, Bild und Texte vervollst&auml;ndigen.</li>
         <li><strong>Test-An- und Abmeldung</strong> &ndash; melde dich einmal selbst an und wieder ab, um zu pr&uuml;fen, ob die automatische Kommunikation (Best&auml;tigungs-Mail, Outlook-Termin, Abmelde-Mail) richtig ankommt.</li>
-        <li><strong>Event live schalten</strong> &ndash; in der App oben &uuml;ber das Status-H&auml;kchen &bdquo;Entwurf &rarr; Aktiv&ldquo; schalten. Danach ist es f&uuml;r die berechtigten Gruppen sichtbar.</li>
+        <li><strong>Event live schalten</strong> &ndash; im Organizer Center &uuml;ber den Knopf &bdquo;Live schalten&ldquo; (neben dem Titel oder unter &bdquo;N&auml;chste Schritte&ldquo;). Danach ist es f&uuml;r die berechtigten Gruppen sichtbar.</li>
         <li><strong>Einladung verschicken</strong> &ndash; optional die Einladung mit Anmelde-Link direkt aus der App versenden (an dich zum Weiterleiten oder an den Verteiler).</li>
         <li><strong>Anmeldungen verfolgen</strong> &ndash; sobald sich Teilnehmer anmelden, siehst du im Organizer Center alle Infos: Anzahl, Status und die komplette Teilnehmerliste.</li>
       </ol>

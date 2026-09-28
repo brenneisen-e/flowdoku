@@ -14,6 +14,34 @@ import { EventService } from '../../services/EventService';
 import { buildMailButton, wrapTemplate } from '../../services/EmailTemplates';
 import { feedbackSchonDa } from '../../utils/dexFeedback';
 
+/* v31.100: Zähl-Cache für die zwei teuren Archiv-Zählungen.
+ *
+ * Beide lesen KOMPLETTE Listen (DEX_Archive mit über 40.000 Zeilen, dazu fünf
+ * Arbeitslisten) — rund 150 Abfragen. Bis v31.99 lief das bei jedem Admin-
+ * Start zweimal: einmal für die Landing-Kästen, 15 s später noch einmal im
+ * Automaten (Nutzer-Befund 28.09.2026: 341 Requests, 111 MB, 1,2 min nach
+ * jedem Start). Ergebnis jetzt 6 h je Browser gemerkt — dieselbe Frist wie
+ * die Sperre des Automaten. Geschrieben wird NUR nach fehlerfreiem Lesen
+ * (onReadError); ein Lesefehler ist keine Null und darf nicht 6 h als „nichts
+ * zu tun" gelten. Jeder Archiv- oder Löschlauf verwirft den Cache.
+ * Bewusst NICHT gecacht: die fälligen Teilnehmerlisten — genau deren
+ * Verzögerung war der v31.73-Befund. */
+const COUNT_CACHE_KEY = 'dex_archive_counts_v1';
+const COUNT_CACHE_MS = 6 * 60 * 60 * 1000;
+type CountCache = { arch?: { ts: number; sig: string; v: { total: number; perList: Record<string, number> } }; del?: { ts: number; sig: string; v: number } };
+function readCountCache(): CountCache {
+  try { const raw = window.localStorage.getItem(COUNT_CACHE_KEY); return raw ? (JSON.parse(raw) as CountCache) : {}; } catch { return {}; }
+}
+function writeCountCache(patch: CountCache): void {
+  try { window.localStorage.setItem(COUNT_CACHE_KEY, JSON.stringify({ ...readCountCache(), ...patch })); } catch { /* */ }
+}
+export function invalidateArchiveCountCache(): void {
+  try { window.localStorage.removeItem(COUNT_CACHE_KEY); } catch { /* */ }
+}
+// Gleichzeitige Aufrufe (Landing + Automat) teilen sich EINEN Lauf.
+let archInFlight: Promise<{ total: number; perList: Record<string, number> }> | null = null;
+let delInFlight: Promise<number> | null = null;
+
 export interface ArchiveDeps {
   eventService: EventService;
   events: DeloitteEvent[];
@@ -59,7 +87,17 @@ export function makeArchiveActions(deps: ArchiveDeps) {
     // Verwaist-Erkennung ALLES als gelöscht ansehen. Archivreif sind jetzt
     // Zeilen abgelaufener UND gelöschter (verwaister) Events.
     if (allIds.size === 0) return { total: 0, perList: {} };
-    return eventService.countArchivableRows(ids, subs, allIds, allSubs);
+    // Signatur: Welche Events abgelaufen sind und wie viele es gibt — läuft
+    // ein weiteres Event ab, ist der gemerkte Stand hinfällig.
+    const sig = `${Array.from(ids).sort().join(',')}#${allIds.size}`;
+    const c = readCountCache().arch;
+    if (c && c.sig === sig && Date.now() - c.ts < COUNT_CACHE_MS) return c.v;
+    if (archInFlight) return archInFlight;
+    let failed = false;
+    archInFlight = eventService.countArchivableRows(ids, subs, allIds, allSubs, () => { failed = true; })
+      .then(v => { if (!failed) writeCountCache({ arch: { ts: Date.now(), sig, v } }); return v; })
+      .finally(() => { archInFlight = null; });
+    return archInFlight;
   }
 
   /** v21: Verschiebt alle archivreifen Zeilen ins DEX_Archive (Admin).
@@ -70,7 +108,8 @@ export function makeArchiveActions(deps: ArchiveDeps) {
   ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number>; errors: string[] }> {
     if (!eventService) return { archived: 0, failed: 0, cancelled: false, perList: {}, errors: [] };
     const { ids, subs, titles, allIds, allSubs } = getExpiredEventSets();
-    return eventService.archiveExpiredRows(ids, subs, titles, onProgress, shouldCancel, allIds, allSubs);
+    try { return await eventService.archiveExpiredRows(ids, subs, titles, onProgress, shouldCancel, allIds, allSubs); }
+    finally { invalidateArchiveCountCache(); }
   }
 
   // v23.40: Löschkonzept — Stichdatum.
@@ -85,14 +124,24 @@ export function makeArchiveActions(deps: ArchiveDeps) {
   }
   async function getDeletableArchiveCount(): Promise<number> {
     if (!eventService) return 0;
-    return eventService.countDeletableArchiveRows(archiveDeleteCutoffIso());
+    // Der Stichtag wandert täglich; innerhalb von 6 h ändert er die Zahl
+    // nur um die Zeilen eines Vierteltags — die holt der nächste Lauf.
+    const c = readCountCache().del;
+    if (c && Date.now() - c.ts < COUNT_CACHE_MS) return c.v;
+    if (delInFlight) return delInFlight;
+    let failed = false;
+    delInFlight = eventService.countDeletableArchiveRows(archiveDeleteCutoffIso(), () => { failed = true; })
+      .then(v => { if (!failed) writeCountCache({ del: { ts: Date.now(), sig: '', v } }); return v; })
+      .finally(() => { delInFlight = null; });
+    return delInFlight;
   }
   async function runDeleteOldArchive(
     onProgress?: (done: number, total: number) => void,
     shouldCancel?: () => boolean
   ): Promise<{ deleted: number; failed: number; cancelled: boolean }> {
     if (!eventService) return { deleted: 0, failed: 0, cancelled: false };
-    return eventService.deleteOldArchiveRows(archiveDeleteCutoffIso(), onProgress, shouldCancel);
+    try { return await eventService.deleteOldArchiveRows(archiveDeleteCutoffIso(), onProgress, shouldCancel); }
+    finally { invalidateArchiveCountCache(); }
   }
 
   // ====================================================================

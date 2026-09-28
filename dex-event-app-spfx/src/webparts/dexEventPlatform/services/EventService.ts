@@ -2528,9 +2528,10 @@ export class EventService {
 
   public async countArchivableRows(
     expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>,
-    allEventIds: Set<string> = new Set(), allSubsiteUrls: Set<string> = new Set()
+    allEventIds: Set<string> = new Set(), allSubsiteUrls: Set<string> = new Set(),
+    onReadError?: () => void
   ): Promise<{ total: number; perList: Record<string, number> }> {
-    return archive.countArchivableRows(this, expiredEventIds, expiredSubsiteUrls, allEventIds, allSubsiteUrls);
+    return archive.countArchivableRows(this, expiredEventIds, expiredSubsiteUrls, allEventIds, allSubsiteUrls, onReadError);
   }
 
   public async archiveExpiredRows(
@@ -2546,8 +2547,8 @@ export class EventService {
   // ==================== Archiv-Löschkonzept (v23.40) ====================
   // v30.11: ausgelagert nach services/events/archive.ts — Stubs s.o.
 
-  public async countDeletableArchiveRows(olderThanIso: string): Promise<number> {
-    return archive.countDeletableArchiveRows(this, olderThanIso);
+  public async countDeletableArchiveRows(olderThanIso: string, onReadError?: () => void): Promise<number> {
+    return archive.countDeletableArchiveRows(this, olderThanIso, onReadError);
   }
 
   public async deleteOldArchiveRows(
