@@ -142,6 +142,52 @@ export async function getEvents(svc: EventService, onHttpError?: (_status: numbe
         const top = Object.keys(sum).sort((a, b) => sum[b] - sum[a]).slice(0, 10)
           .map(k => `${k}: ${Math.round(sum[k] / 1024)} KB (größte: ${Math.round(max[k].n / 1024)} KB „${max[k].title}")`);
         dlog('perf', `[DEX][perf][getEvents] schwerste Spalten:\n  ${top.join('\n  ')}`);
+        // v32.0.8 (Stufe 1 „Start-Beschleunigung"): Was steckt IN
+        // EmailTemplateOverrides? Je Schlüssel die Summe, und für die Bilder,
+        // wie viele Zeilen dasselbe Bild tragen — Verdacht: Termine kopieren
+        // das Logo der Klammer (persistSubEvents), eine Serie mit 20 Terminen
+        // trägt es 21-mal. Gemessen wird, nichts geändert.
+        const keySum: Record<string, number> = {};
+        const keyRows: Record<string, number> = {};
+        const bildZeilen: Record<string, Record<string, number>> = { _eventLogo: {}, _outlookLogo: {} };
+        let kindKopien = 0; let kindKopienKB = 0;
+        const logoVon: Record<string, string> = {};
+        const fp = (v: string): string => `${v.length}:${v.slice(0, 48)}:${v.slice(-48)}`;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const r of rows as any[]) {
+          let o: Record<string, unknown> = {};
+          try { o = JSON.parse(r.EmailTemplateOverrides || '{}') || {}; } catch { continue; }
+          for (const k of Object.keys(o)) {
+            const v = o[k];
+            const n = typeof v === 'string' ? v.length : (JSON.stringify(v) || '').length;
+            keySum[k] = (keySum[k] || 0) + n;
+            keyRows[k] = (keyRows[k] || 0) + 1;
+            if ((k === '_eventLogo' || k === '_outlookLogo') && typeof v === 'string' && v.length > 0) {
+              const f = fp(v);
+              bildZeilen[k][f] = (bildZeilen[k][f] || 0) + 1;
+              if (k === '_eventLogo') logoVon[String(r.Id)] = f;
+            }
+          }
+        }
+        // Termine, deren Mail-Logo identisch mit dem ihrer Klammer ist.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const r of rows as any[]) {
+          const pid = String(r.ParentEventId || '');
+          const f = logoVon[String(r.Id)];
+          if (pid && f && logoVon[pid] === f) { kindKopien++; kindKopienKB += Number(f.split(':')[0]) / 1024; }
+        }
+        const keyTop = Object.keys(keySum).sort((a, b) => keySum[b] - keySum[a]).slice(0, 8)
+          .map(k => `${k}: ${Math.round(keySum[k] / 1024)} KB in ${keyRows[k]} Zeilen`);
+        const bildInfo = ['_eventLogo', '_outlookLogo'].map(k => {
+          const z = bildZeilen[k]; const verschieden = Object.keys(z).length;
+          const zeilen = Object.keys(z).reduce((a, f) => a + z[f], 0);
+          return `${k}: ${zeilen} Zeilen, ${verschieden} verschiedene Bilder`;
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const beideGleich = (rows as any[]).filter(r => {
+          try { const o = JSON.parse(r.EmailTemplateOverrides || '{}') || {}; return typeof o._eventLogo === 'string' && o._eventLogo.length > 0 && o._eventLogo === o._outlookLogo; } catch { return false; }
+        }).length;
+        dlog('perf', `[DEX][perf][getEvents] EmailTemplateOverrides je Schlüssel:\n  ${keyTop.join('\n  ')}\n  ${bildInfo.join('\n  ')}\n  Termine mit Kopie des Klammer-Logos: ${kindKopien} (${Math.round(kindKopienKB)} KB)\n  Zeilen mit _eventLogo === _outlookLogo: ${beideGleich}`);
       }
     } catch { /* Messung ist Beiwerk */ }
     return rows;
