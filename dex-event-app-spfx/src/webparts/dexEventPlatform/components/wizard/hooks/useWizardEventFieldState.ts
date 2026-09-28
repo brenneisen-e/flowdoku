@@ -473,7 +473,7 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
   // gefeuert wird, wenn der User im Modal eine Auswahl getroffen hat.
   const [showSummaryModal, setShowSummaryModal] = React.useState<boolean>(false);
   const [pendingSuccessDispatch, setPendingSuccessDispatch] = React.useState<{
-    title: string; eventId: string; type: 'create' | 'update';
+    title: string; eventId: string; type: 'create' | 'update'; abschluss?: import('../wizardTypes').AbschlussInfo;
   } | null>(null);
   // v17.22: Unmount-Safety. Der Success-Dispatch (dex-event-submit-success,
   // treibt Erfolgs-Banner + Auto-Navigation in DexEventPlatform) läuft erst,
@@ -482,7 +482,7 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
   // Dispatch sonst verloren gehen — Folge: kein Banner, kein Redirect, User
   // denkt der Save sei fehlgeschlagen. Dieser Ref + Cleanup-Effect feuert den
   // Dispatch beim Unmount nach, falls er noch aussteht.
-  const pendingSuccessDispatchRef = React.useRef<{ title: string; eventId: string; type: 'create' | 'update' } | null>(null);
+  const pendingSuccessDispatchRef = React.useRef<{ title: string; eventId: string; type: 'create' | 'update'; abschluss?: import('../wizardTypes').AbschlussInfo } | null>(null);
   React.useEffect(() => {
     return () => {
       const pending = pendingSuccessDispatchRef.current;

@@ -329,7 +329,7 @@ export interface WizardSubmitCtx {
   pendingOutlookInviteForEventsRef: React.MutableRefObject<string[]>;
   pendingOutlookUpdateForSubEventsRef: React.MutableRefObject<string[]>;
   pendingOutlookUpdateForTopRef: React.MutableRefObject<boolean>;
-  pendingSuccessDispatchRef: React.MutableRefObject<{ title: string; eventId: string; type: 'create' | 'update'; }>;
+  pendingSuccessDispatchRef: React.MutableRefObject<{ title: string; eventId: string; type: 'create' | 'update'; abschluss?: import('../wizardTypes').AbschlussInfo; }>;
   persistSubEventsForParent: (parentEventId: string, onStep?: (done: number, total: number, title: string) => void) => Promise<void>;
   previewBeforeActive: boolean;
   qrScannerEmails: string[];
@@ -356,7 +356,7 @@ export interface WizardSubmitCtx {
   setIsSubmitting: React.Dispatch<React.SetStateAction<boolean>>;
   setNavigationGuard: (guard: () => Promise<boolean>) => void;
   setPendingDraft: React.Dispatch<React.SetStateAction<{ savedAt: number; data: Record<string, unknown>; }>>;
-  setPendingSuccessDispatch: React.Dispatch<React.SetStateAction<{ title: string; eventId: string; type: "create" | "update"; }>>;
+  setPendingSuccessDispatch: React.Dispatch<React.SetStateAction<{ title: string; eventId: string; type: "create" | "update"; abschluss?: import('../wizardTypes').AbschlussInfo; }>>;
   setProgress: React.Dispatch<React.SetStateAction<number>>;
   setProgressLabel: React.Dispatch<React.SetStateAction<string>>;
   setRemovedSavedSubs: React.Dispatch<React.SetStateAction<SubEventDraft[]>>;
@@ -409,6 +409,10 @@ export interface WizardSubmitCtx {
 
 export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
   const { activeFrom, addRole, adminLike, addrCity, addrHouseNo, addrStreet, addrZip, agenda, allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint, attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, commShared, childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog, confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName, contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser, customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY, durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink, endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity, funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails, hideOrganizer, hideOrganizerIndividualOnly, imageBanner, imageDisplay, imageFile, imageOrigAspect, imageOrigFile, initialDocumentNames, initialFormSnapshotRef, initialOrgGetsSubInvitesRef, initialSubEventDbIds, isB2runTemplate, isDe, isEditMode, isFictive, klammerDeadline, lastDeregisterDate, lastDraftJsonRef, location, locationFilter, mainCommDisabledAck, mainEventLabel, mainEventLabelMode, maxParticipants, noCancelAfterDeadline, noDescription, notifyAdminsExternalAudienceAccess, notifyNewCoOrganizers, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, onlineMeetingMode, organizer, organizerDisplayLarge, organizerEmails, orgGetsSubInvites, outlookEndOverride, outlookLocationOverride, outlookStartOverride, outlookTeamsLink, pendingOutlookDirtyWriteRef, pendingOutlookDirtyWriteRefs, pendingOutlookInviteForEventsRef, pendingOutlookUpdateForSubEventsRef, pendingOutlookUpdateForTopRef, pendingSuccessDispatchRef, persistSubEventsForParent, previewBeforeActive, qrScannerEmails, qrScannerNoList, qrScannerNames, quiz, quizClusterSize, refreshEventDocuments, refreshEvents, registrationDeadline, registrationLanguage, regRuleEnabled, requestCoOrganizerApprovals, requireSubEventSelection, resolveTopLevelCommState, sanitizeOrganizerPairs, selectedEventId, sendOrganizerOnboarding, setDraftSavedAt, setError, setImageUploadError, setIsSubmitting, setNavigationGuard, setPendingDraft, setPendingSuccessDispatch, setProgress, setProgressLabel, setRemovedSavedSubs, setShowSummaryModal, showAlert, showAsFree, shrinkLogoB64, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitLabelA, splitLabelB, splitSectionTitle, splitSharedWaitlist, startDate, subDeadlineRulePiggyback, subEventCalendar, subEventOpenRulePiggyback, agendaCheckInPiggyback, seriesRule, subEventSingleChoice, subEventsOnlyMode, subEventsOptIn, subEventsRef, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, updateEvent, userCancelAllowed, useSplitCapacities, visAllSubsPiggyback, waitlistBlocker, waitlistEnabled, wizardImgAspect } = ctx;
+  // v32.0.6: Was dieser Lauf tatsächlich auslöst — für den Abschluss-Dialog.
+  const abschluss: import('../wizardTypes').AbschlussInfo = {
+    outlookAngelegt: false, subOutlook: 0, outlookAktualisiert: 0, outlookFehler: [], organizerMails: [], entwurf: !!isFictive,
+  };
 
       /*
        * v31.18: Das Wartelisten-Schattenevent wird HIER angelegt, nicht beim
@@ -1560,6 +1564,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
           ((!effDisableOutlook && pendingOutlookUpdateForTopRef.current) ? 1 : 0)
           + pendingOutlookUpdateForSubEventsRef.current.length
           + (orgGetsSubInvites !== initialOrgGetsSubInvitesRef.current ? (1 + subEventsRef.current.filter(se => !!se.dbId && !se.disableOutlook).length) : 0);
+        abschluss.outlookAktualisiert = outlookTotal;
         let outlookDone = 0;
         const tickOutlook = (label: string): void => {
           outlookDone++;
@@ -1586,6 +1591,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
         // true setzen, damit der nächste Wizard-Lauf die offene Aktualisierung
         // wieder anbietet, und den Termin am Ende namentlich melden.
         const failedOutlookTitles: string[] = [];
+        abschluss.outlookFehler = failedOutlookTitles; // dieselbe Liste, wird unten befüllt
         if (!effDisableOutlook && pendingOutlookUpdateForTopRef.current) {
           try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1794,8 +1800,8 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
           // das Summary-Export-Modal. Der eigentliche Success-Dispatch läuft
           // erst, wenn der User dort eine Auswahl getroffen hat (PDF / Word /
           // Nein, danke).
-          pendingSuccessDispatchRef.current = { title, eventId: String(selectedEventId), type: 'update' };
-          setPendingSuccessDispatch({ title, eventId: String(selectedEventId), type: 'update' });
+          pendingSuccessDispatchRef.current = { title, eventId: String(selectedEventId), type: 'update', abschluss };
+          setPendingSuccessDispatch({ title, eventId: String(selectedEventId), type: 'update', abschluss });
           setShowSummaryModal(true);
         } catch { /* */ }
         setIsSubmitting(false);
@@ -2358,6 +2364,7 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
               return true;
             });
             const orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean);
+            abschluss.organizerMails = allOrgEmails.slice();
             for (let i = 0; i < allOrgEmails.length; i++) {
               const orgEmail = allOrgEmails[i];
               const orgFullName = orgNames[i] || orgNames[0] || `${currentUser.firstName} ${currentUser.surname}`;
@@ -2415,8 +2422,12 @@ export async function runWizardSubmit(ctx: WizardSubmitCtx): Promise<void> {
           lastDraftJsonRef.current = '';
           setDraftSavedAt(null);
           setPendingDraft(null);
-          pendingSuccessDispatchRef.current = { title, eventId: String(eventId), type: 'create' };
-          setPendingSuccessDispatch({ title, eventId: String(eventId), type: 'create' });
+          // Outlook beim Anlegen: legt der DEX_CreateOutlookEvent-Flow an,
+          // sobald die Zeile existiert — außer im Schritt Kommunikation abgeschaltet.
+          abschluss.outlookAngelegt = !effDisableOutlook;
+          abschluss.subOutlook = subEventsRef.current.filter(se => !!(se.title || '').trim() && !se.disableOutlook).length;
+          pendingSuccessDispatchRef.current = { title, eventId: String(eventId), type: 'create', abschluss };
+          setPendingSuccessDispatch({ title, eventId: String(eventId), type: 'create', abschluss });
           setShowSummaryModal(true);
         } catch { /* */ }
         setIsSubmitting(false);
