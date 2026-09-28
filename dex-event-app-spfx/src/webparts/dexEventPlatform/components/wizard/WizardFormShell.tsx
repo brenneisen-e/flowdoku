@@ -16,7 +16,7 @@ import { CommunicationStep, CommunicationStepProps } from '../wizard/steps/Commu
 import { DocumentsStep } from '../wizard/steps/DocumentsStep';
 import { FunZoneStep } from '../wizard/steps/FunZoneStep';
 import { BillingStep } from '../wizard/steps/BillingStep';
-import { Send, Trash2, GraduationCap } from '../Icons';
+import { Eye, Send, Trash2, GraduationCap } from '../Icons';
 import { useTutorial } from '../tutorial/TutorialGuide';
 import { SubmitOverlay } from '../registration/RegistrationBanners';
 // v31.2: gemeinsame UI-Klassen (Karten, Chips, Schalter, Aufklapper …) —
@@ -882,6 +882,15 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                 maxWidth: 'calc(100vw - 32px)', boxSizing: 'border-box', flexWrap: 'wrap', justifyContent: 'center',
               }}
             >
+              {/* v32.3: Vorschau auch in der schwebenden Leiste (Nutzer-Ansage
+                  28.09.2026) — derselbe Dialog wie „Vorschau Registrierungsseite"
+                  in der Aktions-Zeile unten. */}
+              <button type="button" className="btn btn-secondary" tabIndex={actionRowVisible ? -1 : 0}
+                onClick={() => setShowRegisterPreview(true)}
+                disabled={!title} style={{ opacity: title ? 1 : 0.5 }}
+                title={title ? (isDe ? 'So sehen Teilnehmer die Registrierungsseite' : 'How attendees see the registration page') : (isDe ? 'Event-Titel eingeben, um die Vorschau zu öffnen' : 'Enter an event title to open the preview')}>
+                <Eye size={16} /> {isDe ? 'Vorschau' : 'Preview'}
+              </button>
               {currentStep > 0 && (
                 <button type="button" className="btn btn-secondary" tabIndex={actionRowVisible ? -1 : 0}
                   onClick={() => setCurrentStep(currentStep - 1)}>

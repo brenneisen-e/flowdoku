@@ -23,6 +23,7 @@
 import * as React from 'react';
 import { ChevronDown, ChevronRight, Search, X } from './Icons';
 import { useNavigation, Page } from '../context/NavigationContext';
+import { FAQ_CATALOG } from '../data/faqCatalog';
 import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
@@ -83,29 +84,8 @@ interface RegPart { name: string; email: string; status: string; eventId: string
  * damit „Reminder" nicht nur zwölf Aktionszeilen liefert, sondern den Satz,
  * WIE es geht (Nutzer-Ansage 28.09.2026). Nur Wege nennen, die es gibt.
  */
-interface FaqEntry { key: string; de: string; en: string; aDe: string; aEn: string; kw: string[]; page: Page; gate: Gate }
-const FAQ_CATALOG: FaqEntry[] = [
-  { key: 'reminder', de: 'Wie verschicke ich einen Reminder?', en: 'How do I send a reminder?',
-    aDe: 'Über die Aktion „E-Mail versenden“: Organizer Center → Event wählen → Aktionen → E-Mail versenden. Dort wählst du die Empfänger, z.B. alle Angemeldeten.',
-    aEn: 'With the „Send email“ action: Organizer Center → choose the event → Actions → Send email. Pick the recipients there, e.g. everyone registered.',
-    kw: ['reminder', 'erinnerung', 'erinnern', 'nachfassen'], page: 'admin', gate: 'manage' },
-  { key: 'live', de: 'Wie schalte ich ein Event live?', en: 'How do I publish an event?',
-    aDe: 'Organizer Center → Event wählen → „Nächste Schritte“ → „Live schalten“. Oder im Assistenten in Schritt 1 den Haken „als Entwurf speichern“ entfernen.',
-    aEn: 'Organizer Center → choose the event → „Next steps“ → „Go live“. Or untick „save as draft“ in step 1 of the wizard.',
-    kw: ['live', 'veröffentlichen', 'freischalten', 'aktivieren', 'entwurf', 'publish'], page: 'admin', gate: 'manage' },
-  { key: 'waitlist', de: 'Wie rücken Personen von der Warteliste nach?', en: 'How do people move up from the waitlist?',
-    aDe: 'Bei jeder Abmeldung rückt automatisch die nächste Person nach. Hast du die Plätze erhöht, füllt die Aktion „Freie Plätze mit Warteliste füllen“ die neuen Plätze.',
-    aEn: 'With every cancellation the next person moves up automatically. After raising the capacity, the „Fill free seats from waitlist“ action fills the new seats.',
-    kw: ['warteliste', 'nachrücken', 'nachruecken', 'waitlist', 'nachrücker'], page: 'admin', gate: 'manage' },
-  { key: 'series', de: 'Wie lege ich eine Terminserie an?', en: 'How do I create a series?',
-    aDe: 'Im Event-Assistenten, Schritt 1, unter dem Zeitraum: „Als Serie anlegen“. Jeder Termin wird ein eigenes Sub-Event mit eigener Teilnehmerliste.',
-    aEn: 'In the event wizard, step 1, below the dates: „Create as series“. Every date becomes its own sub-event with its own attendee list.',
-    kw: ['serie', 'terminserie', 'wiederkehrend', 'wöchentlich', 'regelmäßig', 'series', 'recurring'], page: 'create-event', gate: 'manage' },
-  { key: 'qr', de: 'Wie funktioniert der Check-in?', en: 'How does check-in work?',
-    aDe: 'QR-Codes verschickst du über die Aktion „QR-Codes versenden“; am Event-Tag scannt das Check-in-Team unter „Check-in“. Ohne Kamera geht die Teilnehmer-ID, die unter jedem QR-Code steht.',
-    aEn: 'Send QR codes with the „Send QR codes“ action; on the day the check-in team scans under „Check-in“. Without a camera, use the attendee ID shown below every QR code.',
-    kw: ['check-in', 'checkin', 'einchecken', 'scannen', 'qr'], page: 'check-in', gate: 'manage' },
-];
+// v32.3: Katalog und Einträge stehen in data/faqCatalog.ts — dieselbe Quelle
+// nutzt das Fragen-Modal.
 
 const norm = (s: string): string => (s || '').toLowerCase().trim();
 

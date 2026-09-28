@@ -155,6 +155,14 @@ export const DEX_UI_CSS = `
 .dex-ui-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; transition: background 0.15s ease; }
 .dex-ui-row:hover { background: ${SOFT}; }
 .dex-ui-row--bordered { border-bottom: 1px solid ${G100}; border-radius: 0; }
+/* v32.3: Menüeintrag (Burger-Menü im Header) — Knopf ohne Rahmen, Hover wie
+   eine Zeile. Eigene Klasse, weil ein Inline-Hintergrund den Hover der Zeile
+   überschreibt; aktiver Eintrag über is-active. */
+.dex-ui-menuitem { width: 100%; border: none; background: transparent; border-radius: 8px; padding: 8px 10px; cursor: pointer; text-align: left; font-family: inherit; display: flex; align-items: flex-start; gap: 10px; transition: background 0.15s ease; }
+.dex-ui-menuitem:hover, .dex-ui-menuitem:focus-visible { background: ${SOFT}; outline: none; }
+.dex-ui-menuitem.is-active { background: rgba(134,188,37,0.09); }
+.dex-ui-menuitem.is-active:hover { background: rgba(134,188,37,0.16); }
+.dex-ui-menuitem > span:last-child { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 .dex-ui-row--bordered:last-child { border-bottom: none; }
 .dex-ui-row-main { flex: 1; min-width: 0; }
 .dex-ui-row-title { font-weight: 600; font-size: 0.88rem; color: ${G800}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

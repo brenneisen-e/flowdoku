@@ -70,6 +70,7 @@ export function serializeCustomFields(
         // v18.18: nur persistieren wenn 'inline' (Default 'tooltip' = weglassen).
         ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
         ...(cleanPositionRule(f.showForPositions) ? { showForPositions: cleanPositionRule(f.showForPositions) } : {}),
+        ...(f.type === 'select' && typeof f.asCalendar === 'boolean' ? { asCalendar: f.asCalendar } : {}),
         ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
           ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
           : {}),

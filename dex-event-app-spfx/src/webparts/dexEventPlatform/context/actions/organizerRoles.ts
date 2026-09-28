@@ -9,7 +9,7 @@
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { EventService } from '../../services/EventService';
 import { buildHashDeepLink } from '../../utils/deepLink';
-import { wrapTemplate, coOrganizerAddedEmail, organizerOnboardingEmail } from '../../services/EmailTemplates';
+import { wrapTemplate, anredeVorname, coOrganizerAddedEmail, organizerOnboardingEmail } from '../../services/EmailTemplates';
 import { isDeloitteInternalEmail } from '../../utils/deloitteDomain';
 import { DEX_TEAM_RECIPIENTS } from '../../utils/supportContact';
 
@@ -149,7 +149,9 @@ export function makeOrganizerRoleActions(deps: OrganizerRoleDeps) {
       seen.add(lc);
       const name = (person.name || '').trim() || email;
       try {
-        const { subject, body } = coOrganizerAddedEmail(name, eventTitle, actorDisplay, isDe, appUrl);
+        // v32.3: Anrede mit Vorname (Namen stehen oft als „Nachname, Vorname").
+        const outlookInvite = !disableOutlook && isDeloitteInternalEmail(email);
+        const { subject, body } = coOrganizerAddedEmail(anredeVorname(name) || name, eventTitle, actorDisplay, isDe, appUrl, outlookInvite);
         await eventService.queueEmail(subject, email, name, body, 'CoOrganizerAdded', eventTitle, eventId || '0');
       } catch { /* Mail best-effort */ }
       // Outlook-Kalendereinladung — nur Deloitte-Adressen (v27.11: beliebige

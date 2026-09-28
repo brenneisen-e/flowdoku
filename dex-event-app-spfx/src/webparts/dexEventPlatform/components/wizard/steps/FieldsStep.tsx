@@ -24,7 +24,8 @@ import { CustomFieldInput } from '../../wizard/customFieldInput';
 import { FieldTypeSuggestion } from '../../wizard/FieldTypeSuggestion';
 import { StepBadge } from '../../wizard/StepBadge';
 import { FieldDescEditor } from '../../wizard/FieldDescEditor';
-import { optionsAsDates } from '../../../utils/optionDates';
+import { optionsAsDates, parseOptionDate } from '../../../utils/optionDates';
+import { DateOptionsPicker } from '../DateOptionsPicker';
 export interface FieldsStepProps {
   visible: boolean;
   activeFieldsTabIdx: number;
@@ -80,11 +81,6 @@ export interface FieldsStepProps {
 export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
   const { visible } = p;
   const { activeFieldsTabIdx, addCustomField, addStartblock, addSubEventCustomField, askSalutation, b2runStartblocks, bilingualFields, childTermPlural, confirmDialogEnabled, confirmDialogMode, confirmDialogText, copyParentFieldsToSubEvent, customFields, dragFieldId, dragOverFieldId, fieldExpandOverride, isDe, moveCustomField, newStartblock, openSuggestedModal, registrationLanguage, removeCustomField, removeStartblock, removeSubEventCustomField, renderShowIfConfig, renderStepIntro, reorderMode, setAskSalutation, setBilingualFields, setConfirmDialogEnabled, setConfirmDialogMode, setConfirmDialogText, setCustomFields, setDragFieldId, setDragOverFieldId, setNewStartblock, setRegistrationLanguage, setReorderMode, setSubEvents, splitLabelA, splitLabelB, subEvents, subEventsOnlyMode, t, title, toggleFieldExpand, updateCustomField, updateSubEventCustomField, useSplitCapacities } = p;
-  // v31.2: Einziger Hook des Schritts — der Datenschutz-Kasten zeigt nur die
-  // Kernaussage dauerhaft, die vollständige Aufzählung klappt auf. Steht vor
-  // allen Konstanten und vor dem einzigen return; die Komponente hat keine
-  // frühen Returns, die Hook-Reihenfolge ist damit fest.
-  const [privacyOpen, setPrivacyOpen] = React.useState(false);
   // v31.100: „Sprache des Formulars" ist Feineinstellung und deshalb zu
   // (Nutzer-Ansage 28.09.2026: „das einklappen"). Weicht etwas vom Standard
   // ab, startet der Aufklapper offen — eine gesetzte Einstellung soll man
@@ -150,6 +146,40 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
   const catBadge = <span className="dex-ui-pill dex-ui-pill--green" style={{ fontSize: '0.66rem', padding: '2px 7px', flexShrink: 0 }}>{isDe ? 'KAT' : 'CAT'}</span>;
   // v11.4: feste Breite, damit Frage + Typ + Pflicht + X in einer Zeile bleiben.
   const typeSelectStyle: React.CSSProperties = { flex: '0 0 210px', width: 210, fontWeight: 600, color: 'var(--dex-green-darker, #4a7c1f)' };
+  // v32.3: EIN Spaltenraster für Kopfzeile, Profil-Zeilen und Fragen.
+  // Vorher hatte jede Zeile ihre eigene Flex-Rechnung — die Spalten der
+  // grauen Zeilen standen neben denen der Fragen, und bei schmalerem Fenster
+  // brach das Lösch-X in eine zweite Zeile (Screenshot 28.09.2026).
+  // v32.3: Schalter „Als Kalender" — an, wenn gesetzt, oder (ohne
+  // Entscheidung) wenn alle Antworten schon Daten sind.
+  const calOn = (f: { asCalendar?: boolean; options?: string[] }): boolean =>
+    f.asCalendar === true || (f.asCalendar !== false && !!optionsAsDates(f.options));
+  const calDates = (f: { options?: string[] }): Date[] => {
+    const y = new Date().getFullYear();
+    return (f.options || []).map(o => parseOptionDate(o, y)).filter((d): d is Date => !!d);
+  };
+  const calChip = (f: { asCalendar?: boolean; options?: string[] }, onSet: (u: Partial<CustomFieldInput>) => void, disabled?: boolean): React.ReactNode => (
+    <label
+      className={cx('dex-ui-chip', calOn(f) && 'is-active')}
+      title={isDe ? 'Die Tage im Kalender anklicken — auf der Anmeldeseite erscheint ebenfalls ein Kalender.' : 'Pick the days in a calendar — the registration page shows a calendar too.'}
+    >
+      <input
+        type="checkbox"
+        checked={calOn(f)}
+        disabled={disabled}
+        onChange={e => onSet(e.target.checked
+          ? { asCalendar: true, optionCategories: undefined, prefilterLabel: undefined }
+          : { asCalendar: false })}
+        style={{ display: 'none' }}
+      />
+      {calOn(f) ? <Check size={12} /> : <Calendar size={12} strokeWidth={2} />}
+      {isDe ? 'Als Kalender' : 'As calendar'}
+    </label>
+  );
+  const ROW_GRID: React.CSSProperties = {
+    display: 'grid', gridTemplateColumns: '24px 26px 200px minmax(160px, 1fr) 244px 90px 32px',
+    columnGap: 10, alignItems: 'center',
+  };
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
@@ -183,35 +213,16 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
 
               {/* v31.2: Der Datenschutz-Hinweis ist ein sichtbarer Kasten — der
                   Organizer soll ihn lesen, BEVOR er die erste Frage anlegt.
-                  Dauerhaft sichtbar sind Kernaussage und der erste Halbsatz;
-                  die vollständige Aufzählung und der privacy@-Kontakt klappen
-                  im Kasten auf (sonst fünf bis sechs Zeilen über jedem Schritt-
-                  Besuch). Der Wortlaut bleibt deckungsgleich mit den
+                  v32.3: immer vollständig, ohne Aufklapper (Nutzer-Ansage
+                  28.09.2026: „braucht nicht einklappbar zu sein"). Der Wortlaut bleibt deckungsgleich mit den
                   Nutzungsbedingungen (v7.35) — nichts gekürzt. */}
               <div className="dex-ui-callout dex-ui-callout--warn" style={{ marginBottom: 16 }}>
                 <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <strong>{isDe ? 'Sammle keine sensiblen personenbezogenen Daten.' : 'Do not collect sensitive personal data.'}</strong>{' '}
                   {isDe
-                    ? 'Das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen …'
-                    : 'That means: no data on race or ethnic origin, religious or philosophical beliefs …'}
-                  <button
-                    type="button"
-                    className={cx('dex-ui-disclosure', privacyOpen && 'is-open')}
-                    onClick={() => setPrivacyOpen(o => !o)}
-                    aria-expanded={privacyOpen}
-                    style={{ marginTop: 4, color: 'inherit', fontSize: '0.8rem' }}
-                  >
-                    <span className="dex-ui-disclosure-chevron" style={{ color: 'inherit' }}><ChevronDown size={14} /></span>
-                    {isDe ? 'Vollständige Aufzählung und Kontakt' : 'Full list and contact'}
-                  </button>
-                  {privacyOpen && (
-                    <div className="dex-ui-disclosure-body">
-                      {isDe
-                        ? <>Das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen, Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>
-                        : <>That means: no data on race or ethnic origin, religious or philosophical beliefs, trade-union membership, political opinions, medical or health conditions, or information about a person&apos;s sex life or sexual orientation. If sensitive personal data must be collected, contact the team first at <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>}
-                    </div>
-                  )}
+                    ? <>Das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen, Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>
+                    : <>That means: no data on race or ethnic origin, religious or philosophical beliefs, trade-union membership, political opinions, medical or health conditions, or information about a person&apos;s sex life or sexual orientation. If sensitive personal data must be collected, contact the team first at <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>}
                 </div>
               </div>
 
@@ -555,9 +566,21 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                             <div className="dex-ui-stack" style={{ marginLeft: 36, marginTop: 12 }}>
                               {field.type === 'select' && (
                                 <div className="dex-ui-card dex-ui-card--soft" style={{ padding: '12px 14px' }}>
-                                  <div className="dex-ui-label" style={{ marginBottom: 8 }}>
-                                    {isDe ? 'Antwortmöglichkeiten' : 'Answer options'}
+                                  <div className="dex-ui-inline" style={{ gap: 12, marginBottom: 8 }}>
+                                    <span className="dex-ui-label" style={{ marginBottom: 0 }}>
+                                      {isDe ? 'Antwortmöglichkeiten' : 'Answer options'}
+                                    </span>
+                                    {calChip(field, u => updateSubEventCustomField(se.id, field.id, u), inherit)}
                                   </div>
+                                  {calOn(field) ? (
+                                    <DateOptionsPicker
+                                      dates={calDates(field)}
+                                      startHint={se.startDate}
+                                      disabled={inherit}
+                                      onChange={opts => updateSubEventCustomField(se.id, field.id, { options: opts, asCalendar: true })}
+                                      isDe={isDe}
+                                    />
+                                  ) : (
                                   <div className="dex-ui-stack" style={{ gap: 6 }}>
                                     {field.options.map((opt, oidx) => (
                                       <div key={oidx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -601,6 +624,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                                       <Plus size={12} /> {isDe ? 'Option hinzufügen' : 'Add option'}
                                     </button>
                                   </div>
+                                  )}
                                 </div>
                               )}
                               {/* v24.16 BUG-FIX: Sichtbarkeitsbedingung (showIf)
@@ -832,7 +856,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     (# · Feldart · Frage · Pflicht · Details), Nutzer-Ansage
                     28.09.2026: „übersichtlicher, in einer Art Tabelle mit
                     Spaltenüberschriften". Breiten wie in der Zeile darunter. */}
-                  <div aria-hidden="true" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px 6px', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--dex-gray-500)' }}>
+                  <div aria-hidden="true" style={{ ...ROW_GRID, padding: '0 17px 6px', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--dex-gray-500)' }}>
                     <span style={{ flex: '0 0 24px' }} />
                     <span style={{ flex: '0 0 26px', textAlign: 'center' }}>#</span>
                     <span style={{ flex: '0 0 210px' }}>{isDe ? 'Feldart' : 'Field type'}</span>
@@ -841,23 +865,26 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     <span style={{ flex: '0 0 92px' }}>{isDe ? 'Details' : 'Details'}</span>
                     <span style={{ flex: '0 0 32px' }} />
                   </div>
-                {AUTO_ROWS.map((r, i) => (
-                  <div key={r.key} className="dex-ui-card" style={{ padding: '10px 16px', marginBottom: 8, background: 'var(--dex-gray-50, #fafafa)' }}
-                    title={isDe ? 'Wird automatisch aus dem Microsoft-Profil übernommen — nicht änderbar, verschiebbar oder löschbar.' : 'Taken automatically from the Microsoft profile — cannot be changed, moved or deleted.'}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                      <span style={{ flex: '0 0 24px' }} />
+                {/* v32.3: Die Profil-Daten als EIN grauer Block mit schmalen
+                    Zeilen statt fünf einzelner Karten — sie sind eine Sache
+                    (kommt aus dem Profil), keine fünf Fragen. */}
+                <div className="dex-ui-card" style={{ padding: '4px 16px', marginBottom: 12, background: 'var(--dex-gray-50, #fafafa)' }}
+                  title={isDe ? 'Wird automatisch aus dem Microsoft-Profil übernommen — nicht änderbar, verschiebbar oder löschbar.' : 'Taken automatically from the Microsoft profile — cannot be changed, moved or deleted.'}>
+                  {AUTO_ROWS.map((r, i) => (
+                    <div key={r.key} style={{ ...ROW_GRID, padding: '7px 0', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-200, #e5e5e5)' }}>
+                      <span />
                       <span style={autoBadge}>{i + 1}</span>
-                      <span style={{ flex: '0 0 210px' }} />
-                      <span style={{ flex: '1 1 260px', minWidth: 180, fontSize: '0.9rem', color: 'var(--dex-gray-600)' }}>
+                      <span className="dex-ui-muted" style={{ fontSize: '0.78rem' }}>{i === 0 ? (isDe ? 'Aus dem Profil' : 'From profile') : ''}</span>
+                      <span style={{ minWidth: 0, fontSize: '0.88rem', color: 'var(--dex-gray-600)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <strong style={{ fontWeight: 600 }}>{r.label}</strong>
                         <span className="dex-ui-muted" style={{ marginLeft: 8, fontSize: '0.8rem' }}>{isDe ? 'z. B. ' : 'e.g. '}{r.example}</span>
                       </span>
-                      <span style={{ flex: '0 0 250px', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'automatisch' : 'automatic'}</span>
-                      <span style={{ flex: '0 0 92px' }} />
-                      <span style={{ flex: '0 0 32px' }} />
+                      <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'automatisch' : 'automatic'}</span>
+                      <span />
+                      <span />
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
                 {customFields.map((field, idx) => {
                   const isExpanded = !!fieldExpandOverride[field.id];
                   const isPeople = field.type === 'user' || field.type === 'roommate';
@@ -916,7 +943,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         if (e.target !== e.currentTarget) return;
                         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleFieldExpand(field.id, isExpanded); }
                       }}
-                      style={{ gap: 10, flexWrap: 'wrap', padding: '6px 8px', margin: '-6px -8px', cursor: 'pointer' }}
+                      style={{ ...ROW_GRID, padding: '6px 8px', margin: '-6px -8px', cursor: 'pointer' }}
                     >
                       {reorderMode ? (
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '0 0 24px' }} onClick={e => e.stopPropagation()}>
@@ -955,7 +982,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         onChange={e => updateCustomField(field.id, { type: e.target.value as CustomFieldInput['type'] })}
                         onClick={e => e.stopPropagation()}
                         title={isDe ? 'Art der Antwort' : 'Answer type'}
-                        style={typeSelectStyle}
+                        style={{ ...typeSelectStyle, width: '100%', minWidth: 0 }}
                       >
                         {MAIN_TYPES.map(ty => <option key={ty} value={ty}>{typeLabel(ty)}</option>)}
                       </select>
@@ -973,7 +1000,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         onClick={e => e.stopPropagation()}
                         ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; } }}
                         style={{
-                          flex: '1 1 260px', minWidth: 180,
+                          width: '100%', minWidth: 0, boxSizing: 'border-box',
                           // v22.30: minHeight 0 hebt die 48px-Mindesthöhe der
                           // .form-input-Klasse auf — die Auto-Höhe (scrollHeight)
                           // umschließt den Text dann exakt.
@@ -1045,7 +1072,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         onClick={e => { e.stopPropagation(); removeCustomField(field.id); }}
                         title={isDe ? 'Frage löschen' : 'Delete question'}
                         aria-label={isDe ? 'Frage löschen' : 'Delete question'}
-                        style={{ flex: '0 0 32px', marginLeft: 'auto' }}
+                        style={{ justifySelf: 'end' }}
                       >
                         <X size={16} />
                       </button>
@@ -1249,6 +1276,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                             {isDe ? 'Antwortmöglichkeiten' : 'Answer options'}
                           </span>
                           <span className="dex-ui-inline">
+                            {!field.optionCategories && calChip(field, u => updateCustomField(field.id, u))}
                             {/* v26.75: Vorfilter — nur bei Single-Select. Aktiviert
                                 pro Option ein Kategorie-Feld; die Anmeldeseite zeigt
                                 dann zuerst ein Kategorie-Dropdown und filtert die
@@ -1257,7 +1285,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                                 „Vorfilter soll nur kommen, wenn das Feld T-Shirt-Größe
                                 abfragt — Herren/Damen"). Ist er schon an, bleibt er
                                 sichtbar, sonst käme man nicht mehr heraus. */}
-                            {!field.multi && (!!field.optionCategories || /shirt|trikot|gr(ö|oe)(ß|ss)e|\bsize\b|jersey/i.test(field.label || '')) && (
+                            {!field.multi && !calOn(field) && (!!field.optionCategories || /shirt|trikot|gr(ö|oe)(ß|ss)e|\bsize\b|jersey/i.test(field.label || '')) && (
                               <label
                                 className={cx('dex-ui-chip', !!field.optionCategories && 'is-active')}
                                 title={isDe
@@ -1300,7 +1328,14 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                               (immer sichtbar). Ohne Vorfilter bleibt die flache
                               Liste. Das Datenmodell (options/optionsEn/optionCategories
                               als Parallel-Arrays) bleibt unverändert. */}
-                          {field.optionCategories ? (() => {
+                          {calOn(field) ? (
+                            // v32.3: Tage im Kalender anklicken statt Text tippen.
+                            <DateOptionsPicker
+                              dates={calDates(field)}
+                              onChange={opts => updateCustomField(field.id, { options: opts, asCalendar: true, optionsEn: undefined, defaultValue: undefined })}
+                              isDe={isDe}
+                            />
+                          ) : field.optionCategories ? (() => {
                             const opts = field.options || [];
                             const optsEn = field.optionsEn || [];
                             const cats = field.optionCategories || [];
@@ -1460,18 +1495,11 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                             <Plus size={12} /> {isDe ? 'Option hinzufügen' : 'Add option'}
                           </button>
                           </>}
-                          {/* v32.2.2: Sind alle Antworten Daten, zeigt die Anmeldeseite
-                              einen Kalender (utils/optionDates). Der Hinweis sagt es
-                              hier, sonst wäre die Umschaltung unsichtbare Magie. */}
-                          {optionsAsDates(field.options) ? (
-                            <div className="dex-ui-muted" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: '0.8rem', color: 'var(--dex-green-dark, #26890D)' }}>
-                              <Calendar size={14} strokeWidth={2} />
-                              {isDe ? 'Alle Antworten sind Daten — auf der Anmeldeseite erscheint ein Kalender.' : 'All answers are dates — the registration page shows a calendar.'}
-                            </div>
-                          ) : (/\b(days?|tage?|datum|date|termine?)\b/i.test(field.label || '') || (field.options || []).some(o => /\d{1,2}\.\d{1,2}\./.test(o || ''))) ? (
+                          {/* v32.3: Tipp auf den Schalter, wenn die Frage nach Tagen klingt. */}
+                          {!calOn(field) && field.asCalendar !== false && (/\b(days?|tage?|datum|date|termine?)\b/i.test(field.label || '') || (field.options || []).some(o => /\d{1,2}\.\d{1,2}\./.test(o || ''))) ? (
                             <div className="dex-ui-muted" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: '0.8rem' }}>
                               <Calendar size={14} strokeWidth={2} />
-                              {isDe ? 'Tipp: Trägst du nur Daten ein (z. B. 19.11.2026), erscheint auf der Anmeldeseite ein Kalender.' : 'Tip: enter dates only (e.g. 19.11.2026) and the registration page shows a calendar.'}
+                              {isDe ? 'Tipp: Mit „Als Kalender" klickst du die Tage direkt an — auf der Anmeldeseite erscheint dann ein Kalender.' : 'Tip: with “As calendar” you pick the days directly — the registration page then shows a calendar.'}
                             </div>
                           ) : null}
                           {/* v26.74: Vorauswahl (nur Single-Select) — optional

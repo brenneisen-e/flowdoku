@@ -36,7 +36,7 @@ import { dlog } from '../utils/debugLog';
 import { isoToLocal } from '../utils/berlinTime';
 import { looksLikeAssistantJobTitle } from '../utils/jobTitleHeuristics';
 import { positionRuleAllows } from '../utils/positionRule';
-import { optionsAsDates } from '../utils/optionDates';
+import { calendarDatesFor } from '../utils/optionDates';
 import { OptionDateCalendar } from './registration/OptionDateCalendar';
 
 // v30.66: Modul-Ebene (Formatierer, Sanitizer, CollapsibleSection, Bild-Cache)
@@ -1584,10 +1584,10 @@ export default function RegistrationPage(): React.ReactElement {
                   {f.required && <span style={{ color: 'var(--dex-red, #c00)', marginLeft: 4 }}>*</span>}
                   {fHelp(f) && <InfoTooltip text={fHelp(f)} />}
                 </label>
-                {f.type === 'select' && optionsAsDates(f.options, ce.startDate) ? (
+                {calendarDatesFor(f, ce.startDate) ? (
                   <OptionDateCalendar
                     options={f.options || []}
-                    dates={optionsAsDates(f.options, ce.startDate) || []}
+                    dates={calendarDatesFor(f, ce.startDate) || []}
                     labels={(f.options || []).map((o, i) => fOpt(f, o, i))}
                     multi={!!f.multi}
                     value={val}
@@ -2457,11 +2457,11 @@ export default function RegistrationPage(): React.ReactElement {
       {inlineHelpSlot}
       </>
     )}
-    {field.type === 'select' && !(field.optionCategories && field.optionCategories.some(c => (c || '').trim())) && optionsAsDates(field.options, event?.startDate) ? (
+    {!(field.optionCategories && field.optionCategories.some(c => (c || '').trim())) && calendarDatesFor(field, event?.startDate) ? (
       // v32.2.2: Antworten sind Daten → Kalender statt Dropdown (utils/optionDates).
       <OptionDateCalendar
         options={field.options || []}
-        dates={optionsAsDates(field.options, event?.startDate) || []}
+        dates={calendarDatesFor(field, event?.startDate) || []}
         labels={useEnVariants ? (field.options || []).map((o, i) => pickOptionLabel(field, i, o)) : undefined}
         multi={!!field.multi}
         value={vals[field.id] || ''}

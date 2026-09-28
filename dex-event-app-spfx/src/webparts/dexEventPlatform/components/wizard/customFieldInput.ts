@@ -55,6 +55,8 @@ export interface CustomFieldInput {
   showIf?: { fieldId: string; values: string[] };
   /** v32.2.2: Frage nur für bestimmte Positionen (utils/positionRule). */
   showForPositions?: { mode: 'only' | 'except'; values: string[] };
+  /** v32.3: Auswahl als Kalender (true = Schalter an, false = aus trotz Daten, fehlt = automatisch erkennen). */
+  asCalendar?: boolean;
   /** v10.24: Bei aktiver Split-Capacity Feld nur für eine der zwei
    *  Gruppen sichtbar machen ('A' = Durchstarter / Gruppe A, 'B' =
    *  Funstarter / Gruppe B). 'all' / undefined = beide Gruppen. */

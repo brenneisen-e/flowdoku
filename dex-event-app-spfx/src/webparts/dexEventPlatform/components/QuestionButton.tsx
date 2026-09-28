@@ -20,6 +20,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useEvents } from '../context/EventContext';
+import { matchFaq } from '../data/faqCatalog';
 import { searchManual, openManualArticle, getManualSection, ManualArticle } from '../utils/manualSearch';
 import { captureScreen } from '../utils/screenshot';
 import { getActiveWizardStep } from '../utils/wizardStepContext';
@@ -28,6 +29,8 @@ import PersonContactHover from './PersonContactHover';
 import { renderTicketThread, contactSubline } from './tickets/ticketThread';
 import ImageAnnotateModal from './ImageAnnotateModal';
 import InquiryModal from './InquiryModal';
+import { useTutorial } from './tutorial/TutorialGuide';
+import { GraduationCap, Info, MessageSquare } from './Icons';
 
 // v26.52: Live-Wizard-Vorschau der Antwort (mit Markierungsbox). MUSS lazy
 // bleiben — QuestionButton ist im Main-Bundle, die Modal-Datei zieht aber
@@ -36,8 +39,13 @@ const WizardStepPreviewModal = React.lazy(() => import('./tickets/WizardStepPrev
 
 interface ShotRef { file: File; url: string; }
 
-export default function QuestionButton(props: { isMobile?: boolean }): React.ReactElement | null {
+export default function QuestionButton(props: { isMobile?: boolean; onAbout?: () => void }): React.ReactElement | null {
   const ticketCtx = React.useContext(TicketContext);
+  // v32.3: Zwischendialog beim Klick auf „Hast du Fragen?" (Nutzer-Ansage
+  // 28.09.2026): erst „DEX kennenlernen" (Tutorial, Über die App) ODER
+  // „Frage stellen". Ersetzt die Pille „Neu hier?" in der Kopfzeile.
+  const { openTutorial } = useTutorial();
+  const [chooserOpen, setChooserOpen] = React.useState(false);
   const { locale } = useLanguage();
   const { navigate, selectedEventId } = useNavigation();
   const { currentUserRole, isAdmin } = useRoles();
@@ -64,6 +72,9 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   // Person sagt darüber nichts.
   const [routeTo, setRouteTo] = React.useState<'organizer' | 'dex' | null>(null);
   const [shots, setShots] = React.useState<ShotRef[]>([]);
+  // v32.3: Bild-Anhänge stehen hinter einem Aufklapper (Nutzer-Ansage
+  // 28.09.2026: „Bilder einklappen") — offen, sobald ein Bild dran ist.
+  const [attachOpen, setAttachOpen] = React.useState(false);
   // v29.40: Hinweis, wenn beim Anhängen etwas aussortiert wurde (kein Bild/zu groß).
   const [uploadNote, setUploadNote] = React.useState('');
   // v26.10: Index des Screenshots, der gerade groß markiert wird (null = keiner).
@@ -318,6 +329,74 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
     return <span style={{ padding: '2px 9px', borderRadius: 10, background: c.bg, color: c.col, fontSize: 12, fontWeight: 600 }}>{c.label}</span>;
   };
 
+  // v32.3: Die Handbuch-Vorschläge als eigener Block — auf dem Laptop stehen
+  // sie rechts neben dem Formular (Nutzer-Ansage 28.09.2026: „im Querformat,
+  // damit kein Platz verschenkt wird"), auf schmalen Schirmen darunter wie bisher.
+  const wide = !props.isMobile && typeof window !== 'undefined' && window.innerWidth >= 1100;
+  const manualBlock: React.ReactNode = hits.length > 0 ? (
+              <div style={{ background: '#f1f7e8', border: '1px solid var(--dex-green,#86bc25)', borderRadius: 8, padding: '10px 12px' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--dex-green-dark,#4a7c1f)', marginBottom: 6 }}>
+                  {isDe ? 'Vielleicht hilft dir das schon weiter:' : 'This might already help you:'}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {hits.map((h) => {
+                    const isOpenHit = openHitId === h.id;
+                    return (
+                      <div key={h.id} style={{ background: '#fff', border: '1px solid var(--dex-gray-200,#e8e8e8)', borderRadius: 6, overflow: 'hidden' }}>
+                        <button type="button" onClick={() => toggleHit(h.id)}
+                          style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '7px 10px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                          <Icon iconName="ReadingMode" style={{ fontSize: 13, color: 'var(--dex-green,#86bc25)', marginTop: 2 }} />
+                          <span style={{ flex: 1 }}>
+                            <strong style={{ fontSize: '0.85rem' }}>{h.title}</strong>
+                            {h.description && <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500,#808080)', marginTop: 2 }}>{h.description}</div>}
+                          </span>
+                          <Icon iconName={isOpenHit ? 'ChevronUp' : 'ChevronDown'} style={{ fontSize: 12, color: 'var(--dex-gray-400,#a0a0a0)', marginTop: 3 }} />
+                        </button>
+                        {isOpenHit && (
+                          <div style={{ borderTop: '1px solid var(--dex-gray-100,#f5f5f5)', padding: '6px 10px 10px' }}>
+                            {hitLoading && <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400,#a0a0a0)', padding: '6px 0' }}>{isDe ? 'Lädt …' : 'Loading …'}</div>}
+                            {!hitLoading && hitSection && renderArticleBody(hitSection, isDe)}
+                            {!hitLoading && !hitSection && <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400,#a0a0a0)' }}>{isDe ? 'Inhalt nicht verfügbar.' : 'Content unavailable.'}</div>}
+                            <button type="button" onClick={() => openArticle(h.id)}
+                              style={{ marginTop: 8, background: 'transparent', border: 'none', color: 'var(--dex-green-dark,#4a7c1f)', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', padding: 0, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                              <Icon iconName="OpenInNewWindow" style={{ fontSize: 12 }} /> {isDe ? 'Ganzen Artikel im Handbuch öffnen' : 'Open full article in the manual'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+  ) : null;
+  // v32.3: Kurzantwort auf Standardfragen (data/faqCatalog) über den
+  // Handbuch-Treffern — „Reminder" → „Ja, du kannst … So geht's: 1. 2. 3."
+  const faq = matchFaq(queryText, askerIsOrgLike, 1)[0];
+  const faqSteps = faq ? (isDe ? faq.stepsDe : faq.stepsEn) || [] : [];
+  const faqBlock: React.ReactNode = faq ? (
+    <div style={{ background: '#fff', border: '1px solid var(--dex-green,#86bc25)', borderLeft: '4px solid var(--dex-green,#86bc25)', borderRadius: 8, padding: '12px 14px' }}>
+      <div style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--dex-green-dark,#4a7c1f)', marginBottom: 4 }}>
+        {isDe ? 'Kurz beantwortet' : 'Quick answer'}
+      </div>
+      <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--dex-gray-800,#333)', marginBottom: 4 }}>{isDe ? faq.de : faq.en}</div>
+      <div style={{ fontSize: '0.86rem', color: 'var(--dex-gray-700,#444)', lineHeight: 1.5 }}>{isDe ? faq.aDe : faq.aEn}</div>
+      {faqSteps.length > 0 && (
+        <>
+          <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700,#444)', margin: '8px 0 4px' }}>{isDe ? 'So geht’s:' : 'Here’s how:'}</div>
+          <ol style={{ margin: 0, paddingLeft: 20, fontSize: '0.84rem', color: 'var(--dex-gray-700,#444)', lineHeight: 1.55 }}>
+            {faqSteps.map((st, i) => <li key={i}>{st}</li>)}
+          </ol>
+        </>
+      )}
+      <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500,#808080)', marginTop: 8 }}>
+        {isDe ? 'Hat dir das geholfen? Dann brauchst du kein Ticket — sonst schick die Frage einfach ab.' : 'Did this help? Then no ticket is needed — otherwise just send your question.'}
+      </div>
+    </div>
+  ) : null;
+  const hitsBlock: React.ReactNode = (faqBlock || manualBlock) ? (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{faqBlock}{manualBlock}</div>
+  ) : null;
+
   const btnStyle: React.CSSProperties = props.isMobile
     ? { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 8, background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', cursor: 'pointer' }
     : { display: 'inline-flex', alignItems: 'center', gap: 8, height: 36, padding: '0 14px', borderRadius: 8, background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.12)', whiteSpace: 'nowrap', flexShrink: 0 };
@@ -326,7 +405,7 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
     <>
       <button
         type="button"
-        onClick={openModal}
+        onClick={() => setChooserOpen(true)}
         title={isDe ? 'Hast du Fragen? Frag das DEX-Team' : 'Have a question? Ask the DEX team'}
         aria-label={isDe ? 'Hast du Fragen?' : 'Have a question?'}
         style={btnStyle}
@@ -335,7 +414,47 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
         {!props.isMobile && <span style={{ lineHeight: 1 }}>{isDe ? 'Hast du Fragen?' : 'Have a question?'}</span>}
       </button>
 
-      <Modal open={open && !capturing} onClose={closeModal} maxWidth={640} dismissable={!submitting} ariaLabel={isDe ? 'Hast du Fragen?' : 'Have a question?'}>
+      <Modal open={chooserOpen} onClose={() => setChooserOpen(false)} maxWidth={520}
+        title={isDe ? 'Wie können wir helfen?' : 'How can we help?'}
+        icon={<MessageSquare size={18} strokeWidth={2} />}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dex-gray-500,#808080)' }}>
+            {isDe ? 'DEX kennenlernen' : 'Get to know DEX'}
+          </div>
+          <button type="button" className="dex-ui-choice" onClick={() => { setChooserOpen(false); openTutorial(); }}>
+            <span className="dex-ui-choice-icon"><GraduationCap size={18} /></span>
+            <span className="dex-ui-choice-body">
+              <span className="dex-ui-choice-title" style={{ display: 'block' }}>{isDe ? 'Geführtes Tutorial starten' : 'Start the guided tutorial'}</span>
+              <span className="dex-ui-choice-desc" style={{ display: 'block' }}>{isDe ? 'Schritt für Schritt durch die App — dauert ein paar Minuten.' : 'Step by step through the app — takes a few minutes.'}</span>
+            </span>
+          </button>
+          {props.onAbout && (
+            <button type="button" className="dex-ui-choice" onClick={() => { setChooserOpen(false); if (props.onAbout) props.onAbout(); }}>
+              <span className="dex-ui-choice-icon"><Info size={18} /></span>
+              <span className="dex-ui-choice-body">
+                <span className="dex-ui-choice-title" style={{ display: 'block' }}>{isDe ? 'Über die App' : 'About the app'}</span>
+                <span className="dex-ui-choice-desc" style={{ display: 'block' }}>{isDe ? 'Wofür DEX gedacht ist und wie ein Event abläuft.' : 'What DEX is for and how an event works.'}</span>
+              </span>
+            </button>
+          )}
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dex-gray-500,#808080)', marginTop: 6 }}>
+            {isDe ? 'Konkrete Frage' : 'Specific question'}
+          </div>
+          <button type="button" className="dex-ui-choice" onClick={() => { setChooserOpen(false); openModal(); }}>
+            <span className="dex-ui-choice-icon"><MessageSquare size={18} strokeWidth={2} /></span>
+            <span className="dex-ui-choice-body">
+              <span className="dex-ui-choice-title" style={{ display: 'block' }}>{isDe ? 'Frage stellen' : 'Ask a question'}</span>
+              <span className="dex-ui-choice-desc" style={{ display: 'block' }}>{isDe ? 'Wir schauen sofort ins Handbuch; hilft das nicht, geht deine Frage als Ticket raus.' : 'We check the manual right away; if that does not help, your question goes out as a ticket.'}</span>
+            </span>
+          </button>
+          <button type="button" className="dex-ui-textbtn" style={{ alignSelf: 'flex-start' }}
+            onClick={() => { setChooserOpen(false); resetForm(); setTab('mine'); setOpen(true); }}>
+            {isDe ? 'Deine bisherigen Fragen ansehen' : 'View your previous questions'}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal open={open && !capturing} onClose={closeModal} maxWidth={wide && tab === 'ask' && !done ? 1080 : 640} dismissable={!submitting} ariaLabel={isDe ? 'Hast du Fragen?' : 'Have a question?'}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Icon iconName="Chat" style={{ fontSize: 22, color: 'var(--dex-green, #86bc25)' }} />
           <h2 style={{ margin: 0, fontSize: '1.25rem' }}>{isDe ? 'Hast du Fragen?' : 'Have a question?'}</h2>
@@ -361,6 +480,7 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
         </div>
 
         {tab === 'ask' && !done && (
+          <div style={wide ? { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 24, alignItems: 'start' } : undefined}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <p style={{ margin: 0, fontSize: '0.86rem', color: 'var(--dex-gray-600,#666)' }}>
               {isDe
@@ -496,46 +616,17 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
               <Icon iconName="Add" style={{ fontSize: 13 }} /> {isDe ? 'Weitere Frage' : 'Add another question'}
             </button>
 
-            {/* Live-Handbuch-Vorschläge */}
-            {hits.length > 0 && (
-              <div style={{ background: '#f1f7e8', border: '1px solid var(--dex-green,#86bc25)', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--dex-green-dark,#4a7c1f)', marginBottom: 6 }}>
-                  {isDe ? 'Vielleicht hilft dir das schon weiter:' : 'This might already help you:'}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {hits.map((h) => {
-                    const isOpenHit = openHitId === h.id;
-                    return (
-                      <div key={h.id} style={{ background: '#fff', border: '1px solid var(--dex-gray-200,#e8e8e8)', borderRadius: 6, overflow: 'hidden' }}>
-                        <button type="button" onClick={() => toggleHit(h.id)}
-                          style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '7px 10px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                          <Icon iconName="ReadingMode" style={{ fontSize: 13, color: 'var(--dex-green,#86bc25)', marginTop: 2 }} />
-                          <span style={{ flex: 1 }}>
-                            <strong style={{ fontSize: '0.85rem' }}>{h.title}</strong>
-                            {h.description && <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500,#808080)', marginTop: 2 }}>{h.description}</div>}
-                          </span>
-                          <Icon iconName={isOpenHit ? 'ChevronUp' : 'ChevronDown'} style={{ fontSize: 12, color: 'var(--dex-gray-400,#a0a0a0)', marginTop: 3 }} />
-                        </button>
-                        {isOpenHit && (
-                          <div style={{ borderTop: '1px solid var(--dex-gray-100,#f5f5f5)', padding: '6px 10px 10px' }}>
-                            {hitLoading && <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400,#a0a0a0)', padding: '6px 0' }}>{isDe ? 'Lädt …' : 'Loading …'}</div>}
-                            {!hitLoading && hitSection && renderArticleBody(hitSection, isDe)}
-                            {!hitLoading && !hitSection && <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400,#a0a0a0)' }}>{isDe ? 'Inhalt nicht verfügbar.' : 'Content unavailable.'}</div>}
-                            <button type="button" onClick={() => openArticle(h.id)}
-                              style={{ marginTop: 8, background: 'transparent', border: 'none', color: 'var(--dex-green-dark,#4a7c1f)', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', padding: 0, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                              <Icon iconName="OpenInNewWindow" style={{ fontSize: 12 }} /> {isDe ? 'Ganzen Artikel im Handbuch öffnen' : 'Open full article in the manual'}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            {!wide && hitsBlock}
 
             {/* Screenshots */}
             <div>
+              {!(attachOpen || shots.length > 0) ? (
+                <button type="button" onClick={() => setAttachOpen(true)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', fontFamily: 'inherit', color: 'var(--dex-green-dark,#4a7c1f)' }}>
+                  <Icon iconName="Attach" style={{ fontSize: 14 }} /> {isDe ? 'Bild anhängen' : 'Attach an image'}
+                  <span style={{ fontWeight: 400, color: 'var(--dex-gray-400,#a0a0a0)' }}>{isDe ? '(optional)' : '(optional)'}</span>
+                </button>
+              ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <button type="button" onClick={doCapture} disabled={capturing}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--dex-gray-100,#f5f5f5)', border: '1px solid var(--dex-gray-300,#d1d1d1)', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', fontFamily: 'inherit', color: 'var(--dex-gray-700,#444)' }}>
@@ -557,6 +648,7 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
                 </label>
                 <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400,#a0a0a0)' }}>{isDe ? 'optional' : 'optional'}</span>
               </div>
+              )}
               {uploadNote && (
                 <div style={{ fontSize: '0.74rem', color: 'var(--dex-red, #da291c)', marginTop: 6 }}>{uploadNote}</div>
               )}
@@ -612,6 +704,19 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
                 {submitting ? (isDe ? 'Wird gesendet …' : 'Sending …') : (isDe ? 'Frage absenden' : 'Send question')}
               </button>
             </div>
+          </div>
+          {wide && (
+            <div style={{ position: 'sticky', top: 0, maxHeight: '70vh', overflowY: 'auto' }}>
+              {hitsBlock || (
+                <div style={{ border: '1px dashed var(--dex-gray-300,#d1d1d1)', borderRadius: 8, padding: '18px 16px', color: 'var(--dex-gray-500,#808080)', fontSize: '0.84rem', lineHeight: 1.5, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <Icon iconName="ReadingMode" style={{ fontSize: 16, color: 'var(--dex-green,#86bc25)', marginTop: 2 }} />
+                  <span>{isDe
+                    ? 'Sobald du deine Frage tippst, erscheinen hier passende Artikel aus dem Handbuch — oft steht die Antwort schon drin.'
+                    : 'As you type your question, matching manual articles appear here — the answer is often already there.'}</span>
+                </div>
+              )}
+            </div>
+          )}
           </div>
         )}
 

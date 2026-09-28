@@ -10,7 +10,7 @@ import { setSaveInProgress } from '../../../utils/saveGuard';
 import { buildOutlookLocation } from '../../../utils/eventFormat';
 import { externeZielgruppenPersonen, outlookLogoPiggyback, resolveAudienceMembersToCsv, serializeCustomFields } from '../../wizard/wizardHelpers';
 import { formatOrganizerList } from '../../../context/EventContext';
-import { buildOutlookBody, eventCreatedEmail, getCachedOrbBase64, replacePlaceholders, wrapTemplate } from '../../../services/EmailTemplates';
+import { anredeVorname, buildOutlookBody, eventCreatedEmail, getCachedOrbBase64, replacePlaceholders, wrapTemplate } from '../../../services/EmailTemplates';
 import { buildHashDeepLink } from '../../../utils/deepLink';
 import { DEX_TEAM_RECIPIENTS } from '../../../utils/supportContact';
 import { BundledComm, bundledCommConfig, commSharedConfig } from '../../../utils/bundledComm';
@@ -1249,10 +1249,14 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
         // Kalendereinladung. „Neu" = im gespeicherten Organizer-Set, aber vorher
         // (editEvent.organizerEmails) NICHT enthalten. Best-effort, blockt nie.
         try {
-          const prevSet = new Set((editEvent?.organizerEmails || []).map(e => (e || '').toLowerCase().trim()).filter(Boolean));
+          // v32.3: Co-Organizer zählen mit — vorher bekam, wer nachträglich
+          // als Co-Organizer (nicht in der Organizer-Liste) benannt wurde,
+          // gar keine Mail; wer von Co-Organizer zu Organizer wechselte,
+          // bekam sie dagegen ein zweites Mal.
+          const prevSet = new Set((editEvent?.organizerEmails || []).concat(editEvent?.coOrganizerEmails || []).map(e => (e || '').toLowerCase().trim()).filter(Boolean));
           const meLc = (currentUser.email || '').toLowerCase();
-          const newEmails = (sanitizedOrgPairEdit.orgEmailString || '').split(';').map(s => s.trim());
-          const newNames = (sanitizedOrgPairEdit.orgString || '').split(';').map(s => s.trim());
+          const newEmails = (sanitizedOrgPairEdit.orgEmailString || '').split(';').map(s => s.trim()).concat(coOrganizerEmails.map(s => (s || '').trim()));
+          const newNames = (sanitizedOrgPairEdit.orgString || '').split(';').map(s => s.trim()).concat(coOrganizerNames.map(s => (s || '').trim()));
           const addedCoOrgs = newEmails
             .map((email, i) => ({ email, name: newNames[i] || email }))
             .filter(p => p.email && p.email.indexOf('@') > 0 && !prevSet.has(p.email.toLowerCase()) && p.email.toLowerCase() !== meLc);
@@ -1412,6 +1416,7 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
                 // dem Speichern wieder weg und das Feld zeigte die „i"-Box.
                 ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
                 ...(cleanPositionRule(f.showForPositions) ? { showForPositions: cleanPositionRule(f.showForPositions) } : {}),
+                ...(f.type === 'select' && typeof f.asCalendar === 'boolean' ? { asCalendar: f.asCalendar } : {}),
                 ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
                   ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
                   : {}),
@@ -2389,41 +2394,38 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
               }
               catch (err) { console.warn('[DEX] Check-in-Team-Rechte beim Anlegen fehlgeschlagen:', err); }
             }
-            // Event-Created Mail an alle Organizer senden.
-            // {{Name}} in der Anrede = nur Vorname (nicht voller Name), darum
-            // den Organizer-String anhand von ";" in Namen splitten und pro
-            // Name das erste Token als Vorname nehmen. Paarweise zu den
-            // organizerEmails - bei Längen-Mismatch fällt wir auf den
-            // ersten Namen zurück.
-            const allOrgEmailsRaw = organizerEmails.length > 0 ? organizerEmails : [currentUser.email];
-            // v28.71: pro Adresse nur EINE Mail. Steht dieselbe Person zweimal
-            // in der Organizer-Liste (z.B. durch einen Doppel-Eintrag), kam die
-            // „Event angelegt"-Mail bisher entsprechend oft an.
-            const seenOrgMails = new Set<string>();
-            const allOrgEmails = allOrgEmailsRaw.filter(e => {
-              const lc = (e || '').trim().toLowerCase();
-              if (!lc || seenOrgMails.has(lc)) return false;
-              seenOrgMails.add(lc);
-              return true;
-            });
+            // v32.3: EINE „Event angelegt"-Mail an alle Organizer UND
+            // Co-Organizer zusammen (Nutzer-Ansage 28.09.2026: „alle Organizer
+            // sollen eine Mail zusammen bekommen, nicht jeder einzeln").
+            // Bis v32.2.2 ging je Person eine eigene Mail, nur an die
+            // Organizer-Liste — wer als Co-Organizer benannt war, bekam
+            // keine. Anrede: bei einer Person der Vorname (Namen stehen oft
+            // als „Nachname, Vorname" — daher anredeVorname), sonst
+            // „zusammen". Pro Adresse nur einmal (v28.71).
             const orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean);
-            abschluss.organizerMails = allOrgEmails.slice();
-            for (let i = 0; i < allOrgEmails.length; i++) {
-              const orgEmail = allOrgEmails[i];
-              const orgFullName = orgNames[i] || orgNames[0] || `${currentUser.firstName} ${currentUser.surname}`;
-              const orgFirstName = orgFullName.split(/\s+/)[0] || orgFullName;
-              // v29.32: Kopfbild-Layout des Events mitgeben — sonst kam die
-              // „Event angelegt"-Mail immer mit dem kleinen zentrierten Bild,
-              // auch bei Events mit Vollbild-Kopf (seit v29.29 der Default).
-              // headerLayoutFor deckelt ohne eigenes Bild weiterhin auf 180 px.
+            const kreis: Array<{ email: string; name: string }> = [];
+            const seenOrgMails = new Set<string>();
+            const nimm = (email: string, name: string): void => {
+              const lc = (email || '').trim().toLowerCase();
+              if (!lc || lc.indexOf('@') < 0 || seenOrgMails.has(lc)) return;
+              seenOrgMails.add(lc);
+              kreis.push({ email: email.trim(), name: (name || '').trim() || email.trim() });
+            };
+            (organizerEmails.length > 0 ? organizerEmails : [currentUser.email])
+              .forEach((e, i) => nimm(e, orgNames[i] || (organizerEmails.length > 0 ? '' : `${currentUser.firstName} ${currentUser.surname}`)));
+            coOrganizerEmails.forEach((e, i) => nimm(e, coOrganizerNames[i] || ''));
+            abschluss.organizerMails = kreis.map(k => k.email);
+            if (kreis.length > 0) {
+              // v29.32: Kopfbild-Layout des Events mitgeben (Vollbild-Kopf).
               const createdMailLayout = headerLayoutFor(effEmailLogo);
-              const emailData = eventCreatedEmail(orgFirstName, title, subsiteUrl, {
+              const anrede = kreis.length === 1 ? (anredeVorname(kreis[0].name) || kreis[0].name) : 'zusammen';
+              const emailData = eventCreatedEmail(anrede, title, subsiteUrl, {
                 imageWidth: createdMailLayout.imageWidth,
                 imagePaddingV: createdMailLayout.imagePaddingV,
                 imagePaddingH: createdMailLayout.imagePaddingH,
               });
               svc.queueEmail(
-                emailData.subject, orgEmail, orgFullName, emailData.body,
+                emailData.subject, kreis.map(k => k.email).join('; '), kreis.map(k => k.name).join('; '), emailData.body,
                 'EventErstellt', title, String(eventId)
               ).catch(err => console.warn('[DEX]', err));
             }

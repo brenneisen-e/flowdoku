@@ -41,6 +41,12 @@ Ein Release = ein Build. Version und Release Notes **vor** dem Build schreiben,
 sonst baut man zweimal (die Notes stecken im Bundle, sie werden in der App unter
 „Was ist neu?" angezeigt).
 
+**Versionsnummern: nur noch MINOR-Sprünge (seit 28.09.2026).** Nutzer-Ansage:
+„ich will keine Minor-Releases mit 32.2.3, sondern immer 32.3, 32.4 etc." —
+jedes Release zählt die zweite Stelle hoch (`32.3.0`, `32.4.0`, …), die
+dritte bleibt `0`. Kein `32.3.1` für einen Nachzug, auch nicht für einen
+kleinen Fix. Versionsmarken in Kommentaren entsprechend (`// v32.3: …`).
+
 ```bash
 cd dex-event-app-spfx
 # 1) Version an DREI Stellen
