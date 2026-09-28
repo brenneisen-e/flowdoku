@@ -79,6 +79,20 @@ export function TutorialProvider(props: { children: React.ReactNode }): React.Re
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasOrganizerTour]);
 
+  // v32.0.14: Einstieg von außen (Deep-Link ?action=tutorial aus der
+  // Onboarding-Mail). Ein Fenster-Ereignis statt eines Props, damit
+  // DexEventPlatform die Tour starten kann, ohne im Provider zu stecken.
+  // detail 'organizer' startet die Organizer-Tour direkt, wenn verfügbar.
+  React.useEffect(() => {
+    const onOpen = (e: Event): void => {
+      const want = (e as CustomEvent).detail;
+      if (want === 'organizer' && value.availableTours.indexOf('organizer') >= 0) value.startTour('organizer');
+      else value.openTutorial();
+    };
+    window.addEventListener('dex-open-tutorial', onOpen);
+    return () => window.removeEventListener('dex-open-tutorial', onOpen);
+  }, [value]);
+
   const closeTour = React.useCallback((): void => {
     setActiveTour(null);
     setTutorialDemoActive(false);

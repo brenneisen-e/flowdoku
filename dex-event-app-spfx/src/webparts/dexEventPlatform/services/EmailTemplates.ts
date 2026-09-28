@@ -864,6 +864,9 @@ export function eventCreatedEmail(
  */
 export function organizerOnboardingEmail(recipientName: string, role: 'Organizer' | 'Admin' | 'F&A' = 'Organizer'): { subject: string; body: string } {
   const manualUrl = buildHashDeepLink(APP_URL, { action: 'manual' });
+  // v32.0.14: Nutzer-Ansage 28.09.2026 — „in der Onboarding-Mail auch auf das
+  // Tutorial hinweisen". Der Link startet die geführte Tour direkt.
+  const tutorialUrl = buildHashDeepLink(APP_URL, { action: 'tutorial' });
   const roleLabelDe = role === 'Admin' ? 'Admin' : (role === 'F&A' ? 'F&A' : 'Organizer');
   /*
    * v31.42: F&A bekommt denselben Organizer-Teil und zusätzlich einen eigenen
@@ -933,6 +936,13 @@ export function organizerOnboardingEmail(recipientName: string, role: 'Organizer
         <li><a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Zur DEX App</a> &mdash; hier legst du Events an und verwaltest deine Teilnehmer.</li>
         <li><a href="${manualUrl}" style="color:${GREEN};font-weight:600;">Zum Handbuch</a> &mdash; Schritt-für-Schritt-Anleitung mit Screenshots zu allen Features.</li>
       </ul>
+
+      <p style="margin-top:20px;padding:12px 14px;background:#f3f8ec;border-left:3px solid ${GREEN};">
+      <strong>Unser Tipp für den Einstieg: das geführte Tutorial.</strong> Es zeigt dir
+      in wenigen Minuten direkt in der App, wo du was findest &mdash; vom Anlegen eines
+      Events bis zum Organizer Center.<br>
+      <a href="${tutorialUrl}" style="display:inline-block;margin-top:10px;padding:8px 16px;background:${GREEN};color:#fff;font-weight:700;text-decoration:none;border-radius:6px;">Tutorial starten</a>
+      <br><span style="font-size:12px;color:#63666a;">Du findest es später jederzeit wieder unter &bdquo;Über die App&ldquo; oben in der Kopfzeile.</span></p>
 
       <p style="margin-top:24px;"><strong>So legst du dein erstes Test-Event an:</strong></p>
       <ul>

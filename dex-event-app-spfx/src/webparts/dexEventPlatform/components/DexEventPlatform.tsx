@@ -684,6 +684,13 @@ function AppContent(): React.ReactElement {
         // FACenterPage selbst aus der URL und öffnet die Detailansicht.
         didHandleDeepLink.current = true;
         navigate('fa-center');
+      } else if (action === 'tutorial') {
+        // v32.0.14: Deep-Link aus der Onboarding-Mail → Startseite, dann die
+        // geführte Tour (für Organizer direkt die Organizer-Tour). Kurz
+        // warten, bis Rollen und TutorialGuide stehen.
+        didHandleDeepLink.current = true;
+        navigate('start');
+        try { window.setTimeout(() => { window.dispatchEvent(new CustomEvent('dex-open-tutorial', { detail: 'organizer' })); }, 800); } catch { /* */ }
       } else if (action === 'ask') {
         // v26.7: Deep-Link aus der Antwort-Mail an den Fragesteller → App öffnen
         // und das „Hast du Fragen?"-Fenster auf „Deine Fragen" zeigen.
