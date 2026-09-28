@@ -270,7 +270,10 @@ function AppContent(): React.ReactElement {
   const appLocale = useLocaleSafe();
   const appIsDe = appLocale === 'de';
   const { isAdmin, isRolesLoading, canCreateEvents } = useRoles();
-  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, maybeSendBillingAutoMails, reconcileCounters, isEventsLoading, events, getKpiCache, recomputeEventKpiOnly } = useEvents();
+  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, maybeSendBillingAutoMails, reconcileCounters, isEventsLoading, events, getKpiCache, recomputeEventKpiOnly, ensureOutlookBodies, outlookBodiesStatus } = useEvents();
+  // v32.0.6: Assistent erst öffnen, wenn die Outlook-Texte nachgeladen sind —
+  // er übernimmt sie beim Mount in seinen State und schriebe sonst leer zurück.
+  const outlookBodiesPending = (events || []).some(e => e.outlookBodyPending);
 
   // v11.52: KPI-Boxen im Boot-Loader. Live-Zählung über alle Event-
   // Subsites war zu langsam (Counts kommen erst nach mehreren Sekunden) —
@@ -1142,17 +1145,35 @@ function AppContent(): React.ReactElement {
         // Initializer). Mountet er beim Refresh-Restore vor dem Events-Load,
         // ist editEvent noch null → der Organizer sähe einen LEEREN Wizard,
         // der beim Speichern ein neues Event anlegen würde.
-        if (isEventsLoading) {
+        // v32.0.6: Zusätzlich warten, bis die Outlook-Texte nachgeladen sind
+        // (s. EventContext.ensureOutlookBodies) — der Wizard übernimmt sie
+        // beim Mount; ein leerer Text würde beim Speichern den gespeicherten
+        // Termin-Text überschreiben. Beim Lesefehler: sagen und neu versuchen.
+        if (isEventsLoading || outlookBodiesPending) {
+          const fehler = !isEventsLoading && outlookBodiesStatus === 'error';
           return (
             <div className="page-container text-center">
               <div style={{ padding: 48 }}>
-                <svg width={48} height={48} viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto 16px' }}>
-                  <circle cx={24} cy={24} r={20} fill="none" stroke="rgba(134,188,37,0.20)" strokeWidth={4} />
-                  <path d="M 24 4 A 20 20 0 0 1 44 24" fill="none" stroke="#86bc25" strokeWidth={4} strokeLinecap="round">
-                    <animateTransform attributeName="transform" type="rotate" from="0 24 24" to="360 24 24" dur="1s" repeatCount="indefinite" />
-                  </path>
-                </svg>
-                <p style={{ color: 'var(--dex-gray-400)' }}>Event wird geladen …</p>
+                {!fehler && (
+                  <svg width={48} height={48} viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto 16px' }}>
+                    <circle cx={24} cy={24} r={20} fill="none" stroke="rgba(134,188,37,0.20)" strokeWidth={4} />
+                    <path d="M 24 4 A 20 20 0 0 1 44 24" fill="none" stroke="#86bc25" strokeWidth={4} strokeLinecap="round">
+                      <animateTransform attributeName="transform" type="rotate" from="0 24 24" to="360 24 24" dur="1s" repeatCount="indefinite" />
+                    </path>
+                  </svg>
+                )}
+                <p style={{ color: 'var(--dex-gray-400)' }}>
+                  {fehler
+                    ? (appIsDe ? 'Die Outlook-Texte der Events konnten nicht geladen werden.' : 'The Outlook texts of the events could not be loaded.')
+                    : isEventsLoading
+                      ? (appIsDe ? 'Event wird geladen …' : 'Loading event …')
+                      : (appIsDe ? 'Outlook-Texte werden geladen …' : 'Loading Outlook texts …')}
+                </p>
+                {fehler && (
+                  <button type="button" className="btn btn-primary" onClick={() => { void ensureOutlookBodies(); }}>
+                    {appIsDe ? 'Erneut versuchen' : 'Try again'}
+                  </button>
+                )}
               </div>
             </div>
           );

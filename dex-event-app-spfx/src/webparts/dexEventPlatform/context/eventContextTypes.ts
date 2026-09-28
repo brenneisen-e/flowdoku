@@ -106,6 +106,10 @@ export interface EventContextType {
    *  'error' = Netz/Drosselung/Serverfehler. Wer aus `events` auf „es gibt
    *  keine" schließt, muss diesen Wert mitlesen. */
   eventsReadStatus: 'loading' | 'ok' | 'forbidden' | 'error';
+  /** v32.0.6: Outlook-Texte nachladen (Boot liest DEX_Events ohne OutlookBody). true = geladen. */
+  ensureOutlookBodies: () => Promise<boolean>;
+  /** v32.0.6: 'loading' solange Outlook-Texte ausstehen — Assistent und Programmpunkt-Überführung warten darauf. */
+  outlookBodiesStatus: 'loading' | 'ok' | 'error';
   /** v29.47: Dokumente eines Events bei Bedarf nachladen (Boot lädt sie nicht mehr). */
   ensureEventDocuments: (eventIds: string[]) => Promise<void>;
   /** v30.67 (Review): Anhänge eines Events verwerfen und neu laden — nach Änderungen am Context vorbei (Wizard). */

@@ -296,7 +296,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // für jemanden mit Rechten und leerem Kalender.
     // -1 = gelesen (gleiche Schreibweise wie `useEventSelection`).
     let failedStatus = -1;
-    const spEvents = await eventService.getEvents(st => { failedStatus = st; });
+    // v32.0.6: schlank — ohne OutlookBody/EmailImageBase64 (28 der 36,7 MB).
+    // Der Outlook-Text kommt über ensureOutlookBodies im Hintergrund nach.
+    const spEvents = await eventService.getEvents(st => { failedStatus = st; }, true);
+    // Nur Zeilen DIESES Ladens zählen als ausstehend — gelöschte fallen heraus.
+    if (failedStatus < 0) outlookModifiedRef.current = new Map(spEvents.map(r => [String(r.Id), String(r.Modified || '')] as [string, string]));
     const dGet = Math.round(performance.now() - tGet);
     // eslint-disable-next-line no-console
     dlog('perf', `[DEX][perf][loadEvents] getEvents = ${dGet} ms (n=${spEvents.length})`);
@@ -343,7 +347,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // die zuletzt gespeicherte Teilnehmerzahl (Spalte CurrentParticipants)
     // stehen im Mapping. Die Liste geht deshalb sofort raus.
     // v30.67: Bereits nachgeladene Anhänge behalten — s. keepLoadedDocuments.
-    setEvents(prev => keepLoadedDocuments(prev, inheritParentImages(mapped)));
+    setEvents(prev => keepLoadedDocuments(prev, inheritParentImages(fillOutlookBodies(mapped))));
+    if (mapped.some(e => !outlookBodyFresh(e.id))) void ensureOutlookBodies();
 
     // Nachlauf, sichtbar nur als Zahlen, die sich still aktualisieren.
     void (async () => {
@@ -354,7 +359,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         dlog('perf', `[DEX][perf][loadEvents] participantCounts (nachgelagert) = ${Math.round(performance.now() - tCnt)} ms`);
         // v30.67: Nicht den Snapshot von VOR einem parallel eingetroffenen
         // ensureEventDocuments zurückschreiben — s. keepLoadedDocuments.
-        setEvents(prev => keepLoadedDocuments(prev, inheritParentImages(withCounts)));
+        setEvents(prev => keepLoadedDocuments(prev, inheritParentImages(fillOutlookBodies(withCounts))));
       } catch (err) { console.warn('[DEX] Teilnehmerzahlen-Nachlauf fehlgeschlagen:', err); }
     })();
   }
@@ -371,6 +376,61 @@ export function EventProvider(props: { context: WebPartContext; children: React.
    * wird gemerkt (`documentsLoadedRef`), und parallele Aufrufe teilen sich
    * dieselbe laufende Abfrage.
    */
+  /**
+   * v32.0.6: Outlook-Texte, nachgeladen nach dem Start. Der Boot liest
+   * DEX_Events ohne OutlookBody (Messung 28.09.2026: 23,5 von 36,7 MB, 18–20 s
+   * Boot für jede Rolle). Gebraucht wird der Text nur im Assistenten und bei
+   * „In Programmpunkte überführen" — beide warten auf `outlookBodiesStatus`.
+   * Frisch heißt: der nachgeladene Text ist mindestens so neu wie die Zeile
+   * aus dem letzten Listen-Laden (Modified). Nach einem Speichern ist die
+   * Zeile neuer → Text wieder „ausstehend" → der Nachlauf holt ihn erneut.
+   * Nie mit leer überschreiben: Ein ausstehender Text trägt `outlookBodyPending`.
+   */
+  const outlookCacheRef = React.useRef<Map<string, { body: string; modified: string }>>(new Map());
+  const outlookModifiedRef = React.useRef<Map<string, string>>(new Map());
+  const outlookInflightRef = React.useRef<Promise<boolean> | null>(null);
+  const [outlookBodiesStatus, setOutlookBodiesStatus] = React.useState<'loading' | 'ok' | 'error'>('loading');
+  const outlookBodyFresh = (id: string): boolean => {
+    const c = outlookCacheRef.current.get(id);
+    if (!c) return !outlookModifiedRef.current.has(id); // nicht aus DEX_Events (Demo o.ä.) → nichts ausstehend
+    return c.modified >= (outlookModifiedRef.current.get(id) || '');
+  };
+  function fillOutlookBodies(list: DeloitteEvent[]): DeloitteEvent[] {
+    return list.map(e => {
+      if (!outlookModifiedRef.current.has(e.id)) return e;
+      const c = outlookCacheRef.current.get(e.id);
+      if (c && outlookBodyFresh(e.id)) return { ...e, outlookBody: c.body, outlookBodyPending: false };
+      return { ...e, outlookBodyPending: true };
+    });
+  }
+  async function ensureOutlookBodies(): Promise<boolean> {
+    if (outlookInflightRef.current) return outlookInflightRef.current;
+    const p = (async (): Promise<boolean> => {
+      setOutlookBodiesStatus('loading');
+      // Bis zu drei Runden: Speichert jemand, während eine Runde läuft, ist
+      // die Zeile danach neuer als der geholte Text — ohne zweite Runde bliebe
+      // sie „ausstehend", und der Assistent wartete endlos.
+      for (let runde = 0; runde < 3; runde++) {
+        const offen = Array.from(outlookModifiedRef.current.keys()).filter(id => !outlookBodyFresh(id));
+        if (offen.length === 0) break;
+        const t0 = performance.now();
+        // Wenige offene (nach einem Speichern) gezielt, sonst alle auf einmal.
+        const r = await eventService.getOutlookBodies(offen.length <= 20 ? offen : undefined);
+        if (!r) { setOutlookBodiesStatus('error'); return false; }
+        for (const id of Object.keys(r)) outlookCacheRef.current.set(id, r[id]);
+        // Gezielt gefragt und nicht geliefert = Zeile gibt es nicht mehr.
+        if (offen.length <= 20) for (const id of offen) if (!r[id]) outlookCacheRef.current.set(id, { body: '', modified: '9999' });
+        // eslint-disable-next-line no-console
+        dlog('perf', `[DEX][perf][loadEvents] OutlookBody (Hintergrund) = ${Math.round(performance.now() - t0)} ms (n=${Object.keys(r).length})`);
+      }
+      setEvents(prev => fillOutlookBodies(prev));
+      setOutlookBodiesStatus('ok');
+      return true;
+    })().finally(() => { outlookInflightRef.current = null; });
+    outlookInflightRef.current = p;
+    return p;
+  }
+
   const documentsLoadedRef = React.useRef<Set<string>>(new Set());
   const documentsInflightRef = React.useRef<Map<string, Promise<void>>>(new Map());
   async function ensureEventDocuments(eventIds: string[]): Promise<void> {
@@ -3398,7 +3458,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       value: {
         events: eventsForConsumer,
         topLevelEvents: eventsForConsumer.filter(e => !e.parentEventId),
-        childEventsOf, isEventsLoading, eventsReadStatus, ensureEventDocuments, refreshEventDocuments,
+        childEventsOf, isEventsLoading, eventsReadStatus, ensureEventDocuments, refreshEventDocuments, ensureOutlookBodies, outlookBodiesStatus,
         createEvent, registerForEvent, registerTeam,
         getTeamMembers: async (eventId: string, teamId: string): Promise<SPRegistration[]> => {
           const subsiteUrl = subsiteMap.current[eventId];

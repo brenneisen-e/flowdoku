@@ -984,8 +984,12 @@ export class EventService {
 
   /** @param onHttpError v31.6: „Liste nicht lesbar" von „keine Events"
    *  trennen — ohne den Rückruf ist ein 403 eine leere Übersicht. */
-  public async getEvents(onHttpError?: (_status: number) => void): Promise<SPEvent[]> {
-    return eventsCrud.getEvents(this, onHttpError);
+  public async getEvents(onHttpError?: (_status: number) => void, slim?: boolean): Promise<SPEvent[]> {
+    return eventsCrud.getEvents(this, onHttpError, slim);
+  }
+  /** v32.0.6: Outlook-Texte für den Hintergrund-Nachlauf (s. eventsCrud). */
+  public async getOutlookBodies(ids?: string[]): Promise<Record<string, { body: string; modified: string }> | null> {
+    return eventsCrud.getOutlookBodies(this, ids);
   }
 
   public async getEvent(eventId: number): Promise<SPEvent | null> {

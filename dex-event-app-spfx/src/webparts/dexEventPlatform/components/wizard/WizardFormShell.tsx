@@ -24,6 +24,8 @@ import { ensureDexUiStyles } from '../dexUi';
 import { scrollWizardTop, stickyTopEdge } from '../../utils/wizardScroll';
 
 export interface WizardFormShellProps {
+  /** v32.0.6: Hinweis-Dialog (fehlende Pflichtfelder) für Schritt N öffnen. */
+  zeigeSchrittFehler: (step: number) => void;
   actionRowRef: React.MutableRefObject<HTMLDivElement>;
   actionRowVisible: boolean;
   activeScopeIdx: number;
@@ -106,6 +108,7 @@ export interface WizardFormShellProps {
 }
 
 export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
+  const { zeigeSchrittFehler } = p;
   const { actionRowRef, actionRowVisible, activeScopeIdx, addQuizQuestion, allowAttendeeUpload, askTeamName, attemptSubmitGuarded, attendeeUploadHint, attendeeUploadLabel, basicsStepProps, billingFields, billingPromptOpen, billingRelevant, billingSendMode, canBilling, capacityStepProps, communicationStepProps, currentStep, detailsStepProps, documents, draftSavedAt, draggedQuestionId, error, fieldsStepProps, getStepErrorsFor, goBack, hintStepIdx, isDe, isEditMode, isSubmitting, locationProgramStepProps, pendingSections, proceedNext, progress, progressLabel, quiz, removeQuizQuestion, renderGlobalScopeBar, renderStepIntro, setAllowAttendeeUpload, setAskTeamName, setAttendeeUploadHint, setAttendeeUploadLabel, setBillingFields, setBillingPromptOpen, setBillingRelevant, setBillingSendMode, setCurrentStep, setDocuments, setDraggedQuestionId, setHintStepIdx, setNewSectionError, setNewSectionModalOpen, setNewSectionName, setPendingSections, setShowConfigCheck, setShowRegisterPreview, setTeamJoinRequiresApproval, setTeamMembersCannotCreate, setTeamOpenSlotsVisible, setTeamPartialAllowed, setTeamRegistrationEnabled, setTeamSize, setTeamTermPlural, setTeamTermSingular, setTriedNext, steps, subEventsSectionProps, t, teamJoinRequiresApproval, teamMembersCannotCreate, teamOpenSlotsVisible, teamPartialAllowed, teamRegistrationEnabled, teamSize, teamTermPlural, teamTermSingular, title, updateQuizQuestion } = p;
   // v31.2: Die gemeinsamen UI-Klassen einmal ins Dokument — die Schritte
   // (dex-ui-card, dex-ui-chip, dex-ui-toggle-row …) verlassen sich darauf.
@@ -227,15 +230,16 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
           style={stickyPin ? {
             position: 'fixed', top: stickyPin.top, left: stickyPin.left, width: stickyPin.width,
             zIndex: 800, background: '#fff', boxSizing: 'border-box',
-            padding: '10px 16px 0', borderRadius: '0 0 14px 14px',
+            // v32.0.6: unten 10 px Luft — ohne Scope-Karte (Neu-Anlage) klebten die Beschriftungen am Rand.
+            padding: '10px 16px 10px', borderRadius: '0 0 14px 14px',
             boxShadow: '0 8px 20px rgba(0,0,0,0.10)',
             borderBottom: '1px solid var(--dex-gray-200, #e1e1e1)',
             // Sicherung gegen sehr viele Sub-Event-Reiter: der Block darf
             // nie den ganzen Bildschirm einnehmen — dann scrollt er innen.
             maxHeight: `calc(100vh - ${stickyPin.top}px - 32px)`, overflowY: 'auto',
           } : {
-            background: '#fff', boxSizing: 'border-box', padding: '10px 16px 0',
-            borderRadius: 14, boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+            background: '#fff', boxSizing: 'border-box', padding: '12px 16px 12px',
+            borderRadius: 14, boxShadow: '0 8px 20px rgba(0,0,0,0.10)',
           }}
         >
         <div className="dex-wizard-steps" style={{ marginBottom: 32 }}>
@@ -258,7 +262,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
             .dex-wizard-sticky.is-pinned .dex-step-line { top: 12px !important; height: 4px !important; }
             .dex-wizard-sticky.is-pinned .dex-step-label { font-size: 0.64rem !important; line-height: 1.2; white-space: nowrap; letter-spacing: -0.01em; }
             .dex-wizard-sticky.is-pinned .dex-step-hint { display: none !important; }
-            .dex-wizard-sticky.is-pinned #dex-scope-bar { margin-top: 0 !important; padding: 2px 0 10px !important; }
+            .dex-wizard-sticky.is-pinned #dex-scope-bar { margin-top: 0 !important; padding: 2px 0 0 !important; }
             /* v22.30: Schritt-Kopf bündig als Kopf der weißen Karte (negative
                Margins überbrücken das Karten-Padding).
                v31.2: Vom gefüllten grünen Balken zum ruhigen Kopf — weiße
@@ -370,7 +374,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                   if (idx <= currentStep) { setCurrentStep(idx); return; }
                   setTriedNext(true);
                   for (let st = currentStep; st < idx; st++) {
-                    if (getStepErrorsFor(st).length > 0) { setCurrentStep(st); return; }
+                    if (getStepErrorsFor(st).length > 0) { setCurrentStep(st); zeigeSchrittFehler(st); return; }
                   }
                   setTriedNext(false);
                   setCurrentStep(idx);
@@ -786,7 +790,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                     className="btn btn-outline"
                     onClick={() => {
                       const fehlt = ersterLueckenSchritt();
-                      if (fehlt >= 0) { setTriedNext(true); setCurrentStep(fehlt); return; }
+                      if (fehlt >= 0) { setTriedNext(true); setCurrentStep(fehlt); zeigeSchrittFehler(fehlt); return; }
                       setTriedNext(false);
                       attemptSubmitGuarded();
                     }}
@@ -858,7 +862,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                   onClick={() => {
                     if (isEditMode) { attemptSubmitGuarded(); return; }
                     const fehlt = ersterLueckenSchritt();
-                    if (fehlt >= 0) { setTriedNext(true); setCurrentStep(fehlt); return; }
+                    if (fehlt >= 0) { setTriedNext(true); setCurrentStep(fehlt); zeigeSchrittFehler(fehlt); return; }
                     setTriedNext(false);
                     attemptSubmitGuarded();
                   }}>

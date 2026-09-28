@@ -47,6 +47,7 @@ import { runWizardSubmit } from './wizard/logic/wizardSubmit';
 import { persistSubEventsForParentImpl } from './wizard/logic/persistSubEvents';
 import { WizardTermsModal } from './wizard/WizardTermsModal';
 import { WizardModals } from './wizard/WizardModals';
+import { StepErrorModal, StepErrorState, springeZumFehlerfeld } from './wizard/StepErrorModal';
 import { SeriesEditor } from './wizard/SeriesEditor';
 import { SeriesApplyModal, SeriesApplyState, SeriesPropagateModal, SeriesPropagateState } from './wizard/SeriesModals';
 import { applySeriesPlan, ApplySeriesChoice, changedSeriesGroups, propagateSeriesChange, seriesSnapshot, subDayKey, subTimes } from './wizard/logic/seriesActions';
@@ -595,6 +596,8 @@ export default function EventCreationPage(): React.ReactElement {
   // Kalender-Sub-Events (s. utils/seriesRule).
   const [seriesRule, setSeriesRuleState] = React.useState<SeriesRule | null>(() => (editEvent && editEvent.seriesRule) || null);
   const [seriesOn, setSeriesOn] = React.useState<boolean>(!!(editEvent && editEvent.seriesRule));
+  // v32.0.6: s. zeigeSchrittFehler — oben, weil unten frühe Returns stehen.
+  const [stepErr, setStepErr] = React.useState<StepErrorState | null>(null);
   const [seriesApply, setSeriesApply] = React.useState<SeriesApplyState | null>(null);
   const [seriesPropagate, setSeriesPropagate] = React.useState<SeriesPropagateState | null>(null);
   // Stand des Termins beim Betreten seines Reiters — Vergleichsbasis für
@@ -2405,10 +2408,17 @@ export default function EventCreationPage(): React.ReactElement {
     setVisCopyModalOpen(true);
   };
   // „Weiter" mit Sichtbarkeits-Abfrage.
+  // v32.0.6: Hinweis-Dialog, wenn ein Schritt an Pflichtfeldern scheitert
+  // (s. StepErrorModal) — Weiter, Schritt-Leiste und Event erstellen.
+  const zeigeSchrittFehler = (step: number): void => {
+    const errs = getStepErrorsFor(step);
+    if (errs.length > 0) setStepErr({ step, errs });
+  };
   const proceedNext = (): void => {
     setTriedNext(true);
     const errs = getStepErrors();
     if (errs.length > 0) {
+      setStepErr({ step: currentStep, errs });
       // v28.89: Schritt 1 ist scope-fähig — die Pflichtfelder (Titel, Start,
       // Ende) gehören aber zum Hauptevent bzw. der Klammer. Steht der Reiter
       // auf einem Sub-Event, sind sie nicht einmal sichtbar: „Weiter" täte
@@ -2499,13 +2509,9 @@ export default function EventCreationPage(): React.ReactElement {
   const goToScopeBar = (): void => {
     window.setTimeout(() => {
       scrollWizardTop(document.getElementById('dex-wizard-root'));
-      const el = document.getElementById('dex-scope-bar');
-      if (el) {
-        el.style.transition = 'box-shadow 0.3s';
-        el.style.boxShadow = '0 0 0 3px rgba(134,188,37,0.55)';
-        el.style.borderRadius = '12px';
-        window.setTimeout(() => { el.style.boxShadow = 'none'; }, 2200);
-      }
+      // v32.0.6: Kein grüner Ring mehr um die Reiter-Karte (Nutzer 28.09.2026:
+      // „sieht komisch aus") — der neue Reiter ist ohnehin aktiv markiert, und
+      // der Titel bekommt den Fokus.
       const input = document.getElementById('dex-scope-title') as HTMLInputElement | null;
       if (input) { try { input.focus({ preventScroll: true }); } catch { input.focus(); } }
     }, 60);
@@ -3305,6 +3311,7 @@ export default function EventCreationPage(): React.ReactElement {
     unlimitedParticipants, unsavedConfirmOpen, useSplitCapacities, visCopyModalOpen, waitlistEnabled,
   };
   const wizardFormShellProps = {
+    zeigeSchrittFehler,
     currentStep,
     actionRowRef, actionRowVisible, activeScopeIdx, addQuizQuestion, allowAttendeeUpload, askTeamName,
     attemptSubmitGuarded, attendeeUploadHint, attendeeUploadLabel, basicsStepProps, billingFields, billingPromptOpen,
@@ -3328,6 +3335,13 @@ export default function EventCreationPage(): React.ReactElement {
       <WizardFormShell {...wizardFormShellProps} />
 
       <WizardModals {...wizardModalsProps} />
+      <StepErrorModal
+        state={stepErr}
+        stepLabel={stepErr ? (steps[stepErr.step]?.label || '') : ''}
+        isDe={isDe}
+        onClose={() => setStepErr(null)}
+        onJump={() => { setStepErr(null); springeZumFehlerfeld(wizardRootRef.current); }}
+      />
       {/* v31.99: Rückfragen der Serien-Termine. Der Übertragungs-Dialog nur,
           solange der geänderte Termin noch existiert (entfernt = nichts zu fragen). */}
       <SeriesApplyModal state={seriesApply} isDe={isDe} onCancel={() => setSeriesApply(null)} onConfirm={choice => { if (seriesApply) confirmSeriesApply(seriesApply, choice); }} />

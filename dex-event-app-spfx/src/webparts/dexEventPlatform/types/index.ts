@@ -160,6 +160,8 @@ export interface DeloitteEvent {
   imageInherited?: boolean;
   subsiteUrl?: string;
   outlookBody: string;
+  /** v32.0.6: Outlook-Text noch nicht nachgeladen (Boot ohne OutlookBody) — nie als „leer" zurückschreiben. */
+  outlookBodyPending?: boolean;
   /** v18.42: Betreff des Outlook-Termins. Leer = Event-Titel (Flow-Fallback). */
   outlookSubject?: string;
   /** v18.44: abweichende Start-/End-Zeit des Outlook-Termins (ISO). Leer =

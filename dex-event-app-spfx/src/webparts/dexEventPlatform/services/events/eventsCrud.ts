@@ -23,6 +23,19 @@ import { kompakteZeile } from './deleteSafety'; // v31.62
 const EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,CurrentParticipants,WaitlistEnabled,MandatoryRegistration,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactOrganizerEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,AllDay,ShowAsFree,SkipOrganizerInvite,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableRegistrationEmail,DisableCancellationEmail,AutoDeregisterOnDecline,InactiveHandling,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitDescA,SplitDescB,SplitHelpText,SplitSectionTitle,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl,Modified,Created';
 
 /**
+ * v32.0.6: Die Start-Abfrage OHNE die zwei Riesenspalten. Messung vom
+ * 28.09.2026 (v32.0.5): 36,7 MB für 100 Events, davon OutlookBody 23,5 MB
+ * (eingebackene Bilder im Termin-Text) und EmailImageBase64 4,5 MB — 18 bis
+ * 20 s Boot für JEDE Rolle. EmailImageBase64 übernimmt die App nie in den
+ * Speicher (das Mail-Logo kommt aus EmailTemplateOverrides._eventLogo);
+ * OutlookBody brauchen nur der Assistent und „In Programmpunkte überführen"
+ * — der EventContext lädt ihn nach dem Start im Hintergrund nach
+ * (`getOutlookBodies`) und sperrt diese beiden Stellen, bis er da ist.
+ * Alle ANDEREN Aufrufer von getEvents() lesen weiter die volle Liste.
+ */
+const EVENT_SELECT_SLIM = EVENT_SELECT.split(',').filter(c => c !== 'OutlookBody' && c !== 'EmailImageBase64').join(',');
+
+/**
  * Seed-Events anlegen falls sie nicht existieren (einmalig beim ersten Start).
  */
 export async function seedEvents(svc: EventService): Promise<void> {
@@ -86,10 +99,10 @@ export async function seedEvents(svc: EventService): Promise<void> {
  *   Rechten. Dieselbe Falle wie bei `getAllRegistrations` (CLAUDE.md: „Ein
  *   Lesefehler ist keine Null").
  */
-export async function getEvents(svc: EventService, onHttpError?: (_status: number) => void): Promise<SPEvent[]> {
+export async function getEvents(svc: EventService, onHttpError?: (_status: number) => void, slim?: boolean): Promise<SPEvent[]> {
   try {
     const response = await svc._sp.get(
-      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${EVENT_SELECT}&$orderby=StartDate desc&$top=100`,
+      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${slim ? EVENT_SELECT_SLIM : EVENT_SELECT}&$orderby=StartDate desc&$top=100`,
       SPHttpClient.configurations.v1
     );
     if (!response.ok) { if (onHttpError) onHttpError(response.status); return []; }
@@ -135,6 +148,31 @@ export async function getEvents(svc: EventService, onHttpError?: (_status: numbe
   } catch {
     if (onHttpError) onHttpError(0);
     return [];
+  }
+}
+
+/**
+ * v32.0.6: Die Outlook-Texte derselben Zeilen wie getEvents(slim) — für den
+ * Hintergrund-Nachlauf nach dem Start. `null` = nicht lesbar (dann bleiben
+ * die Sperren stehen; ein Lesefehler ist kein leerer Text).
+ */
+export async function getOutlookBodies(svc: EventService, ids?: string[]): Promise<Record<string, { body: string; modified: string }> | null> {
+  try {
+    // Mit ids: nur diese Zeilen (nach einem Speichern), sonst dieselben 100 wie der Boot.
+    const nummern = (ids || []).filter(id => /^\d+$/.test(id));
+    const filter = nummern.length ? `&$filter=${encodeURIComponent(nummern.map(id => `Id eq ${id}`).join(' or '))}` : '';
+    const response = await svc._sp.get(
+      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Id,Modified,OutlookBody${filter}&$orderby=StartDate desc&$top=100`,
+      SPHttpClient.configurations.v1
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    const out: Record<string, { body: string; modified: string }> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const r of (data.value || []) as any[]) out[String(r.Id)] = { body: r.OutlookBody || '', modified: r.Modified || '' };
+    return out;
+  } catch {
+    return null;
   }
 }
 
