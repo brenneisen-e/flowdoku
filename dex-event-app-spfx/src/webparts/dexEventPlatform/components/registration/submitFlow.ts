@@ -22,8 +22,11 @@ import { selfCancelLocked } from '../../utils/cancelPolicy';
 import { addPendingShadowParent, removePendingShadowParent } from '../../utils/shadowHeal';
 import { Locale } from '../../context/LanguageContext';
 import { DeloitteEvent, Salutation } from '../../types';
+import { positionRuleAllows } from '../../utils/positionRule';
 
 export interface SubmitFlowCtx {
+  /** v32.2.2: Position der angemeldeten Person — Fragen mit Positions-Regel sind sonst ausgeblendet und dürfen nicht als Pflicht blockieren. */
+  zielPosition: string;
   assistantModalDecidedRef: React.MutableRefObject<boolean>;
   cancelRegistration: (eventId: string, opts?: { suppressNotifications?: boolean; skipReload?: boolean; }) => Promise<boolean>;
   canCreateEvents: boolean;
@@ -145,7 +148,7 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
     setConfirmDialogAck, setConfirmDialogOpen, setConfirmDraftParent, setConfirmDraftSessions, setError, setExternalEmailWarning,
     setFallbackDialog, setIsSubmitting, setSessionsOnlySubmitted, setShowErrors, setSubmitProgress, setSubmitProgressLabel,
     setSubmitted, setSubmittedAsCancellation, setSubmittedAsWaitlist, setSubmittedJoinKind, showAlert, starterCounts, submittedSessionsRef,
-    submittedWaitlistRef,
+    submittedWaitlistRef, zielPosition,
     subOnlyTerms, surname, t, teamMemberFields, teamMembersParsed, teamName,
     teamValidation, thirdPartyCheck, updateMyRegistration, uploadFieldDocument, userResults, userSearchIncludeIntl,
     willRegisterParent,
@@ -366,6 +369,7 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
         if (sessionMeta[ce.id]?.wasRegistered) return;
         const values = sessionFieldValues[ce.id] || {};
         (ce.eventSpecificFields || []).filter(f => f && f.label && f.required && f.type !== 'document').forEach(f => {
+          if (!positionRuleAllows(f.showForPositions, zielPosition)) return;
           if (f.showIf && f.showIf.fieldId) {
             const raw = (values[f.showIf.fieldId] || '').trim();
             const answers = !raw ? [] : (raw.indexOf(' | ') >= 0 ? raw.split(' | ').map(s => s.trim()).filter(Boolean) : [raw]);
@@ -406,6 +410,7 @@ export function createSubmitFlow(c: SubmitFlowCtx): SubmitFlow {
             if (eventSpecific['b2run_infoservice'] !== 'true') return false;
             return !eventSpecific[f.id]?.trim();
           }
+          if (!positionRuleAllows(f.showForPositions, zielPosition)) return false;
           // v7.21: Felder mit nicht erfüllter Sichtbarkeitsbedingung sind
           // ausgeblendet und dürfen die Validation nicht blockieren.
           if (f.showIf && f.showIf.fieldId) {

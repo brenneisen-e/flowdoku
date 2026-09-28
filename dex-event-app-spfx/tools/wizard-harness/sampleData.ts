@@ -32,6 +32,12 @@ export const d = (offsetDays: number, hh: number, mm = 0): string => {
   return x.toISOString();
 };
 export const day = (offsetDays: number): string => d(offsetDays, 9).slice(0, 10);
+/** „19.11.2026" relativ zu heute — für Auswahl-Felder mit Daten (Kalender). */
+export const dmy = (offsetDays: number): string => {
+  const x = new Date();
+  x.setDate(x.getDate() + offsetDays);
+  return `${String(x.getDate()).padStart(2, '0')}.${String(x.getMonth() + 1).padStart(2, '0')}.${x.getFullYear()}`;
+};
 
 /* Ein Platzhalter-Bild als Data-URI. SharePoint-Bilder gibt es hier nicht, und
  * eine leere Kachel sagt nichts über das Layout mit Bild. */
@@ -118,6 +124,16 @@ export const sommerFelder: any[] = [
     options: ['S', 'M', 'L', 'XL', 'S', 'M', 'L', 'XL'],
     optionCategories: ['Damen', 'Damen', 'Damen', 'Damen', 'Herren', 'Herren', 'Herren', 'Herren'],
     prefilterLabel: 'Größentabelle',
+  },
+  // v32.2.2: Antworten sind Daten → Kalender auf der Anmeldeseite.
+  {
+    id: 'tage', label: 'An welchen Tagen bist du dabei?', type: 'select', required: true, multi: true,
+    options: [30, 31, 32, 33, 34].map(o => dmy(o)),
+  },
+  // v32.2.2: Positions-Regel — der Harness-Nutzer ist Manager, die Frage bleibt sichtbar.
+  {
+    id: 'partnerdinner', label: 'Kommst du zum Partner-Dinner?', type: 'checkbox', required: false,
+    showForPositions: { mode: 'only', values: ['Partner', 'Director'] },
   },
 ];
 

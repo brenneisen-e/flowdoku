@@ -230,7 +230,10 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
             Stil des gepinnten Kopfs (Nutzer-Ansage 28.09.2026: „die 10 Schritte
             in der Sticky-Box finde ich schöner — pack die immer in diese weiße
             Box"). Ungepinnt nur ohne fixed/Schatten-Kante. */}
-        {!isEditMode && tutorial.canCoach && !tutorial.coachActive && (
+        {/* v32.2.2: nur beim frisch geöffneten neuen Event in Schritt 1
+            (Nutzer-Ansage 28.09.2026) — mitten im Ausfüllen wäre der Knopf
+            ein Angebot, das den eigenen Stand verlässt. */}
+        {!isEditMode && tutorial.canCoach && !tutorial.coachActive && currentStep === 0 && draftSavedAt === null && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
             <button type="button" className="dex-ui-chip" onClick={tutorial.startCoach}
               title={isDe ? 'Wir legen zusammen ein Test-Event an — du tippst und klickst selbst. Nur du siehst es, am Ende löschst du es mit einem Klick.' : 'We create a test event together — you type and click yourself. Only you see it; delete it with one click at the end.'}

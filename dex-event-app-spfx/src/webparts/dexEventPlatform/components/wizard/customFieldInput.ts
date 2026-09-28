@@ -53,6 +53,8 @@ export interface CustomFieldInput {
   /** v7.21: Sichtbarkeitsbedingung — Feld nur anzeigen wenn das Quell-Feld
    *  einen der `values` als Antwort hat. */
   showIf?: { fieldId: string; values: string[] };
+  /** v32.2.2: Frage nur für bestimmte Positionen (utils/positionRule). */
+  showForPositions?: { mode: 'only' | 'except'; values: string[] };
   /** v10.24: Bei aktiver Split-Capacity Feld nur für eine der zwei
    *  Gruppen sichtbar machen ('A' = Durchstarter / Gruppe A, 'B' =
    *  Funstarter / Gruppe B). 'all' / undefined = beide Gruppen. */

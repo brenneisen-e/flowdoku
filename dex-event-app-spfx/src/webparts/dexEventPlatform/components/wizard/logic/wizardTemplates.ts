@@ -248,6 +248,7 @@ export async function applyEventTemplateImpl(ctx: ApplyEventTemplateCtx, ev: imp
         ...(f.helpText ? { helpText: f.helpText } : {}),
         ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
         ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
+        ...(f.showForPositions ? { showForPositions: { mode: f.showForPositions.mode, values: [...f.showForPositions.values] } } : {}),
         ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
         ...(f.confirmLabel ? { confirmLabel: f.confirmLabel } : {}),
         ...(f.labelEn ? { labelEn: f.labelEn } : {}),

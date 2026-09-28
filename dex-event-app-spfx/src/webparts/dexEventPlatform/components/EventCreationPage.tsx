@@ -136,7 +136,16 @@ export default function EventCreationPage(): React.ReactElement {
   const resumeIdRef = React.useRef<string | null>(navIntent === 'resume-draft'
     ? (peekResumeDraftId() || (readEventDraft() ? (readEventDraft() as { id: string }).id : null))
     : null);
-  const [tcAccepted, setTcAccepted] = React.useState<boolean>(() => !!resumeIdRef.current && !!(readEventDraftById(resumeIdRef.current)?.tcAccepted));
+  // v32.2.1: Im Mitmach-Tutorial gilt eine frühere Bestätigung derselben
+  // Person (Nutzer-Befund 28.09.2026: „obwohl man vorher schon Datenschutz
+  // bestätigt hat, kommt nochmal die Abfrage"). Beim normalen Anlegen bleibt
+  // die Bestätigung je Entwurf (v31.61) — das Test-Event ist kein echtes.
+  const coachAtStart = useTutorial().coachActive && currentPage !== 'edit-event';
+  const [tcAccepted, setTcAccepted] = React.useState<boolean>(() => {
+    if (resumeIdRef.current && readEventDraftById(resumeIdRef.current)?.tcAccepted) return true;
+    if (coachAtStart) { try { return !!window.localStorage.getItem('dex_tc_accepted_v1'); } catch { return false; } }
+    return false;
+  });
   const [tcCheckbox, setTcCheckbox] = React.useState(false);
   // v28.41: Zweite, bewusst getrennte Bestätigung — der Organizer muss aktiv
   // erklären, dass es ein internes Event ist bzw. die Deloitte-Teilnahme an

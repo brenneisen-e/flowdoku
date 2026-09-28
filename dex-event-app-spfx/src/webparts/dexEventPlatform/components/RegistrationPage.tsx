@@ -35,6 +35,9 @@ import StayRangePicker from './StayRangePickerLazy';
 import { dlog } from '../utils/debugLog';
 import { isoToLocal } from '../utils/berlinTime';
 import { looksLikeAssistantJobTitle } from '../utils/jobTitleHeuristics';
+import { positionRuleAllows } from '../utils/positionRule';
+import { optionsAsDates } from '../utils/optionDates';
+import { OptionDateCalendar } from './registration/OptionDateCalendar';
 
 // v30.66: Modul-Ebene (Formatierer, Sanitizer, CollapsibleSection, Bild-Cache)
 // liegt in einer eigenen Datei — die ausgelagerten Teilbaeume der Seite brauchen
@@ -1235,6 +1238,10 @@ export default function RegistrationPage(): React.ReactElement {
     // fehlte das Feld und die Profil-Karte zeigte „— nicht hinterlegt".
     company?: string;
   } | null>(null);
+  // v32.2.2: Position der Person, für die angemeldet wird — Grundlage der
+  // Fragen-Regel (nur für bestimmte Positionen). Stellvertretend ohne
+  // geladenes Profil = leer = Frage wird gezeigt (positionRuleAllows).
+  const zielPosition = registerForOther ? ((pickedUserProfile && pickedUserProfile.jobTitle) || '') : (currentUser.jobTitle || '');
   const [isSearchingUser, setIsSearchingUser] = React.useState(false);
   const [userSearchIncludeIntl, setUserSearchIncludeIntl] = React.useState(false);
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1545,6 +1552,7 @@ export default function RegistrationPage(): React.ReactElement {
       (useEnHere && f.optionsEn && f.optionsEn[idx] && f.optionsEn[idx].trim()) ? f.optionsEn[idx] : opt;
     const fields = (ce.eventSpecificFields || [])
       .filter(f => f && f.label)
+      .filter(f => positionRuleAllows(f.showForPositions, zielPosition))
       .filter(f => {
         if (!f.showIf || !f.showIf.fieldId) return true;
         const raw = (values[f.showIf.fieldId] || '').trim();
@@ -1576,7 +1584,18 @@ export default function RegistrationPage(): React.ReactElement {
                   {f.required && <span style={{ color: 'var(--dex-red, #c00)', marginLeft: 4 }}>*</span>}
                   {fHelp(f) && <InfoTooltip text={fHelp(f)} />}
                 </label>
-                {f.type === 'select' && f.multi ? (
+                {f.type === 'select' && optionsAsDates(f.options, ce.startDate) ? (
+                  <OptionDateCalendar
+                    options={f.options || []}
+                    dates={optionsAsDates(f.options, ce.startDate) || []}
+                    labels={(f.options || []).map((o, i) => fOpt(f, o, i))}
+                    multi={!!f.multi}
+                    value={val}
+                    onChange={next => setValue(f.id, next)}
+                    isDe={locale === 'de'}
+                    error={missing}
+                  />
+                ) : f.type === 'select' && f.multi ? (
                   // v31.9: Mehrfachauswahl als Chip-Reihe — dieselbe Form, die
                   // `SubEventFieldsModal` für genau diese Felder schon zeigt
                   // (UI-Leitfaden 2b). Der gespeicherte Wert bleibt „A | B".
@@ -1666,6 +1685,7 @@ export default function RegistrationPage(): React.ReactElement {
         const visibleSpecificFields = event.eventSpecificFields
           .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
           .filter(f => !(f.id === 'b2run_startblock' && hasStarterBlockMapping))
+          .filter(f => positionRuleAllows(f.showForPositions, zielPosition))
           .filter(f => {
             if (!f.showIf || !f.showIf.fieldId) return true;
             const raw = (eventSpecific[f.showIf.fieldId] || '').trim();
@@ -1710,7 +1730,7 @@ export default function RegistrationPage(): React.ReactElement {
     setConfirmDialogAck, setConfirmDialogOpen, setConfirmDraftParent, setConfirmDraftSessions, setError, setExternalEmailWarning,
     setFallbackDialog, setIsSubmitting, setSessionsOnlySubmitted, setShowErrors, setSubmitProgress, setSubmitProgressLabel,
     setSubmitted, setSubmittedAsCancellation, setSubmittedAsWaitlist, setSubmittedJoinKind, showAlert, starterCounts, submittedSessionsRef,
-    submittedWaitlistRef,
+    submittedWaitlistRef, zielPosition,
     subOnlyTerms, surname, t, teamMemberFields, teamMembersParsed, teamName,
     teamValidation, thirdPartyCheck, updateMyRegistration, uploadFieldDocument, userResults, userSearchIncludeIntl,
     willRegisterParent,
@@ -2437,7 +2457,19 @@ export default function RegistrationPage(): React.ReactElement {
       {inlineHelpSlot}
       </>
     )}
-    {field.type === 'select' && field.multi ? (
+    {field.type === 'select' && !(field.optionCategories && field.optionCategories.some(c => (c || '').trim())) && optionsAsDates(field.options, event?.startDate) ? (
+      // v32.2.2: Antworten sind Daten → Kalender statt Dropdown (utils/optionDates).
+      <OptionDateCalendar
+        options={field.options || []}
+        dates={optionsAsDates(field.options, event?.startDate) || []}
+        labels={useEnVariants ? (field.options || []).map((o, i) => pickOptionLabel(field, i, o)) : undefined}
+        multi={!!field.multi}
+        value={vals[field.id] || ''}
+        onChange={next => setVals({ ...vals, [field.id]: next })}
+        isDe={locale === 'de'}
+        error={!!(showErrors && field.required && !(vals[field.id] || '').trim())}
+      />
+    ) : field.type === 'select' && field.multi ? (
       // v11.89: Multi-Select-Dropdown — gleicher Look wie Single-Select,
       // beim Aufklappen Checkboxen pro Option. Werte werden weiterhin
       // " | "-getrennt im selben Feld vals[field.id]
@@ -2736,7 +2768,7 @@ export default function RegistrationPage(): React.ReactElement {
   };
   const subEventFieldsModalProps = {
     childEvents, childTermSingular, locale, pendingSubEventModal, setPendingSubEventModal, setSelectedSessions,
-    setSessionFieldValues,
+    setSessionFieldValues, zielPosition,
   };
   const locationBannerProps = {
     currentUser, event, t,
@@ -2782,7 +2814,7 @@ export default function RegistrationPage(): React.ReactElement {
     renderRegField, renderSubEventInlineFields, resolveMainEventLabel, selectedSessions, sessionFieldValues, sessionMeta,
     setDayHoverKey, setEventSpecific, setPendingSubEventModal, setPreferredStarterType, setRegisterForParent, setSelectedSessions,
     setSessionFieldValues, showErrors, splitLabelA, splitLabelB, starterCounts, subOpenFrom,
-    t, tEvent,
+    t, tEvent, zielPosition,
   };
   const registrationActionBarProps = {
     childEvents, childOneDe, childTermPlural, childTermSingular, email, event,

@@ -15,6 +15,7 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import { Locale } from '../../context/LanguageContext';
 import { DeloitteEvent, EventSpecificField } from '../../types';
 import { groupSubEventTabs, stripGroupPrefix } from '../../utils/subEventGroups';
+import { positionRuleAllows } from '../../utils/positionRule';
 // v31.9: Inline-Styles können kein :hover — die Gruppen-Kacheln und die
 // Termin-Haken lasen sich deshalb wie Beschriftungen statt wie Bedienelemente.
 import { cx } from '../dexUi';
@@ -22,6 +23,8 @@ import { AlertCircle, Check, ChevronDown } from '../Icons';
 
 /** Station 3 — Starter-Typ, Sub-Event-Auswahl und eventspezifische Felder. */
 export interface EventSpecificSectionProps {
+  /** v32.2.2: Position der angemeldeten Person (Fragen-Regel). */
+  zielPosition: string;
   childEvents: DeloitteEvent[];
   childOneDe: string;
   childTermPlural: string;
@@ -69,7 +72,7 @@ export interface EventSpecificSectionProps {
   tEvent: (key: string) => string;
 }
 export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => {
-  const { childEvents, childOneDe, childTermPlural, childTermSingular, dayHoverKey, durchCap, event, eventSpecific, funCap, hasStarterBlockMapping, hiddenChildCount, isAdmin, isMobile, isOrganizer, isSessionsOnlyMode, isSplitGroup, locale, parentAlreadyRegistered, parentFullNoWaitlist, parentRegBlocked, preferredStarterType, registerForOther, registerForParent, renderMainFieldsSection, renderRegField, renderSubEventInlineFields, resolveMainEventLabel, selectedSessions, sessionFieldValues, sessionMeta, setDayHoverKey, setEventSpecific, setPendingSubEventModal, setPreferredStarterType, setRegisterForParent, setSelectedSessions, setSessionFieldValues, showErrors, splitLabelA, splitLabelB, starterCounts, subOpenFrom, t, tEvent } = p;
+  const { childEvents, childOneDe, childTermPlural, childTermSingular, dayHoverKey, durchCap, event, eventSpecific, funCap, hasStarterBlockMapping, hiddenChildCount, isAdmin, isMobile, isOrganizer, isSessionsOnlyMode, isSplitGroup, locale, parentAlreadyRegistered, parentFullNoWaitlist, parentRegBlocked, preferredStarterType, registerForOther, registerForParent, renderMainFieldsSection, renderRegField, renderSubEventInlineFields, resolveMainEventLabel, selectedSessions, sessionFieldValues, sessionMeta, setDayHoverKey, setEventSpecific, setPendingSubEventModal, setPreferredStarterType, setRegisterForParent, setSelectedSessions, setSessionFieldValues, showErrors, splitLabelA, splitLabelB, starterCounts, subOpenFrom, t, tEvent, zielPosition } = p;
   // v30.76: Termin-Liste nach gemeinsamem Präfix gruppieren („Day 1 - …"),
   // mit derselben Entscheidung wie Organizer Center und Wizard
   // (utils/subEventGroups). Nutzer-Ansage 07.09.2026: „genauso wie beim
@@ -299,6 +302,7 @@ export const EventSpecificSection: React.FC<EventSpecificSectionProps> = (p) => 
                   const groupSpec = event.eventSpecificFields
                     .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
                     .filter(f => !(f.id === 'b2run_startblock' && hasStarterBlockMapping))
+                    .filter(f => positionRuleAllows(f.showForPositions, zielPosition))
                     .filter(f => {
                       if (!f.showIf || !f.showIf.fieldId) return true;
                       const raw = (eventSpecific[f.showIf.fieldId] || '').trim();

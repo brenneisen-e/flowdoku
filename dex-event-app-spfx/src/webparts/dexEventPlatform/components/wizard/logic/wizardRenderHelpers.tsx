@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { POSITION_PRESETS } from '../../../utils/positionRule'; // v32.2.2
 import { shortSubEventTitle } from '../../../utils/subEventTitle';
 import { StickyTabStrip } from '../../wizard/StickyTabStrip';
 import { InfoTooltip } from '../../InfoTooltip';
@@ -261,7 +262,7 @@ export function renderShowIfConfigImpl(ctx: RenderShowIfConfigCtx, field: Custom
                       // Werte als dex-ui-chip statt Eigenbau-Pillen — dieselbe Optik wie
                       // überall, und endlich ein Hover.
                       const srcSelectStyle: React.CSSProperties = { width: 'auto', minWidth: 180, maxWidth: 320, padding: '6px 32px 6px 10px', fontSize: '0.84rem' };
-                      return (
+                      const antwortBlock = (
                         <div style={!field.showIf
                           ? { marginLeft: 32, marginTop: 6 }
                           : { marginLeft: 32, marginTop: 10, padding: '10px 14px', background: 'var(--dex-gray-50, #fafafa)', border: '1px dashed var(--dex-gray-300)', borderRadius: 12 }}>
@@ -390,6 +391,73 @@ export function renderShowIfConfigImpl(ctx: RenderShowIfConfigCtx, field: Custom
                           )}
                         </div>
                       );
+                      // v32.2.2: Zweite Bedingung — nach Position (Nutzer-Ansage
+                      // 28.09.2026: „nur anzeigen, wenn man eine bestimmte Position
+                      // hat, z.B. alle, die nicht Partner oder Director sind").
+                      // Regel und Abgleich: utils/positionRule.
+                      const pr = field.showForPositions;
+                      const setPr = (next: { mode: 'only' | 'except'; values: string[] } | undefined): void => {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        onUpdate({ showForPositions: next as any });
+                      };
+                      const positionBlock = !pr ? (
+                        <div style={{ marginLeft: 32, marginTop: 4 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                            <button type="button" className="dex-ui-textbtn" onClick={() => setPr({ mode: 'except', values: ['Partner', 'Director'] })}>
+                              <Plus size={14} /> {isDe ? 'Nur für bestimmte Positionen anzeigen' : 'Show only for certain positions'}
+                            </button>
+                            <InfoTooltip
+                              text={isDe
+                                ? 'Die Frage erscheint nur für Personen mit (oder ohne) bestimmte Position laut Microsoft-Profil. Verglichen wird als Teil-Text: „Partner" trifft auch „Associate Partner", „Manager" auch „Senior Manager". Ist keine Position hinterlegt, wird die Frage gezeigt. Ausgeblendete Pflichtfragen blockieren die Anmeldung nicht.'
+                                : 'The question only appears for people with (or without) certain positions per their Microsoft profile. Matching is by partial text: “Partner” also matches “Associate Partner”, “Manager” also “Senior Manager”. Without a position on file, the question is shown. Hidden required questions do not block registration.'}
+                            />
+                          </span>
+                        </div>
+                      ) : (
+                        <div style={{ marginLeft: 32, marginTop: 10, padding: '10px 14px', background: 'var(--dex-gray-50, #fafafa)', border: '1px dashed var(--dex-gray-300)', borderRadius: 12 }}>
+                          <div className="dex-ui-stack" style={{ gap: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              <span className="dex-ui-label" style={{ marginBottom: 0, fontSize: '0.82rem' }}>{isDe ? 'Diese Frage sehen' : 'This question is shown to'}</span>
+                              {(['only', 'except'] as const).map(m => (
+                                <button key={m} type="button" className={cx('dex-ui-chip', pr.mode === m && 'is-active')} onClick={() => setPr({ mode: m, values: pr.values })}>
+                                  {pr.mode === m && <Check size={12} />}
+                                  {m === 'only' ? (isDe ? 'nur diese Positionen' : 'only these positions') : (isDe ? 'alle außer diesen' : 'everyone except these')}
+                                </button>
+                              ))}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              {Array.from(new Set(POSITION_PRESETS.concat(pr.values))).map(pos => {
+                                const on = pr.values.some(v => v.toLowerCase() === pos.toLowerCase());
+                                return (
+                                  <button key={pos} type="button" className={cx('dex-ui-chip', on && 'is-active')}
+                                    onClick={() => setPr({ mode: pr.mode, values: on ? pr.values.filter(v => v.toLowerCase() !== pos.toLowerCase()) : pr.values.concat(pos) })}>
+                                    {on && <Check size={12} />}{pos}
+                                  </button>
+                                );
+                              })}
+                              <input
+                                className="dex-ui-input dex-ui-input--sm"
+                                placeholder={isDe ? 'Weitere Position + Enter' : 'Other position + Enter'}
+                                style={{ width: 190 }}
+                                onKeyDown={e => {
+                                  if (e.key !== 'Enter') return;
+                                  e.preventDefault();
+                                  const v = (e.currentTarget.value || '').trim();
+                                  if (v && !pr.values.some(x => x.toLowerCase() === v.toLowerCase())) setPr({ mode: pr.mode, values: pr.values.concat(v) });
+                                  e.currentTarget.value = '';
+                                }}
+                              />
+                              <button type="button" className="dex-ui-textbtn dex-ui-textbtn--danger" onClick={() => setPr(undefined)} style={{ marginLeft: 'auto' }}>
+                                <X size={14} /> {isDe ? 'Bedingung entfernen' : 'Remove condition'}
+                              </button>
+                            </div>
+                            {pr.values.length === 0 && (
+                              <div className="dex-ui-muted" style={{ fontSize: '0.78rem' }}>{isDe ? 'Keine Position gewählt — die Regel wirkt dann nicht.' : 'No position selected — the rule has no effect.'}</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                      return <>{antwortBlock}{positionBlock}</>;
 }
 
 /* renderGlobalScopeBar — aus EventCreationPage.tsx ausgelagert (Zeilen 3857-3919 des

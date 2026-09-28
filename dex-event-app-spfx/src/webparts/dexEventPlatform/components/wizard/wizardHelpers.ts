@@ -2,6 +2,7 @@
 // Modul-Ebene und werden von den ausgelagerten Logik-Modulen (wizardSubmit,
 // persistSubEvents, outlookChanges) gebraucht — ein Import aus der Seite
 // zurueck waere ein Modul-Zyklus.
+import { cleanPositionRule } from '../../utils/positionRule'; // v32.2.2
 import { CustomFieldInput } from './customFieldInput';
 import { CustomField } from '../../services/EventService';
 
@@ -68,6 +69,7 @@ export function serializeCustomFields(
         ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
         // v18.18: nur persistieren wenn 'inline' (Default 'tooltip' = weglassen).
         ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
+        ...(cleanPositionRule(f.showForPositions) ? { showForPositions: cleanPositionRule(f.showForPositions) } : {}),
         ...(f.showIf && f.showIf.fieldId && f.showIf.values && f.showIf.values.length > 0
           ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
           : {}),
@@ -271,4 +273,40 @@ export async function resolveAudienceMembersToCsv(
     }
   }
   return Array.from(out).join(';');
+}
+
+/**
+ * v32.2.2: Wer aus der Zielgruppe braucht zusätzlich Site-Zugriff (nicht
+ * @deloitte.de)? Nutzer-Befund 28.09.2026: Die Admin-Mail „SharePoint-Zugriff
+ * benötigt" nannte den VERTEILER detttgbcmtransformation@deloitte.com — weil
+ * die Prüfung nur auf die Adresse im Feld schaute. Ein Verteiler braucht
+ * keinen Zugriff, seine Mitglieder schon. Deshalb: Verteiler auflösen (derselbe
+ * Weg wie `resolveAudienceMembersToCsv`) und nur PERSONEN außerhalb von
+ * @deloitte.de melden. Ohne Mitglieder-Antwort gilt die Adresse als Person
+ * (wie bisher). `skipLc` = Einträge, die schon vorher in der Zielgruppe
+ * standen (Bearbeiten: nur Neues melden).
+ */
+export async function externeZielgruppenPersonen(
+  audienceCsv: string,
+  getGroupMembers: (groupEmail: string) => Promise<{ groupName: string; members: Array<{ email: string }> } | null>,
+  skipLc?: Set<string>,
+): Promise<string[]> {
+  const items = (audienceCsv || '').split(',').map(x => x.trim()).filter(x => x.indexOf('@') > 0);
+  const out = new Set<string>();
+  const extern = (e: string): boolean => !!e && !e.toLowerCase().endsWith('@deloitte.de');
+  for (const item of items) {
+    if (skipLc && skipLc.has(item.toLowerCase())) continue;
+    try {
+      const grp = await getGroupMembers(item);
+      if (grp && grp.members && grp.members.length > 0) {
+        for (const m of grp.members) {
+          const e = (m.email || '').trim().toLowerCase();
+          if (extern(e)) out.add(e);
+        }
+        continue;
+      }
+    } catch { /* wie eine Person behandeln */ }
+    if (extern(item)) out.add(item.toLowerCase());
+  }
+  return Array.from(out);
 }
