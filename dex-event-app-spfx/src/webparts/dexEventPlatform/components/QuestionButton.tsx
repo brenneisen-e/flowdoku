@@ -320,7 +320,7 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
 
   const btnStyle: React.CSSProperties = props.isMobile
     ? { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 8, background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', cursor: 'pointer' }
-    : { display: 'inline-flex', alignItems: 'center', gap: 8, height: 36, padding: '0 14px', borderRadius: 8, background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.12)' };
+    : { display: 'inline-flex', alignItems: 'center', gap: 8, height: 36, padding: '0 14px', borderRadius: 8, background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem', fontFamily: 'inherit', boxShadow: '0 1px 3px rgba(0,0,0,0.12)', whiteSpace: 'nowrap', flexShrink: 0 };
 
   return (
     <>

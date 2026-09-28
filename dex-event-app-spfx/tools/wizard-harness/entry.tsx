@@ -17,6 +17,8 @@ import { NavigationContext } from '../../src/webparts/dexEventPlatform/context/N
 import { EventContext } from '../../src/webparts/dexEventPlatform/context/EventContext';
 import { TicketContext } from '../../src/webparts/dexEventPlatform/context/TicketContext';
 import EventCreationPage from '../../src/webparts/dexEventPlatform/components/EventCreationPage';
+// v32.2.1: Header allein (?page=header bzw. ?page=header-landing).
+import Header from '../../src/webparts/dexEventPlatform/components/Header';
 import LandingPage from '../../src/webparts/dexEventPlatform/components/LandingPage';
 import StartPage from '../../src/webparts/dexEventPlatform/components/StartPage';
 import GlobalSearch from '../../src/webparts/dexEventPlatform/components/GlobalSearch';
@@ -207,6 +209,7 @@ const PAGE_OF: Record<string, string> = {
   wizard: mode === 'edit' ? 'edit-event' : 'create-event',
   landing: 'landing', start: 'start', list: 'register',
   register: 'registration', myevents: 'my-events', overview: 'admin',
+  header: 'admin', 'header-landing': 'landing',
 };
 const SELECTED_OF: Record<string, string | null> = {
   wizard: mode === 'edit' ? '1' : null,
@@ -250,6 +253,8 @@ const PageComponent: React.FC = () => {
     case 'list': return <EventListPage />;
     case 'register': return <RegistrationPage />;
     case 'myevents': return <MyEventsPage />;
+    case 'header':
+    case 'header-landing': return <div style={{ minHeight: 420, background: 'var(--dex-gray-50, #f5f5f5)' }}><Header /></div>;
     case 'overview': {
       const tops = sample.topLevelEvents;
       const noop = async (): Promise<void> => undefined;

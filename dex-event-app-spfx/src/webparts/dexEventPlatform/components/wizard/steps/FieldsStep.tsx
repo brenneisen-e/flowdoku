@@ -846,7 +846,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       {customFields.length > 1 && <span style={{ flex: '0 0 24px' }} />}
                       <span style={autoBadge}>{i + 1}</span>
-                      <span style={{ flex: '0 0 210px', fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Wird automatisch vorbefüllt' : 'Filled in automatically'}</span>
+                      <span style={{ flex: '0 0 210px' }} />
                       <span style={{ flex: '1 1 260px', minWidth: 180, fontSize: '0.9rem', color: 'var(--dex-gray-600)' }}>
                         <strong style={{ fontWeight: 600 }}>{r.label}</strong>
                         <span className="dex-ui-muted" style={{ marginLeft: 8, fontSize: '0.8rem' }}>{isDe ? 'z. B. ' : 'e.g. '}{r.example}</span>

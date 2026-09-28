@@ -64,6 +64,9 @@ export const WizardTermsModal: React.FC<WizardTermsModalProps> = (p) => {
         title={bothChecked ? undefined : (isDe ? 'Bitte bestätige zuerst beide Punkte.' : 'Please confirm both points first.')}
         onClick={() => {
           setTcAccepted(true);
+          // v32.2.1: Merken, dass diese Person die Bedingungen kennt — nur das
+          // Mitmach-Tutorial liest es (Test-Event, s. EventCreationPage).
+          try { window.localStorage.setItem('dex_tc_accepted_v1', String(Date.now())); } catch { /* */ }
           // v29.66: F&A-Pilot — direkt nach dem Akzeptieren fragt der
           // Dialog nach der Abrechnungsrelevanz (nur Admins, nur beim
           // Anlegen; im Edit-Modus erscheinen die Bedingungen nicht).

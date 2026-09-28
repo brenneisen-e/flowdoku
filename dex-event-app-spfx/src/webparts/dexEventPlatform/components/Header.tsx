@@ -14,7 +14,7 @@ import { useDialog } from '../context/DialogContext';
 import { DELOITTE_LOGO_HEADER } from '../data/brandLogos';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
-import { ChevronLeft, Book, RefreshCw, Info, Users } from './Icons';
+import { ChevronLeft, Check, Book, RefreshCw, Info, Users, Menu } from './Icons';
 import { Icon } from '@fluentui/react/lib/Icon';
 import ImpersonateModal from './ImpersonateModal';
 import LandingInfoModal from './LandingInfoModal';
@@ -35,7 +35,17 @@ export default function Header(): React.ReactElement {
   const { currentUserRole, originalIsAdmin, previewAsUser, setPreviewAsUser } = useRoles();
   // v30.43: Hover für den Ansicht-Wechselschalter. Inline-Styles können kein
   // :hover; ohne Reaktion liest sich der Schalter als Beschriftung.
-  const [viewHover, setViewHover] = React.useState<'org' | 'user' | null>(null);
+  // v32.2.1: Demo-Menü (Ansicht + Impersonate), schließt bei Klick daneben.
+  const [demoOpen, setDemoOpen] = React.useState(false);
+  const demoRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (!demoOpen) return undefined;
+    const onDown = (e: MouseEvent): void => { if (demoRef.current && !demoRef.current.contains(e.target as Node)) setDemoOpen(false); };
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') setDemoOpen(false); };
+    window.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey); };
+  }, [demoOpen]);
   const [showImpersonate, setShowImpersonate] = React.useState(false);
   const { events } = useEvents();
   // v22.50: Das frühere Check-in-Icon im Header ist entfallen — der Zugang zur
@@ -205,6 +215,51 @@ export default function Header(): React.ReactElement {
     };
   }, []);
 
+  // v7.26: Sprach-Toggle DE/EN — lässt den User auch im laufenden Tool
+  // zwischen Deutsch und Englisch wechseln. v32.2.1: als Konstante, weil er
+  // am Rechner in der Mitte und am Handy rechts steht.
+  const langToggle = (
+    <div
+      role="group"
+      aria-label={locale === 'de' ? 'Sprache wechseln' : 'Switch language'}
+      style={{
+        display: 'inline-flex', alignItems: 'center',
+        background: 'var(--dex-gray-100, #f3f4f6)',
+        borderRadius: 999, padding: 2, gap: 2,
+        height: 30, alignSelf: 'center',
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => handleLangClick('de')}
+        title="Deutsch"
+        style={{
+          padding: '3px 10px', borderRadius: 999,
+          border: 'none', cursor: 'pointer',
+          fontSize: '0.72rem', fontWeight: 700, fontFamily: 'inherit',
+          background: pickerLang === 'de' ? '#fff' : 'transparent',
+          color: pickerLang === 'de' ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)',
+          boxShadow: pickerLang === 'de' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+          transition: 'all 0.15s ease',
+        }}
+      >DE</button>
+      <button
+        type="button"
+        onClick={() => handleLangClick('en')}
+        title="English"
+        style={{
+          padding: '3px 10px', borderRadius: 999,
+          border: 'none', cursor: 'pointer',
+          fontSize: '0.72rem', fontWeight: 700, fontFamily: 'inherit',
+          background: pickerLang === 'en' ? '#fff' : 'transparent',
+          color: pickerLang === 'en' ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)',
+          boxShadow: pickerLang === 'en' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+          transition: 'all 0.15s ease',
+        }}
+      >EN</button>
+    </div>
+  );
+
   return (
     <div ref={headerPlaceholderRef} style={headerPin ? { height: headerPin.height } : undefined}>
     <header
@@ -227,50 +282,7 @@ export default function Header(): React.ReactElement {
           Für Admins gibt es das Tutorial stattdessen als Kachel im Admin
           Center; Organizer und Teilnehmer behalten die Pille (für sie ist
           es der einzige Einstieg). */}
-      {isLanding && !tutorialCtaHidden && !isMobile && currentUserRole !== 'Admin' && currentUserRole !== 'IT-Admin' && currentUserRole !== 'Organizer' && (
-        <div
-          style={{
-            position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
-            display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
-            background: 'var(--dex-green)', borderRadius: 999,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.10)', maxWidth: 'min(46vw, 460px)',
-          }}
-        >
-          <button
-            type="button"
-            onClick={openTutorial}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-              background: 'transparent', color: '#fff',
-              padding: '9px 6px 9px 18px', borderRadius: 999,
-              fontSize: '0.95rem', lineHeight: 1.2, fontFamily: 'inherit',
-              border: 'none', cursor: 'pointer', overflow: 'hidden',
-            }}
-            title={locale === 'de' ? 'Geführtes Tutorial starten' : 'Start the guided tutorial'}
-          >
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {locale === 'de'
-                ? <><strong>Neu hier?</strong> Starte das DEX Tutorial</>
-                : <><strong>New here?</strong> Start the DEX tutorial</>}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={dismissTutorialCta}
-            aria-label={locale === 'de' ? 'Tutorial-Hinweis ausblenden' : 'Hide tutorial hint'}
-            title={locale === 'de' ? 'Ausblenden (nicht mehr anzeigen)' : 'Hide (do not show again)'}
-            style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: 26, height: 26, marginRight: 6, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.2)', color: '#fff',
-              border: 'none', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, fontFamily: 'inherit',
-            }}
-          >
-            ×
-          </button>
-        </div>
-      )}
-      <div className="header-left">
+      <div className="header-left" style={isMobile ? undefined : { flex: '1 1 0', minWidth: 0 }}>
         {isLanding ? (
           <div className="header-logo">
             {/* v24.17: Header-Variante des offiziellen Deloitte-Logos (Repo-Asset)
@@ -311,190 +323,168 @@ export default function Header(): React.ReactElement {
       {/* v22.50: Globale Such-Leiste — ersetzt das frühere Check-in-Icon im
           Header. Self-gated (nur Admin/Organizer eigener Events). Auf der
           Landing Page ausgeblendet, weil dort der Boot-/Logo-Look gilt. */}
-      {!isLanding && <GlobalSearch />}
-      <div className="header-right">
-        {/* v30.43: Wechselschalter Organizer-/User-Ansicht.
-
-            Vorher stand auf der Anmeldeseite ein blauer Hinweiskasten mit einem
-            Knopf &bdquo;Übersicht als User sehen&ldquo; — vier Zeilen Text über
-            der Seite, nur um EINE Einstellung anzubieten, und sichtbar
-            ausschließlich dort. Als Schalter im Header steht der aktuelle
-            Zustand immer da, gilt appweit und ist mit einem Klick umgelegt.
-
-            Die Sichtbarkeit hängt an der ECHTEN Rolle (`currentUserRole`,
-            `originalIsAdmin`): `isAdmin`/`isOrganizer` sind in der Vorschau
-            abgesenkt — der Schalter würde sich sonst nach dem ersten Klick
-            selbst ausblenden, und man käme nicht zurück. */}
-        {(currentUserRole === 'Organizer' || originalIsAdmin) && (
-          <div
-            role="group"
-            aria-label={locale === 'de' ? 'Ansicht wechseln' : 'Switch view'}
-            style={{
-              display: 'inline-flex', alignItems: 'center',
-              border: '1px solid var(--dex-gray-300, #d0d0d0)',
-              borderRadius: 999, overflow: 'hidden',
-              background: 'var(--dex-gray-50, #fafafa)',
-              height: 34, flexShrink: 0,
-            }}
-          >
-            {([
-              { key: 'org' as const, active: !previewAsUser, label: isMobile ? 'Organizer' : (locale === 'de' ? 'Organizer-Ansicht' : 'Organizer view') },
-              { key: 'user' as const, active: previewAsUser, label: isMobile ? 'User' : (locale === 'de' ? 'User-Ansicht' : 'User view') },
-            ]).map(seg => (
+      {/* v32.2.1: Mitte des Headers (Nutzer-Ansage 28.09.2026: „die
+          Sprachauswahl horizontal zentriert in der Mitte, daneben den
+          Fragen-Button"). Eine Gruppe aus Suche (außer Landing), „Neu hier?"
+          (nur Landing), Sprachauswahl und „Hast du Fragen?". Links und rechts
+          teilen sich den Rest je zur Hälfte (flex 1 1 0) — so steht die
+          Gruppe wirklich in der Mitte, solange Platz ist. Die „Neu hier?"-
+          Pille lag vorher absolut in der Mitte; sie wandert in die Gruppe,
+          sonst lägen beide übereinander. Auf dem Handy bleibt alles rechts. */}
+      {isMobile ? (!isLanding && <GlobalSearch />) : (
+        <div className="header-center" style={{ flex: isLanding ? '0 1 auto' : '0 1 780px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, minWidth: 0 }}>
+          {!isLanding && <GlobalSearch />}
+          {isLanding && !tutorialCtaHidden && !isMobile && currentUserRole !== 'Admin' && currentUserRole !== 'IT-Admin' && currentUserRole !== 'Organizer' && (
+            <div
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+                background: 'var(--dex-green)', borderRadius: 999,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.10)', maxWidth: 'min(46vw, 460px)',
+              }}
+            >
               <button
-                key={seg.key}
                 type="button"
-                aria-pressed={seg.active}
-                onClick={() => setPreviewAsUser(seg.key === 'user')}
-                onMouseEnter={() => setViewHover(seg.key)}
-                onMouseLeave={() => setViewHover(prev => (prev === seg.key ? null : prev))}
-                onFocus={() => setViewHover(seg.key)}
-                onBlur={() => setViewHover(prev => (prev === seg.key ? null : prev))}
-                title={seg.key === 'user'
-                  ? (locale === 'de'
-                    ? 'Die App so sehen, wie reguläre Teilnehmer sie sehen. Reine Ansicht — anmelden kannst du dich darin nicht.'
-                    : 'See the app the way regular attendees do. View only — you cannot register in this mode.')
-                  : (locale === 'de'
-                    ? 'Zurück zur Organizer-Ansicht mit allen Hinweisen und Rechten.'
-                    : 'Back to the organizer view with all notices and rights.')}
+                onClick={openTutorial}
                 style={{
-                  border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                  padding: isMobile ? '0 10px' : '0 14px', height: '100%',
-                  fontSize: '0.78rem', fontWeight: seg.active ? 700 : 500, lineHeight: 1,
-                  whiteSpace: 'nowrap',
-                  background: seg.active
-                    ? 'var(--dex-green, #86bc25)'
-                    : (viewHover === seg.key ? 'rgba(134,188,37,0.14)' : 'transparent'),
-                  color: seg.active
-                    ? '#fff'
-                    : (viewHover === seg.key ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700, #555)'),
-                  transition: 'background 120ms ease, color 120ms ease',
+                  display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
+                  background: 'transparent', color: '#fff',
+                  padding: '9px 6px 9px 18px', borderRadius: 999,
+                  fontSize: '0.95rem', lineHeight: 1.2, fontFamily: 'inherit',
+                  border: 'none', cursor: 'pointer', overflow: 'hidden',
+                }}
+                title={locale === 'de' ? 'Geführtes Tutorial starten' : 'Start the guided tutorial'}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {locale === 'de'
+                    ? <><strong>Neu hier?</strong> Starte das DEX Tutorial</>
+                    : <><strong>New here?</strong> Start the DEX tutorial</>}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={dismissTutorialCta}
+                aria-label={locale === 'de' ? 'Tutorial-Hinweis ausblenden' : 'Hide tutorial hint'}
+                title={locale === 'de' ? 'Ausblenden (nicht mehr anzeigen)' : 'Hide (do not show again)'}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 26, height: 26, marginRight: 6, borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.2)', color: '#fff',
+                  border: 'none', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, fontFamily: 'inherit',
                 }}
               >
-                {seg.label}
+                ×
               </button>
-            ))}
-          </div>
-        )}
+            </div>
+          )}
+          {langToggle}
+          <span style={{ flexShrink: 0, whiteSpace: 'nowrap', display: 'inline-flex' }}><QuestionButton isMobile={isMobile} /></span>
+        </div>
+      )}
+      <div className="header-right" style={isMobile ? undefined : { flex: '1 1 0', justifyContent: 'flex-end' }}>
         {/* v26: Grüner „Hast du Fragen?"-Button — Ticketsystem für alle User.
             v26.34: jetzt auch auf der Landing Page im Header sichtbar. */}
-        <QuestionButton isMobile={isMobile} />
-        {/* v9.29: Refresh-Button im Header — ersetzt die alten in-page
-            Aktualisieren-Buttons in AdminPage. Nur auf Seiten anzeigen, auf
-            denen ein Refresh sinnvoll ist (Admin Center, Event-Liste,
-            Meine Events, Teilnehmer-Liste). Triggert ein globales Event,
-            das von der jeweiligen Page abgegriffen wird. */}
+        {isMobile && <QuestionButton isMobile={isMobile} />}
+        {/* v9.29: Refresh-Button im Header. v32.2.1: nur das Symbol (Nutzer-
+            Ansage 28.09.2026: „Aktualisieren braucht man nicht ausschreiben,
+            da reicht das Symbol"); der Name steht im Tooltip. */}
         {(currentPage === 'admin' || currentPage === 'register' || currentPage === 'my-events' || currentPage === 'participants') && (
           <button
             className="header-icon-btn"
             onClick={() => { window.dispatchEvent(new CustomEvent('dex-refresh-page')); }}
             title={locale === 'de' ? 'Aktualisieren' : 'Refresh'}
             aria-label={locale === 'de' ? 'Aktualisieren' : 'Refresh'}
-            style={isMobile ? {} : { width: 'auto', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 8 }}
           >
             <RefreshCw size={18} />
-            {!isMobile && (
-              <span style={{ fontSize: '0.85rem', fontWeight: 500, lineHeight: 1 }}>
-                {locale === 'de' ? 'Aktualisieren' : 'Refresh'}
-              </span>
-            )}
           </button>
         )}
-        {/* v24.69: „Demo: als User testen" aus dem User-Menü in den Header
-            verlegt (nur echte Admins). Öffnet den Impersonate-Dialog. */}
-        {originalIsAdmin && (
+        {/* v32.2.1: Steht die User-Ansicht an, sagt der Header es — sonst
+            verschwände der Zustand im Menü, und man wundert sich über
+            fehlende Kacheln. Ein Klick schaltet zurück. */}
+        {previewAsUser && (currentUserRole === 'Organizer' || originalIsAdmin) && (
           <button
-            className="header-icon-btn"
-            onClick={() => setShowImpersonate(true)}
-            title={locale === 'de' ? 'Demo: als User testen' : 'Demo: test as a user'}
-            style={isMobile ? {} : { width: 'auto', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+            type="button"
+            className="dex-ui-chip is-active"
+            onClick={() => setPreviewAsUser(false)}
+            title={locale === 'de' ? 'Zurück zur Organizer-Ansicht' : 'Back to the organizer view'}
+            style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
           >
-            <Users size={18} />
-            {!isMobile && (
-              <span style={{ fontSize: '0.85rem', fontWeight: 500, lineHeight: 1 }}>
-                {locale === 'de' ? 'Demo' : 'Demo'}
-              </span>
-            )}
+            {locale === 'de' ? 'User-Ansicht · zurück' : 'User view · back'}
           </button>
         )}
-        {/* v24.22: „Über die App" — von der Landing Page in den Header verlegt,
-            links neben „Handbuch". Öffnet dasselbe Info-Modal. */}
-        <button
-          className="header-icon-btn"
-          onClick={() => setShowAbout(true)}
-          title={locale === 'de' ? 'Über die App' : 'About the app'}
-          style={isMobile ? {} : { width: 'auto', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 8 }}
-        >
-          <Info size={18} />
-          {!isMobile && (
-            <span style={{ fontSize: '0.85rem', fontWeight: 500, lineHeight: 1 }}>
-              {locale === 'de' ? 'Über die App' : 'About the app'}
-            </span>
-          )}
-        </button>
-        <button
-          className="header-icon-btn"
-          onClick={() => navigate('manual')}
-          title={t('header.manual')}
-          style={{
-            ...(currentPage === 'manual' ? { background: 'var(--dex-gray-200)' } : {}),
-            // v6.36: Auf Desktop zusätzlich den Text "Handbuch" / "Handbook"
-            // neben dem Icon, weil das Icon allein nicht selbsterklärend ist.
-            // v7.2: explizit flex + alignItems:center, damit Icon und Text
-            // vertikal auf derselben Baseline sitzen (vorher lag der Text
-            // leicht versetzt, weil der Button aus der CSS-Klasse keine
-            // Flex-Alignment-Regel bekommt, wenn wir width:auto setzen).
-            ...(isMobile ? {} : { width: 'auto', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 8 }),
-          }}
-        >
-          <Book size={20} />
-          {!isMobile && (
-            <span style={{ fontSize: '0.85rem', fontWeight: 500, lineHeight: 1 }}>
-              {t('header.manual')}
-            </span>
-          )}
-        </button>
-        {/* v7.26: Sprach-Toggle DE/EN — lässt den User auch im laufenden
-            Tool zwischen Deutsch und Englisch wechseln. Visuell ein kleiner
-            Pill-Toggle im Header-Style. */}
-        <div
-          role="group"
-          aria-label={locale === 'de' ? 'Sprache wechseln' : 'Switch language'}
-          style={{
-            display: 'inline-flex', alignItems: 'center',
-            background: 'var(--dex-gray-100, #f3f4f6)',
-            borderRadius: 999, padding: 2, gap: 2,
-            height: 30, alignSelf: 'center',
-          }}
-        >
+        {isMobile && langToggle}
+        {/* v32.2.1: Burger-Menü statt vier Knöpfen (Nutzer-Ansage 28.09.2026:
+            „ein Burger-Menü, in dem Handbuch, Über die App und Demo drin
+            sind"). Demo umfasst die Ansicht (Organizer/User, v30.43) und für
+            echte Admins „Als bestimmte Person testen" (Impersonate, v24.69).
+            Sichtbarkeit von Demo an der ECHTEN Rolle — in der User-Ansicht
+            sind isAdmin/isOrganizer abgesenkt, der Eintrag darf dann nicht
+            verschwinden. */}
+        <div ref={demoRef} style={{ position: 'relative', flexShrink: 0 }}>
           <button
             type="button"
-            onClick={() => handleLangClick('de')}
-            title="Deutsch"
-            style={{
-              padding: '3px 10px', borderRadius: 999,
-              border: 'none', cursor: 'pointer',
-              fontSize: '0.72rem', fontWeight: 700, fontFamily: 'inherit',
-              background: pickerLang === 'de' ? '#fff' : 'transparent',
-              color: pickerLang === 'de' ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)',
-              boxShadow: pickerLang === 'de' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              transition: 'all 0.15s ease',
-            }}
-          >DE</button>
-          <button
-            type="button"
-            onClick={() => handleLangClick('en')}
-            title="English"
-            style={{
-              padding: '3px 10px', borderRadius: 999,
-              border: 'none', cursor: 'pointer',
-              fontSize: '0.72rem', fontWeight: 700, fontFamily: 'inherit',
-              background: pickerLang === 'en' ? '#fff' : 'transparent',
-              color: pickerLang === 'en' ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)',
-              boxShadow: pickerLang === 'en' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              transition: 'all 0.15s ease',
-            }}
-          >EN</button>
+            className="header-icon-btn"
+            aria-haspopup="menu"
+            aria-expanded={demoOpen}
+            aria-label={locale === 'de' ? 'Menü' : 'Menu'}
+            title={locale === 'de' ? 'Menü: Handbuch, Über die App, Demo' : 'Menu: manual, about the app, demo'}
+            onClick={() => setDemoOpen(o => !o)}
+            style={demoOpen || currentPage === 'manual' ? { background: 'var(--dex-gray-200)' } : undefined}
+          >
+            <Menu size={20} />
+          </button>
+          {demoOpen && (
+            <div role="menu" style={{
+              position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 1200, width: 300,
+              background: '#fff', border: '1px solid var(--dex-gray-200, #e1e1e1)', borderRadius: 12,
+              boxShadow: '0 12px 32px rgba(0,0,0,0.14)', padding: 8,
+            }}>
+              {([
+                { key: 'manual', icon: <Book size={16} />, title: t('header.manual'), sub: locale === 'de' ? 'Anleitungen zu allen Funktionen.' : 'Guides for every feature.', onClick: () => navigate('manual') },
+                { key: 'about', icon: <Info size={16} />, title: locale === 'de' ? 'Über die App' : 'About the app', sub: locale === 'de' ? 'Wofür DEX gedacht ist, Ablauf und Tutorial.' : 'What DEX is for, the flow and the tutorial.', onClick: () => setShowAbout(true) },
+              ]).map(it => (
+                <button key={it.key} type="button" role="menuitem" className="dex-ui-row"
+                  onClick={() => { setDemoOpen(false); it.onClick(); }}
+                  style={{ width: '100%', border: 'none', background: 'transparent', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <span style={{ width: 16, flexShrink: 0, color: 'var(--dex-gray-600)', paddingTop: 2 }}>{it.icon}</span>
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>{it.title}</span>
+                    <span style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500)', lineHeight: 1.4 }}>{it.sub}</span>
+                  </span>
+                </button>
+              ))}
+              {(currentUserRole === 'Organizer' || originalIsAdmin) && (<>
+                <div style={{ height: 1, background: 'var(--dex-gray-200)', margin: '6px 4px' }} />
+                <div style={{ padding: '6px 10px 4px', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--dex-gray-500)' }}>
+                  {locale === 'de' ? 'Demo · Ansicht' : 'Demo · view'}
+                </div>
+                {([
+                  { key: 'org' as const, active: !previewAsUser, title: locale === 'de' ? 'Organizer-Ansicht' : 'Organizer view', sub: locale === 'de' ? 'Mit allen Hinweisen und Rechten.' : 'With all notices and rights.' },
+                  { key: 'user' as const, active: previewAsUser, title: locale === 'de' ? 'User-Ansicht' : 'User view', sub: locale === 'de' ? 'So sehen Teilnehmer die App — reine Ansicht, anmelden geht darin nicht.' : 'How attendees see the app — view only, no registering.' },
+                ]).map(it => (
+                  <button key={it.key} type="button" role="menuitemradio" aria-checked={it.active} className="dex-ui-row"
+                    onClick={() => { setPreviewAsUser(it.key === 'user'); setDemoOpen(false); }}
+                    style={{ width: '100%', border: 'none', background: it.active ? 'rgba(134,188,37,0.09)' : 'transparent', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                    <span style={{ width: 16, flexShrink: 0, color: 'var(--dex-green-dark, #4a7c1f)', paddingTop: 2 }}>{it.active && <Check size={14} />}</span>
+                    <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontSize: '0.86rem', fontWeight: it.active ? 700 : 600, color: 'var(--dex-gray-800)' }}>{it.title}</span>
+                      <span style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500)', lineHeight: 1.4 }}>{it.sub}</span>
+                    </span>
+                  </button>
+                ))}
+                {originalIsAdmin && (
+                  <button type="button" role="menuitem" className="dex-ui-row"
+                    onClick={() => { setDemoOpen(false); setShowImpersonate(true); }}
+                    style={{ width: '100%', border: 'none', background: 'transparent', borderRadius: 8, padding: '8px 10px', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                    <span style={{ width: 16, flexShrink: 0, color: 'var(--dex-gray-600)', paddingTop: 2 }}><Users size={16} /></span>
+                    <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>{locale === 'de' ? 'Als bestimmte Person testen' : 'Test as a specific person'}</span>
+                      <span style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500)', lineHeight: 1.4 }}>{locale === 'de' ? 'Die App mit Rolle und Standort einer anderen Person ansehen.' : 'See the app with another person’s role and location.'}</span>
+                    </span>
+                  </button>
+                )}
+              </>)}
+            </div>
+          )}
         </div>
         {/* v24.11: Hinweis-Chip RECHTS neben dem Picker, grün — „Organizer set
             the language ... for this registration form". */}
