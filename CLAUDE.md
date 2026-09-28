@@ -361,6 +361,24 @@ baut, die `event.outlookBody` aus dem State liest und zurückschreibt: erst
 Aufrufer lesen weiter die volle Zeile. Die Messung steht in
 `[DEX][perf][getEvents] schwerste Spalten` (ab 2 MB).
 
+**Seit v32.0.10 liegen die Mail-Bilder NICHT mehr in `EmailTemplateOverrides`.**
+`_eventLogo` (4,5 MB) und `_outlookLogo` (3,4 MB) wandern beim Schreiben in
+`eventsCrud.logosAuslagern` — dem Engpass von `createEvent`/`updateEvent` —
+in die Spalten `EmailImageBase64` bzw. `OutlookLogoBase64`; das JSON trägt
+den Merker `_logosAusgelagert` (1 = Mail-Logo, 2 = beide). Der Hintergrund-
+Nachlauf (`getOutlookBodies`) holt die Spalten mit, `EventContext.mitLogos`
+setzt sie ins JSON im SPEICHER zurück — alle Stellen, die `o._eventLogo`
+lesen, bleiben unverändert. Drei Regeln: (1) Fehlt ein Bild im JSON, wird
+die Spalte nur bei einem vollständigen Kommunikations-Write geleert
+(`EmailImageBase64` steht mit im Update, also Wizard/persistSubEvents).
+(2) `OutlookLogoBase64` nur, wenn die Spalte existiert (`hatEventsSpalte`),
+sonst bleibt das Bild im JSON. (3) Wer die Overrides roh aus SharePoint
+liest (`patchEventOverridesKey/Value`), sieht dort keine Bilder — das ist
+richtig so. Das gewählte Event im Organizer Center ist eine Kopie und zieht
+Text und Bilder nach (`useEventSelection`). Bestand: Rollenverwaltung →
+„Mail-Bilder auslagern (alle Events)". Die Flows lesen nur die Spalte
+`EmailImageBase64` — keine Flow-Änderung nötig.
+
 **Personen für Subsite-Rechte über `ensureuser` auflösen, nie nur über
 `siteusers/getbyemail` (v31.84).** Wer die Site-Collection nie besucht hat,
 steht nicht in der User Information List; die Suche antwortet 404, die

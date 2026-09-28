@@ -279,6 +279,42 @@ export default function SettingsPage(): React.ReactElement {
     const ctx = (window as any).__dexSpfxContext;
     return ctx ? new EventService(ctx) : null;
   }, []);
+
+  // v32.0.10: Mail-Bilder aller Events aus EmailTemplateOverrides in ihre
+  // Spalten verlagern (eventsCrud.logosAuslagernAlle) — erst Vorschau, dann
+  // Bestätigung mit Zahlen, dann Zeile für Zeile mit Nachlesen.
+  const [logoAusl, setLogoAusl] = React.useState<{ running: boolean; done: number; total: number; label: string; result: string; failed: boolean }>({ running: false, done: 0, total: 0, label: '', result: '', failed: false });
+  const runLogosAuslagern = async (): Promise<void> => {
+    if (logoAusl.running || !renameSvc) return;
+    setLogoAusl({ running: true, done: 0, total: 0, label: isDe ? 'Events werden gelesen …' : 'Reading events …', result: '', failed: false });
+    const v = await renameSvc.logosAuslagernAlle(true);
+    if (v.ohneSpalte || v.abgebrochen) {
+      setLogoAusl({ running: false, done: 0, total: 0, label: '', failed: true, result: v.ohneSpalte
+        ? (isDe ? 'Die Spalte OutlookLogoBase64 fehlt noch in DEX_Events — bitte die App einmal neu laden (das Schema wird beim Start eines Admins ergänzt) und erneut versuchen.' : 'Column OutlookLogoBase64 is missing in DEX_Events — reload the app once (an admin start adds it) and try again.')
+        : (isDe ? `Abgebrochen: ${v.fehler.join(', ')}` : `Aborted: ${v.fehler.join(', ')}`) });
+      return;
+    }
+    if (v.zeilen === 0) {
+      setLogoAusl({ running: false, done: 0, total: 0, label: '', failed: false, result: isDe ? 'Nichts zu tun — alle Events sind bereits umgestellt.' : 'Nothing to do — all events are already converted.' });
+      return;
+    }
+    setLogoAusl(prev => ({ ...prev, running: false, label: '' }));
+    if (!(await confirmDialog(
+      isDe
+        ? `${v.zeilen} Events tragen ihre Mail-Bilder noch in den Mail-Einstellungen (zusammen rund ${Math.round(v.kb / 1024 * 10) / 10} MB). Sie werden in eigene Spalten verschoben — die Bilder selbst bleiben unverändert, Mails und Outlook-Termine sehen genauso aus wie vorher. Jede Zeile wird danach nachgelesen; stimmt etwas nicht, bleibt sie auf dem alten Stand. Jetzt umstellen?`
+        : `${v.zeilen} events still keep their mail images inside the mail settings (about ${Math.round(v.kb / 1024 * 10) / 10} MB). They are moved into their own columns — the images stay unchanged, emails and Outlook appointments look exactly as before. Every row is read back afterwards; if anything is off it stays as it was. Convert now?`,
+      { confirmLabel: isDe ? 'Jetzt umstellen' : 'Convert now' }
+    ))) return;
+    setLogoAusl({ running: true, done: 0, total: v.zeilen, label: '', result: '', failed: false });
+    const r = await renameSvc.logosAuslagernAlle(false, (done, total, label) => setLogoAusl(prev => ({ ...prev, done, total, label })));
+    setLogoAusl({
+      running: false, done: r.umgestellt, total: r.zeilen, label: '',
+      failed: r.fehler.length > 0,
+      result: isDe
+        ? `${r.umgestellt} von ${r.zeilen} Events umgestellt${r.fehler.length ? ` · nicht umgestellt (unverändert): ${r.fehler.join(', ')}` : ''}${r.abgebrochen ? ' · abgebrochen nach drei Fehlern in Folge, später erneut starten' : ''}.`
+        : `${r.umgestellt} of ${r.zeilen} events converted${r.fehler.length ? ` · not converted (unchanged): ${r.fehler.join(', ')}` : ''}${r.abgebrochen ? ' · aborted after three errors in a row, try again later' : ''}.`,
+    });
+  };
   const renameArgs = (): { oldEmail: string; newEmail: string; newDisplayName: string; newFirstName: string; newLastName: string } => ({
     oldEmail: renameForm.oldEmail.trim(), newEmail: renameForm.newEmail.trim(),
     newDisplayName: renameForm.displayName.trim(), newFirstName: renameForm.first.trim(), newLastName: renameForm.last.trim(),
@@ -1074,6 +1110,41 @@ export default function SettingsPage(): React.ReactElement {
                 {listPerm.running
                   ? (isDe ? 'Läuft …' : 'Running …')
                   : (isDe ? 'Alle Events prüfen' : 'Check all events')}
+              </button>
+            </div>
+
+            {/* v32.0.10: Mail-Bilder auslagern — Bestand für den schnelleren Start. */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+              padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem',
+              background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)',
+            }}>
+              <div style={{ flex: 1, minWidth: 240, color: 'var(--dex-gray-700)', lineHeight: 1.45 }}>
+                <strong>{isDe ? 'Mail-Bilder auslagern (alle Events)' : 'Move mail images out (all events)'}</strong>
+                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+                  {isDe
+                    ? 'Mail-Logo und Kopfbild des Outlook-Termins stehen bei älteren Events noch in den Mail-Einstellungen und werden deshalb bei jedem Start für alle mitgeladen (zuletzt rund 8 MB). Die Aktion verschiebt sie in eigene Spalten, die DEX erst im Hintergrund lädt. Bilder, Mails und Termine bleiben unverändert; neue und neu gespeicherte Events sind automatisch umgestellt.'
+                    : 'For older events, the mail logo and Outlook header image still sit inside the mail settings and are loaded by everyone on every start (about 8 MB recently). This moves them into their own columns that DEX loads in the background. Images, emails and appointments stay unchanged; new or re-saved events are converted automatically.'}
+                </div>
+                {logoAusl.running && (
+                  <div style={{ marginTop: 4, fontSize: '0.76rem', color: 'var(--dex-gray-500)' }}>
+                    {logoAusl.total > 0 ? `${logoAusl.done}/${logoAusl.total}${logoAusl.label ? ` · ${logoAusl.label}` : ''}` : logoAusl.label}
+                  </div>
+                )}
+                {logoAusl.result && (
+                  <div style={{ marginTop: 6, color: logoAusl.failed ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>
+                    {logoAusl.result}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={logoAusl.running || listPerm.running}
+                onClick={() => { void runLogosAuslagern(); }}
+                style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}
+              >
+                {logoAusl.running ? (isDe ? 'Läuft …' : 'Running …') : (isDe ? 'Prüfen und umstellen' : 'Check and convert')}
               </button>
             </div>
 

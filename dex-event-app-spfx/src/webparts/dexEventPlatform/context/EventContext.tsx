@@ -386,7 +386,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
    * Zeile neuer → Text wieder „ausstehend" → der Nachlauf holt ihn erneut.
    * Nie mit leer überschreiben: Ein ausstehender Text trägt `outlookBodyPending`.
    */
-  const outlookCacheRef = React.useRef<Map<string, { body: string; modified: string }>>(new Map());
+  const outlookCacheRef = React.useRef<Map<string, { body: string; modified: string; mailLogo?: string; outlookLogo?: string }>>(new Map());
   const outlookModifiedRef = React.useRef<Map<string, string>>(new Map());
   const outlookInflightRef = React.useRef<Promise<boolean> | null>(null);
   const [outlookBodiesStatus, setOutlookBodiesStatus] = React.useState<'loading' | 'ok' | 'error'>('loading');
@@ -395,11 +395,29 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     if (!c) return !outlookModifiedRef.current.has(id); // nicht aus DEX_Events (Demo o.ä.) → nichts ausstehend
     return c.modified >= (outlookModifiedRef.current.get(id) || '');
   };
+  /**
+   * v32.0.10: Ausgelagerte Bilder (Merker `_logosAusgelagert`, s.
+   * eventsCrud.logosAuslagern) zurück ins Overrides-JSON im Speicher — alle
+   * Stellen, die `o._eventLogo`/`o._outlookLogo` lesen, bleiben unverändert.
+   * Ohne Merker (Bestand, noch nicht umgestellt) liegen sie ohnehin im JSON.
+   */
+  function mitLogos(e: DeloitteEvent, c: { mailLogo?: string; outlookLogo?: string }): DeloitteEvent {
+    let o: Record<string, unknown>;
+    try { o = JSON.parse(e.emailTemplateOverrides || '{}') || {}; } catch { return e; }
+    const merker = Number(o._logosAusgelagert) || 0;
+    if (!merker) return e;
+    let geaendert = false;
+    if (typeof o._eventLogo !== 'string' && c.mailLogo) { o._eventLogo = c.mailLogo; geaendert = true; }
+    if (merker >= 2 && typeof o._outlookLogo !== 'string' && c.outlookLogo) { o._outlookLogo = c.outlookLogo; geaendert = true; }
+    if (!geaendert) return e;
+    const mail = typeof o._eventLogo === 'string' && o._eventLogo.indexOf('data:') === 0 ? o._eventLogo : '';
+    return { ...e, emailTemplateOverrides: JSON.stringify(o), mailImageBase64: mail || e.mailImageBase64 };
+  }
   function fillOutlookBodies(list: DeloitteEvent[]): DeloitteEvent[] {
     return list.map(e => {
       if (!outlookModifiedRef.current.has(e.id)) return e;
       const c = outlookCacheRef.current.get(e.id);
-      if (c && outlookBodyFresh(e.id)) return { ...e, outlookBody: c.body, outlookBodyPending: false };
+      if (c && outlookBodyFresh(e.id)) return { ...mitLogos(e, c), outlookBody: c.body, outlookBodyPending: false };
       return { ...e, outlookBodyPending: true };
     });
   }
