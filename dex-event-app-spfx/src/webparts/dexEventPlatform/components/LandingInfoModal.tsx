@@ -21,6 +21,8 @@ import { cx } from './dexUi';
 import { APP_VERSION } from '../version';
 import { DEX_TEAM_EMAIL } from '../utils/supportContact';
 import { useNavigation } from '../context/NavigationContext';
+import { EventContext } from '../context/EventContext';
+import { KpiRow } from './KpiRow';
 
 interface Props {
   open: boolean;
@@ -51,6 +53,18 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
   const [showFeatures, setShowFeatures] = React.useState(false);
   // v31.94: „Handbuch" im Self-Service-Kasten — Hook VOR dem frühen Return.
   const { navigate } = useNavigation();
+  // v32.0.10: Die Zähler vom Ladebildschirm auch hier (Nutzer-Ansage
+  // 28.09.2026: „die Landing Page lädt so schnell, dass man es kaum lesen
+  // kann"). Ohne Provider (Vorschau-Kontexte) bleibt der Block weg.
+  const evCtx = React.useContext(EventContext);
+  const [kpi, setKpi] = React.useState<{ participants: number; events: number } | null>(null);
+  React.useEffect(() => {
+    if (!open || !evCtx) return;
+    let weg = false;
+    evCtx.getKpiCache().then(v => { if (!weg && v) setKpi(v); }).catch(() => { /* Kennzahlen sind Beiwerk */ });
+    return () => { weg = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   if (!open) return null;
 
   const isDE = locale === 'de';
@@ -176,6 +190,19 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
       </>}
     >
       <div>
+        {/* v32.0.10: Bisher genutzt für … (dieselben Zahlen wie beim Start). */}
+        {evCtx && (
+          <section className="dex-ui-section">
+            <h4 className="dex-ui-section-title">{isDE ? 'Bisher genutzt für' : 'So far used for'}</h4>
+            <KpiRow
+              locale={isDE ? 'de' : 'en'}
+              eventsLoading={kpi === null}
+              participantsLoading={kpi === null}
+              events={kpi ? kpi.events : 0}
+              participants={kpi ? kpi.participants : 0}
+            />
+          </section>
+        )}
         {/* Einsatzbereich */}
         <section className="dex-ui-section">
           <h4 className="dex-ui-section-title">{isDE ? 'Für diese Events ist DEX gemacht' : 'DEX is built for these events'}</h4>

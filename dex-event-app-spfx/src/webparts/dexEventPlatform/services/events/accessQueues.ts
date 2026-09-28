@@ -221,6 +221,9 @@ export async function queueAssistantAccess(svc: EventService, args: {
  * drei Email-Felder. Die App kategorisiert danach (Info-Ansichten + offene
  * Anforderungen an den Owner).
  */
+/** v32.0.11: Merker, dass die Anforderungs-Spalten auf dieser Site fehlen. */
+let assistantRequestColsMissing = false;
+
 export async function getAssistantLinksForUser(svc: EventService, myEmail: string): Promise<AssistantLink[]> {
   const out: AssistantLink[] = [];
   const me = (myEmail || '').toLowerCase().trim();
@@ -228,10 +231,18 @@ export async function getAssistantLinksForUser(svc: EventService, myEmail: strin
   const esc = me.replace(/'/g, "''");
   const filter = `Status eq 'Active' and (ParticipantEmail eq '${esc}' or AssistantEmail eq '${esc}' or OwnerEmail eq '${esc}')`;
   try {
-    const resp = await svc._sp.get(
-      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items?$select=Id,SubsiteUrl,ItemId,EventId,EventTitle,ParticipantEmail,ParticipantName,AssistantEmail,AssistantName,OwnerEmail,LinkType,Status,RequestType,RequestNote,RequestedByEmail,RequestedByName,RequestStatus,Created&$filter=${encodeURIComponent(filter)}&$orderby=Created desc&$top=500`,
-      SPHttpClient.configurations.v1
-    );
+    // v32.0.11: Auf Bestandslisten fehlen die Anforderungs-Spalten (v24.42),
+    // und ein $select auf eine fehlende Spalte antwortet 400 — bei JEDEM
+    // Aufruf von „Meine Events". Dann einmal ohne sie lesen und sich das für
+    // die Sitzung merken.
+    const basis = 'Id,SubsiteUrl,ItemId,EventId,EventTitle,ParticipantEmail,ParticipantName,AssistantEmail,AssistantName,OwnerEmail,LinkType,Status,Created';
+    const url = (sel: string): string =>
+      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items?$select=${sel}&$filter=${encodeURIComponent(filter)}&$orderby=Created desc&$top=500`;
+    let resp = assistantRequestColsMissing ? null : await svc._sp.get(url(`${basis},RequestType,RequestNote,RequestedByEmail,RequestedByName,RequestStatus`), SPHttpClient.configurations.v1);
+    if (!resp || resp.status === 400) {
+      if (resp) assistantRequestColsMissing = true;
+      resp = await svc._sp.get(url(basis), SPHttpClient.configurations.v1);
+    }
     if (!resp.ok) return out;
     const data = await resp.json();
     const items: Array<Record<string, string | number>> = data.value || data.d?.results || [];

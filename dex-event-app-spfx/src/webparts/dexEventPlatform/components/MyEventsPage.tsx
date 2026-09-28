@@ -399,6 +399,34 @@ export default function MyEventsPage(): React.ReactElement {
     isSectionedEvent?: boolean;
   } | null>(null);
 
+  // v32.0.11: Der Lade-Effect hängt an WELCHE Events es gibt (IDs, Nummern),
+  // nicht an der Array-Identität. Hing er an der Identität, reichte ein neues
+  // Array ohne neue Daten für einen kompletten Ladevorgang — so ist die
+  // Endlosschleife entstanden, die SharePoint gedrosselt hat. Geänderte
+  // Event-Daten (Titel, Zeiten, Fristen) brauchen keine Anmeldungen neu zu
+  // lesen; der zweite Effect tauscht nur die Event-Objekte in den Einträgen.
+  const eventsKey = React.useMemo(
+    () => topLevelEvents.map(e => `${e.id}:${e.eventNumber || ''}`).join('|'),
+    [topLevelEvents]
+  );
+  React.useEffect(() => {
+    const byId = new Map(topLevelEvents.map(e => [e.id, e] as [string, typeof e]));
+    setMyEvents(prev => {
+      let geaendert = false;
+      const next = prev.map(en => {
+        const cur = byId.get(en.event.id);
+        if (!cur || cur === en.event) return en;
+        geaendert = true;
+        return { ...en, event: cur };
+      });
+      return geaendert ? next : prev;
+    });
+  }, [topLevelEvents]);
+  // Nie zwei Ladevorgänge gleichzeitig; kommt währenddessen ein neuer Stand,
+  // läuft genau EIN weiterer danach.
+  const loadInflightRef = React.useRef(false);
+  const loadAgainRef = React.useRef(false);
+
   React.useEffect(() => {
     // Warten bis Events fertig geladen sind, sonst zeigen wir Fehler obwohl nur noch geladen wird
     if (isEventsLoading) {
@@ -425,9 +453,24 @@ export default function MyEventsPage(): React.ReactElement {
       }
     } catch { /* sessionStorage kann disabled sein — dann normaler Pfad */ }
     loadMyRegistrations();
-  }, [topLevelEvents, isEventsLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventsKey, isEventsLoading]);
 
   async function loadMyRegistrations(silent: boolean = false): Promise<void> {
+    if (loadInflightRef.current) { loadAgainRef.current = true; return; }
+    loadInflightRef.current = true;
+    try {
+      await loadMyRegistrationsInner(silent);
+    } finally {
+      loadInflightRef.current = false;
+      if (loadAgainRef.current) {
+        loadAgainRef.current = false;
+        loadMyRegistrations(true).catch(() => { /* ignore */ });
+      }
+    }
+  }
+
+  async function loadMyRegistrationsInner(silent: boolean): Promise<void> {
     // v11.79: Performance-Logs + Promise.all-Parallelisierung.
     // Vorher: pro angemeldetem Event eine sequentielle getMyRegistration —
     // bei N Anmeldungen N Roundtrips in Serie. Jetzt: alle parallel via

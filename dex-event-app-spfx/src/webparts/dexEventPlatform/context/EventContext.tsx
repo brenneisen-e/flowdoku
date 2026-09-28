@@ -417,8 +417,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return list.map(e => {
       if (!outlookModifiedRef.current.has(e.id)) return e;
       const c = outlookCacheRef.current.get(e.id);
-      if (c && outlookBodyFresh(e.id)) return { ...mitLogos(e, c), outlookBody: c.body, outlookBodyPending: false };
-      return { ...e, outlookBodyPending: true };
+      if (c && outlookBodyFresh(e.id)) {
+        // v32.0.11: Unverändert = dasselbe Objekt, sonst zieht jeder Aufruf
+        // alle Ansichten neu, die an Event-Identitäten hängen.
+        const m = mitLogos(e, c);
+        if (m === e && e.outlookBody === c.body && e.outlookBodyPending === false) return e;
+        return { ...m, outlookBody: c.body, outlookBodyPending: false };
+      }
+      return e.outlookBodyPending === true ? e : { ...e, outlookBodyPending: true };
     });
   }
   async function ensureOutlookBodies(): Promise<boolean> {
@@ -3360,6 +3366,12 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     } catch { return events; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, tutorialDemoActive]);
+  // v32.0.11: Einmal je Eventstand filtern, nicht je Render. Vorher entstand
+  // bei JEDEM Render des Providers ein neues Array — und „Meine Events" hängt
+  // seinen Lade-Effect an diese Identität. Jede State-Änderung, die das Laden
+  // selbst auslöste, startete den nächsten Ladevorgang (rund 50 Anfragen je
+  // Runde), bis SharePoint die ganze Site drosselte.
+  const topLevelEventsMemo = React.useMemo(() => eventsForConsumer.filter(e => !e.parentEventId), [eventsForConsumer]);
 
   // v22.42: Automatischer Hintergrund-Fix der Zeilen-Sichtbarkeit. Beim
   // Admin-Start werden Fremd-Anmeldungen (von Assistenz/Organizer für andere
@@ -3475,7 +3487,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     {
       value: {
         events: eventsForConsumer,
-        topLevelEvents: eventsForConsumer.filter(e => !e.parentEventId),
+        topLevelEvents: topLevelEventsMemo,
         childEventsOf, isEventsLoading, eventsReadStatus, ensureEventDocuments, refreshEventDocuments, ensureOutlookBodies, outlookBodiesStatus,
         createEvent, registerForEvent, registerTeam,
         getTeamMembers: async (eventId: string, teamId: string): Promise<SPRegistration[]> => {
