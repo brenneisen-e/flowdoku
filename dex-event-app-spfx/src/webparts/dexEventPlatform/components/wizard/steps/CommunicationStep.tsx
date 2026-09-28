@@ -501,7 +501,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                     {isDe ? 'Wie erreicht DEX die Teilnehmer?' : 'How does DEX reach attendees?'}
                     <InfoTooltip text={t('create.notifications.hint')} />
                   </div>
-                  <div className="dex-ui-grid-2" role="radiogroup" aria-label={isDe ? 'Weg der Kommunikation' : 'Communication channel'}>
+                  <div className="dex-ui-grid-2" data-tour="wizard-channel" role="radiogroup" aria-label={isDe ? 'Weg der Kommunikation' : 'Communication channel'}>
                     {([
                       { key: 'both', mails: true, outlook: true, icon: <Send size={18} />, de: 'Mail + Outlook-Termin', en: 'Email + Outlook invite', subDe: 'Standard — Bestätigung per Mail und Termin im Kalender', subEn: 'Default — confirmation by email and calendar entry' },
                       { key: 'mail', mails: true, outlook: false, icon: <Mail size={18} />, de: 'Nur Mail', en: 'Email only', subDe: 'Kein Kalendereintrag — Teilnehmer planen selbst', subEn: 'No calendar entry — attendees schedule themselves' },

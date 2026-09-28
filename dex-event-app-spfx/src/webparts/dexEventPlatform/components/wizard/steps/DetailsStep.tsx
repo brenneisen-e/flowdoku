@@ -269,7 +269,7 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
               </p>
 
               {/* ---- Frage 1: Wer verantwortet das Event? (Pflicht) ------------- */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section" data-tour="wizard-organizer">
                 <div className="dex-ui-section-title">{isDe ? 'Wer verantwortet das Event?' : 'Who is responsible for the event?'}</div>
                 <p className="dex-ui-section-desc">
                   {isDe

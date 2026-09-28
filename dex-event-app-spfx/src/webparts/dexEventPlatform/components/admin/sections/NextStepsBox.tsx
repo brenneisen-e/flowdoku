@@ -34,7 +34,7 @@ export const NextStepsBox: React.FC<NextStepsBoxProps> = (p) => {
   // die Box ohne offenes Modal in der Event-Seite steht.
   ensureDexUiStyles();
   return (
-          <aside style={{ flex: '1 1 360px', minWidth: 320 }}>
+          <aside data-tour="admin-next-steps" style={{ flex: '1 1 360px', minWidth: 320 }}>
             <div className="dex-ui-card dex-ui-card--accent">
               <div className="dex-ui-card-head" style={{ marginBottom: 4 }}>
                 <h3 className="dex-ui-card-head-title">

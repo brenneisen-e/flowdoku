@@ -114,10 +114,38 @@ Neue `data-tour`-Anker: `wizard-title`, `wizard-dates`, `wizard-draft`,
 - **Stufe 3** (~300): alte Organizer-Tour im Wizard-Teil ersetzen,
   Handbuch/Rollenmatrix/Architekturseite, Harness-Screenshots.
 
-## 7. Offene Entscheidungen
+## 7. Entscheidungen (Eike, 28.09.2026)
 
-1. Kommunikation des Test-Events: A stumm (keine Mails/kein Outlook) oder
-   B nur an mich (Empfehlung).
-2. Ende: Löschen als Hauptknopf (Empfehlung) oder Behalten.
-3. Alte Organizer-Tour im Wizard-Teil ersetzen (Empfehlung) oder parallel.
-4. Kennzeichnung: Präfix „TEST – " plus Flag (Empfehlung) oder nur Flag.
+1. Kommunikation: **B „nur an mich"** — Mails und Outlook-Termin laufen
+   echt, Organizer und Zielgruppe sind erzwungen nur die Person selbst.
+2. Ende: **Löschen als Hauptknopf**, „Als Entwurf behalten" daneben.
+3. Alte Organizer-Tour: **Assistenten-Teil ersetzt** durch eine Karte mit
+   Verweis; Organizer Center und Check-in bleiben (Label jetzt
+   „Organizer-Rundgang").
+4. Kennzeichnung: **Präfix „TEST – " plus Flag** `_tutorialTest`.
+
+## 8. Stand der Umsetzung
+
+**Stufe 1 ausgeliefert mit v32.1.0.** Dateien: `tutorial/WizardCoach.tsx`
+(Stationen + Overlay), `tutorial/TutorialGuide.tsx` (Provider: `coachActive`,
+`startCoach`, `stopCoach`, `reportWizard`, Löschen, Auswahl mit Empfehlung),
+`EventCreationPage` (Schnappschuss-Effect VOR `if (submitted) return`,
+`DRAFT_KEY` = `COACH_DRAFT_KEY`, erstes Netz), `wizardSubmit.tutorialTestSicher`
+(zweites Netz), `WizardFormShell` (Chip oben, Hinweis-Kasten, Anker),
+`DexEventPlatform` (key-Remount, Deep-Link startet den Coach).
+
+Abweichungen vom Drehbuch, alle aus dem Harness-Durchlauf
+(`tools/wizard-harness/coach-shot.js`, 20 Bilder, 0 Fehler):
+- Nach den Nutzungsbedingungen kommt für Admins die Abrechnungsfrage — die
+  Station wartet auf `tcAccepted && !billingPromptOpen`.
+- Nicht jeder Dialog trägt `role="dialog"`: Der Coach prüft zusätzlich per
+  `elementFromPoint`, ob sein Ziel verdeckt ist, und dockt dann unten rechts an.
+- Plätze stehen per Vorgabe auf „Unbegrenzt" (kein Zahlenfeld): erst die
+  Kachel „Begrenzt" (`wizard-capacity-mode`), dann das Feld.
+- `dexUiPulse` animiert box-shadow und überschrieb das Abdunkeln — Loch und
+  Puls-Rahmen sind zwei Elemente.
+- ESC beendet den Coach NICHT (schließt im Formular Datepicker und Dialoge).
+
+Offen (Stufe 2/3): Fortsetzen nach Reload, Anmeldeseite + Test-Anmeldung,
+`isTutorialTest`-Badge und „Live schalten"/„Einladungsmail" beim Test-Event
+ausblenden, Header-Pille für Organizer ohne Event, Handbuch-Artikel.

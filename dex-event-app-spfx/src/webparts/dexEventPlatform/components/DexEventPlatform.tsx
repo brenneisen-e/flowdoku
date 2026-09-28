@@ -21,7 +21,7 @@ import { BOOT_STAGE_EVENT, BootStage, BootStageDetail, lastBootStage } from '../
 import { UserProvider } from '../context/UserContext';
 import { RoleProvider, useRoles } from '../context/RoleContext';
 // v22.21: Geführtes Tutorial (Onboarding-Tour) — Provider + Overlay.
-import { TutorialProvider } from './tutorial/TutorialGuide';
+import { TutorialProvider, useTutorial } from './tutorial/TutorialGuide';
 import { TicketProvider } from '../context/TicketContext';
 import { deepLinkParams } from '../utils/deepLink';
 import { installPerfConsole } from '../utils/perfLog';
@@ -269,6 +269,9 @@ function AppContent(): React.ReactElement {
   // Returns folgen (react-hooks/rules-of-hooks).
   const appLocale = useLocaleSafe();
   const appIsDe = appLocale === 'de';
+  // v32.1.0: Das Mitmach-Tutorial startet den Assistenten mit eigenem key
+  // neu — sonst liefe es in einem halb ausgefüllten echten Formular weiter.
+  const { coachActive } = useTutorial();
   const { isAdmin, isRolesLoading, canCreateEvents } = useRoles();
   const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, maybeSendBillingAutoMails, reconcileCounters, isEventsLoading, events, getKpiCache, recomputeEventKpiOnly, ensureOutlookBodies, outlookBodiesStatus } = useEvents();
   // v32.0.6: Assistent erst öffnen, wenn die Outlook-Texte nachgeladen sind —
@@ -1185,7 +1188,7 @@ function AppContent(): React.ReactElement {
             </div>
           );
         }
-        return <EventCreationPage />;
+        return <EventCreationPage key={coachActive ? 'coach' : 'normal'} />;
       case 'settings':
         return <SettingsPage />;
       case 'admin':

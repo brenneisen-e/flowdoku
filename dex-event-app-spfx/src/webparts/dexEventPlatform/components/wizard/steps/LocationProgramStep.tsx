@@ -400,7 +400,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                     </>
                   )} />
                 </label>
-                <input className="form-input" value={location} onChange={e => setLocation(e.target.value)} placeholder={isDe ? 'z.B. RheinEnergieStadion, Köln' : 'e.g. RheinEnergieStadion, Cologne'} />
+                <input className="form-input" data-tour="wizard-location" value={location} onChange={e => setLocation(e.target.value)} placeholder={isDe ? 'z.B. RheinEnergieStadion, Köln' : 'e.g. RheinEnergieStadion, Cologne'} />
                 <div className="dex-ui-help">
                   {isDe
                     ? 'Sprechender Name + Stadt reicht — er erscheint auf der Anmeldeseite, in der Eventliste und als Ort im Outlook-Termin der Teilnehmer.'

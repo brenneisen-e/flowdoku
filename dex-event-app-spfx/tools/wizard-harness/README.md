@@ -17,7 +17,12 @@ node build.js                            # Bundle + flaches CSS → out/
 node shot.js edit                        # out/shots/edit-step-1.png … (Wizard, Beispiel-Event)
 node shot.js create                      # out/shots/create-initial.png (Anlege-Modus)
 node shot.js pages                       # out/shots/page-*.png (Teilnehmer-Seiten, Desktop + Handy)
+node coach-shot.js                       # out/shots/coach-*.png (Mitmach-Tutorial, seit v32.1.0)
 ```
+
+`coach-shot.js` spielt das Mitmach-Tutorial wie ein Mensch durch (tippt,
+wählt Datum, klickt Weiter) und meldet je Station „FEHLT", wenn ein Schritt
+nicht greift. `?mode=create&coach=1` startet den Coach im Harness.
 
 **Immer `npm i` MIT der package.json aus diesem Ordner** (also von hier aus,
 oder mit `--prefix`). Ohne sie sucht npm die nächste `package.json` weiter oben

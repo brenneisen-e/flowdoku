@@ -715,7 +715,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   {/* v31.2: Der Schritt heißt „Fragen im Anmeldeformular" — die Knöpfe
                       sprechen dieselbe Sprache („Frage", nicht „Feld"). Lokal über isDe,
                       der i18n-Schlüssel create.addfield bleibt unangetastet. */}
-                  <button className="btn btn-primary dex-ui-btn-sm" onClick={addCustomField}>
+                  <button className="btn btn-primary dex-ui-btn-sm" data-tour="wizard-add-question" onClick={addCustomField}>
                     <Plus size={14} /> {isDe ? 'Frage hinzufügen' : 'Add question'}
                   </button>
                   <button
@@ -949,6 +949,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                           damit es wie ein wachsendes Eingabefeld wirkt. */}
                       <textarea
                         className="form-input"
+                        data-tour={idx === customFields.length - 1 ? 'wizard-question-label' : undefined}
                         value={field.label}
                         rows={1}
                         placeholder={isDe ? 'Wie lautet die Frage? (z.B. „Welche T-Shirt-Größe brauchst du?")' : 'What is the question? (e.g. „Which T-shirt size do you need?")'}

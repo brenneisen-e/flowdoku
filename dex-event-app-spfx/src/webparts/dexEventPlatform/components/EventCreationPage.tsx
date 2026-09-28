@@ -72,6 +72,7 @@ import { useWizardVisibilityState } from './wizard/hooks/useWizardVisibilityStat
 import { useWizardOptionState } from './wizard/hooks/useWizardOptionState';
 import { berlinLocalToUtcIso, isoToLocal } from '../utils/berlinTime';
 import { rollingDeadlineIso } from '../utils/rollingDeadline'; // v30.67
+import { useTutorial, COACH_DRAFT_KEY } from './tutorial/TutorialGuide'; // v32.1.0
 
 // Deutsche Locale registrieren
 registerLocale('de', de);
@@ -148,6 +149,13 @@ export default function EventCreationPage(): React.ReactElement {
 
   // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
   const isEditMode = currentPage === 'edit-event' && !!selectedEventId;
+  // v32.1.0: Mitmach-Tutorial. Der Assistent wird dafür mit eigenem key neu
+  // gemountet (DexEventPlatform), `coachMode` ist also für die Lebenszeit
+  // dieser Instanz fest. Er schaltet: eigener Entwurfsschlüssel, keine
+  // Vorlagen, Zustandsmeldung an den Coach und das Sicherheitsnetz beim
+  // Anlegen (`tutorialTest` → wizardSubmit.tutorialTestSicher).
+  const tutorial = useTutorial();
+  const coachMode = tutorial.coachActive && !isEditMode;
   const editEvent = isEditMode ? events.find(e => e.id === selectedEventId) : null;
   // v31.2: Andere Organizer im Edit-Modus desselben Events (Nutzer
   // 07.09.2026: „soll pulsieren und die Person mit Foto anzeigen"). Nur im
@@ -1484,6 +1492,7 @@ export default function EventCreationPage(): React.ReactElement {
 
   const handleSubmitInner = async (): Promise<void> => {
     return await runWizardSubmit({
+      tutorialTest: coachMode, // v32.1.0
       activeFrom, addRole, adminLike, addrCity, addrHouseNo, addrStreet, addrZip, agenda,
       allDay, allowAttendeeUpload, askSalutation, askTeamName, assistantsCanSee, attendeeUploadHint,
       attendeeUploadLabel, audience, berlinLocalToUtcIso, bilingualFields, billingPiggyback, bundledComm, commShared,
@@ -1991,7 +2000,9 @@ export default function EventCreationPage(): React.ReactElement {
   // Der Block steht bewusst NACH subEventsOptIn (Zeile oben) — frueher
   // platzierte States waeren die v29.71-TDZ-Falle.
   // ============================================================
-  const DRAFT_KEY = 'dex_event_creation_draft_v1';
+  // v32.1.0: Das Tutorial schreibt in einen eigenen Schlüssel — sonst
+  // überschriebe sein Autosave einen echten, unfertigen Entwurf.
+  const DRAFT_KEY = coachMode ? COACH_DRAFT_KEY : 'dex_event_creation_draft_v1';
   const draftPromptShownRef = React.useRef(false);
   // v30.1: Zeitpunkt der letzten Zwischenspeicherung — fuer die Anzeige
   // „Zwischengespeichert am …" ueber dem Formular. lastDraftJsonRef
@@ -2064,11 +2075,13 @@ export default function EventCreationPage(): React.ReactElement {
       // v31.60: Über „Entwurf weiter bearbeiten" (Eventübersicht) geöffnet —
       // der Entwurf wird sofort angewendet, keine Kachel mit Rückfrage mehr;
       // die Entscheidung ist dort schon gefallen.
-      if (navIntent === 'resume-draft') {
+      // v32.1.0: Im Tutorial den eigenen Tutorial-Entwurf still übernehmen —
+      // wer zwischendurch die Seite wechselt, kommt an derselben Stelle zurück.
+      if (navIntent === 'resume-draft' || coachMode) {
         applyDraftPayload(data);
         lastDraftJsonRef.current = JSON.stringify(data);
         setDraftSavedAt(parsed.savedAt || 0);
-        clearIntent();
+        if (navIntent === 'resume-draft') clearIntent();
         return;
       }
       setPendingDraft({ savedAt: parsed.savedAt || 0, data });
@@ -2097,6 +2110,38 @@ export default function EventCreationPage(): React.ReactElement {
     }, 1500);
     return () => clearTimeout(t);
   });
+  // v32.1.0: Erstes Netz fürs Test-Event — sichtbar im Formular: Entwurf an,
+  // kein automatisches Live-Schalten. Das zweite Netz erzwingt es beim
+  // Anlegen noch einmal (wizardSubmit.tutorialTestSicher).
+  React.useEffect(() => {
+    if (!coachMode) return;
+    setIsFictive(true);
+    setActiveFrom('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coachMode]);
+  // v32.1.0: Zustand an den Coach melden (VOR `if (submitted) return` —
+  // rules-of-hooks) — nach jedem Render, der Provider
+  // setzt nur bei Änderung (JSON-Vergleich). Kein Deps-Array aus demselben
+  // Grund wie beim Autosave: Die Liste wäre bei diesen Feldern sofort veraltet.
+  React.useEffect(() => {
+    if (!coachMode) return;
+    const last = customFields.length > 0 ? customFields[customFields.length - 1] : null;
+    tutorial.reportWizard({
+      currentStep, tcAccepted, billingPromptOpen, title, startDate, endDate, isFictive,
+      organizerEmails: organizerEmails.slice(),
+      location, maxParticipants: String(maxParticipants || ''), unlimitedParticipants: !!unlimitedParticipants,
+      customFieldCount: customFields.length, lastFieldLabel: last ? String(last.label || '') : '',
+      subEventCount: subEvents.length, countdown: anlegeCountdown, isSubmitting: !!isSubmitting,
+      summaryOpen: !!showSummaryModal, createdEventId: createdEventIdRef.current || '',
+    });
+  });
+  // Beim Verlassen des Assistenten „kein Assistent" melden.
+  React.useEffect(() => {
+    if (!coachMode) return undefined;
+    return () => tutorial.reportWizard(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coachMode]);
+
   // Nach erfolgreichem Anlegen ist der Entwurf erledigt.
   React.useEffect(() => {
     if (submitted && !isEditMode) {
@@ -3180,6 +3225,7 @@ export default function EventCreationPage(): React.ReactElement {
   // direkt vor dem return — davor stehen alle Deklarationen, ein Buendel weiter
   // oben waere ein TDZ-Fehler auf die spaeter deklarierten Handler.
   const basicsStepProps = {
+    tutorialMode: coachMode,
     activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular,
     currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt,
     editEvent, emailLogoFromPhoto, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64,

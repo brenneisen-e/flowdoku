@@ -792,7 +792,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                         </>
                       )} />
                     </div>
-                    <div className="dex-ui-grid-2">
+                    <div className="dex-ui-grid-2" data-tour="wizard-capacity-mode">
                       <button
                         type="button"
                         className={cx('dex-ui-choice', unlimitedParticipants && 'is-active')}
@@ -846,6 +846,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                       className="form-input"
                       type="number"
                       min={0}
+                      data-tour="wizard-capacity"
                       value={maxParticipants}
                       onChange={e => setMaxParticipants(e.target.value.replace(/[^0-9]/g, ''))}
                       placeholder={isDe ? 'z.B. 50' : 'e.g. 50'}
