@@ -108,6 +108,29 @@ export async function getEvents(svc: EventService, onHttpError?: (_status: numbe
     dlog('perf',
       `[DEX][perf][getEvents] ${rows.length} Events · ${Math.round(raw.length / 1024)} KB JSON · parse ${parseMs} ms`
     );
+    // v32.0.4: Welche Spalte trägt das Gewicht? Befund 28.09.2026: 36,7 MB für
+    // 100 Events, 18 s Boot — für JEDE Rolle, denn alle lesen dieselbe Abfrage.
+    // Bevor Spalten aus dem Boot fliegen, messen statt raten: je Spalte die
+    // Summe und die größte Zeile (mit Titel), die zehn schwersten.
+    try {
+      if (raw.length > 2 * 1024 * 1024) {
+        const sum: Record<string, number> = {};
+        const max: Record<string, { n: number; title: string }> = {};
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const r of rows as any[]) {
+          for (const k of Object.keys(r)) {
+            const v = r[k];
+            if (v === null || v === undefined) continue;
+            const n = typeof v === 'string' ? v.length : (JSON.stringify(v) || '').length;
+            sum[k] = (sum[k] || 0) + n;
+            if (!max[k] || n > max[k].n) max[k] = { n, title: String(r.Title || r.Id || '') };
+          }
+        }
+        const top = Object.keys(sum).sort((a, b) => sum[b] - sum[a]).slice(0, 10)
+          .map(k => `${k}: ${Math.round(sum[k] / 1024)} KB (größte: ${Math.round(max[k].n / 1024)} KB „${max[k].title}")`);
+        dlog('perf', `[DEX][perf][getEvents] schwerste Spalten:\n  ${top.join('\n  ')}`);
+      }
+    } catch { /* Messung ist Beiwerk */ }
     return rows;
   } catch {
     if (onHttpError) onHttpError(0);
