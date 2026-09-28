@@ -1324,66 +1324,96 @@ export class SharePointService {
     const seen = new Set<string>();
     const all: Array<{ email: string; displayName: string; location: string; jobTitle: string }> = [];
 
-    for (const variant of Array.from(variants)) {
+    // v32.0.3: Alle Varianten PARALLEL fragen und erst danach filtern. Bis
+    // v32.0.2 liefen sie nacheinander und die Schleife brach nach 10 Treffern
+    // ab — bei „David Sey" füllte die Variante „David" die zehn Plätze mit
+    // irgendwelchen Davids (oft @deloitte.com), „Sey, David" und „Sey" wurden
+    // nie gefragt, der Domain-Filter warf danach alles weg: „Keine Treffer",
+    // obwohl „Seydel, David" existiert (Nutzer-Befund 28.09.2026). Jetzt:
+    // mehr Vorschläge je Variante, Domain-Filter VOR der Auswahl, Treffer mit
+    // allen Suchwörtern zuerst, gekappt wird erst ganz am Ende.
+    const variantResults = await Promise.all(Array.from(variants).map(async variant => {
       try {
         const body = {
           'queryParams': {
             '__metadata': { 'type': 'SP.UI.ApplicationPages.ClientPeoplePickerQueryParameters' },
             'AllowEmailAddresses': true,
             'AllowMultipleEntities': false,
-            'MaximumEntitySuggestions': 10,
+            'MaximumEntitySuggestions': 30,
             'QueryString': variant,
             'PrincipalType': 1, // Users only
             'PrincipalSource': 15,
             'SharePointGroupID': 0,
           },
         };
-
         const response = await this._post(
           `${this.siteUrl}/_api/SP.UI.ApplicationPages.ClientPeoplePickerWebServiceInterface.clientPeoplePickerSearchUser`,
           body
         );
-
-        if (!response.ok) continue;
-
+        if (!response.ok) return [];
         const data = await response.json();
         const resultsStr = data.d?.ClientPeoplePickerSearchUser || data.ClientPeoplePickerSearchUser || '[]';
         const results = JSON.parse(resultsStr);
         // eslint-disable-next-line no-console
         dlog('perf', `[DEX][perf][searchUsers] variant="${variant}" raw=${results.length}`);
-
-        // v11.75: vor allem Variante 1 — SP-Picker liefert manchmal Treffer
-        // mit leerem EntityData.Email (z.B. wenn der User noch keine SP-
-        // Personalwand hat / Profil noch nicht angelegt). Früher wurde der
-        // Treffer mit `filter(x => x.EntityData?.Email)` rausgeworfen — Namens-
-        // Suchen wie „Inga Fuhr" kamen dann mit 0 Vorschlägen zurück.
-        // Fallback: Email aus `Key` (z.B. „i:0#.f|membership|email@domain")
-        // oder `Description` ziehen.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const r of results as any[]) {
-          let email = String(r.EntityData?.Email || '').toLowerCase();
-          if (!email) {
-            const candidates: string[] = [String(r.Key || ''), String(r.Description || '')];
-            for (const c of candidates) {
-              const m = c.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
-              if (m) { email = m[0].toLowerCase(); break; }
-            }
-          }
-          if (!email || !email.includes('@') || seen.has(email)) continue;
-          seen.add(email);
-          all.push({
-            email,
-            displayName: r.DisplayText || r.EntityData?.Title || '',
-            location: '',
-            jobTitle: r.EntityData?.Title || '',
-          });
-          if (all.length >= 10) break;
-        }
-        if (all.length >= 10) break;
+        return results as any[];
       } catch {
-        // Variant failed — continue with next variant
+        return []; // Variante gescheitert — die anderen tragen
+      }
+    }));
+
+    for (const results of variantResults) {
+      // v11.75: vor allem Variante 1 — SP-Picker liefert manchmal Treffer
+      // mit leerem EntityData.Email (z.B. wenn der User noch keine SP-
+      // Personalwand hat / Profil noch nicht angelegt). Früher wurde der
+      // Treffer mit `filter(x => x.EntityData?.Email)` rausgeworfen — Namens-
+      // Suchen wie „Inga Fuhr" kamen dann mit 0 Vorschlägen zurück.
+      // Fallback: Email aus `Key` (z.B. „i:0#.f|membership|email@domain")
+      // oder `Description` ziehen.
+      for (const r of results) {
+        let email = String(r.EntityData?.Email || '').toLowerCase();
+        if (!email) {
+          const candidates: string[] = [String(r.Key || ''), String(r.Description || '')];
+          for (const c of candidates) {
+            const m = c.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
+            if (m) { email = m[0].toLowerCase(); break; }
+          }
+        }
+        if (!email || !email.includes('@') || seen.has(email)) continue;
+        seen.add(email);
+        all.push({
+          email,
+          displayName: r.DisplayText || r.EntityData?.Title || '',
+          location: '',
+          jobTitle: r.EntityData?.Title || '',
+        });
       }
     }
+
+    // v13.6: Member-Firm-Filter. Default: nur @deloitte.de (DEALL-Equivalent).
+    // v26.57: Mit includeInternational=true sind ALLE Deloitte-Member-Firm-
+    // Domains erlaubt — nicht nur @deloitte.com. Internationale Member-Firms
+    // haben eigene Länder-Domains (Österreich @deloitte.at, Niederlande
+    // @deloitte.nl, UK @deloitte.co.uk) und teils zusammengesetzte Domains.
+    // v26.58: auch Domains mit Suffix direkt am Wort „deloitte" zulassen —
+    // z. B. @deloitteCE.com (Deloitte Central Europe) oder @deloittedigital.com;
+    // ebenso Subdomains wie @xy.deloitte.com. Nicht-Deloitte-Domains
+    // (Gast-Accounts fremder Firmen, externe Tenants) bleiben in beiden Modi
+    // geblockt — „deloitte" muss direkt am Domain-/Label-Anfang stehen.
+    // v32.0.3: VOR der Token-Auswahl, damit fremde Domains keine Plätze belegen.
+    const isDeloitteDomain = (mail: string): boolean => {
+      const at = mail.lastIndexOf('@');
+      if (at < 0) return false;
+      const domain = mail.slice(at + 1);
+      return /(^|\.)deloitte[a-z0-9-]*\./.test(domain);
+    };
+    const memberFirmFiltered = all.filter(u => {
+      const mail = (u.email || '').toLowerCase();
+      return includeInternational ? isDeloitteDomain(mail) : mail.endsWith('@deloitte.de');
+    });
+    all.length = 0;
+    all.push(...memberFirmFiltered);
 
     // v11.85: Client-side Filter — die Variants-Logik (Single-Token-
     // Fallback wie „Nils" oder „Felt" einzeln) zog auch False-Positives an
@@ -1410,29 +1440,7 @@ export class SharePointService {
         all.push(...filtered);
       }
     }
-
-    // v13.6: Member-Firm-Filter. Default: nur @deloitte.de (DEALL-Equivalent).
-    // v26.57: Mit includeInternational=true sind ALLE Deloitte-Member-Firm-
-    // Domains erlaubt — nicht nur @deloitte.com. Internationale Member-Firms
-    // haben eigene Länder-Domains (Österreich @deloitte.at, Niederlande
-    // @deloitte.nl, UK @deloitte.co.uk) und teils zusammengesetzte Domains.
-    // v26.58: auch Domains mit Suffix direkt am Wort „deloitte" zulassen —
-    // z. B. @deloitteCE.com (Deloitte Central Europe) oder @deloittedigital.com;
-    // ebenso Subdomains wie @xy.deloitte.com. Nicht-Deloitte-Domains
-    // (Gast-Accounts fremder Firmen, externe Tenants) bleiben in beiden Modi
-    // geblockt — „deloitte" muss direkt am Domain-/Label-Anfang stehen.
-    const isDeloitteDomain = (mail: string): boolean => {
-      const at = mail.lastIndexOf('@');
-      if (at < 0) return false;
-      const domain = mail.slice(at + 1);
-      return /(^|\.)deloitte[a-z0-9-]*\./.test(domain);
-    };
-    const memberFirmFiltered = all.filter(u => {
-      const mail = (u.email || '').toLowerCase();
-      return includeInternational ? isDeloitteDomain(mail) : mail.endsWith('@deloitte.de');
-    });
-    all.length = 0;
-    all.push(...memberFirmFiltered);
+    if (all.length > 10) all.length = 10;
 
     // Location + JobTitle per User Profile nachladen.
     // v20.0 (Audit): parallel statt sequentiell — vorher bis zu N serielle

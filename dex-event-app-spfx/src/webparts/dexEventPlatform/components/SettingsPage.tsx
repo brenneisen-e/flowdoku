@@ -658,7 +658,7 @@ export default function SettingsPage(): React.ReactElement {
   };
 
   const renderRoleSections = (): React.ReactElement => {
-    const thS: React.CSSProperties = { textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)', fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap' };
+    const thS: React.CSSProperties = { textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)', fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 2, background: '#fff', boxShadow: 'inset 0 -2px 0 var(--dex-gray-200, #eee)' };
     const tdS: React.CSSProperties = { padding: 8, verticalAlign: 'middle' };
     const byName = (a: { userName: string }, b: { userName: string }): number => (a.userName || '').localeCompare(b.userName || '', 'de');
     // v24.87: Freitext-Filter (Name/E-Mail/Position/Standort) über alle Kategorien.
@@ -871,7 +871,11 @@ export default function SettingsPage(): React.ReactElement {
                 {sec.title} <span style={{ color: 'var(--dex-gray-400)', fontWeight: 500 }}>({sec.count})</span>
               </button>
               {open && (
-                <div style={{ overflowX: 'auto', padding: '0 6px 6px' }}>
+                // v32.0.3: Eigener Scroll-Bereich mit fester Höhe, damit die
+                // Spaltenköpfe (Vorname, Nachname …) beim Scrollen stehen
+                // bleiben — sticky wirkt nur innerhalb des nächsten Scroll-
+                // Containers, und overflowX allein machte die Seite zu keinem.
+                <div style={{ overflow: 'auto', maxHeight: '70vh', padding: '0 6px 6px' }}>
                   {sec.count === 0 ? (
                     <p style={{ padding: '8px 10px', margin: 0, color: 'var(--dex-gray-400)', fontStyle: 'italic', fontSize: '0.82rem' }}>{isDe ? 'keine' : 'none'}</p>
                   ) : (

@@ -159,6 +159,12 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
   // Feineinstellungen der geteilten Gruppen (Texte, Reihenfolge, Startblöcke).
   // Steht unbedingt VOR dem return, damit die Hook-Reihenfolge fest ist.
   const [splitMoreOpen, setSplitMoreOpen] = React.useState(false);
+  // v32.0.3: Platzzahl eines Sub-Events wird beim Tippen nur lokal gehalten
+  // und erst beim Verlassen des Feldes übernommen. Vorher machte ein leeres
+  // Feld (Entf/Backspace) sofort maxParticipants 0 = „Unbegrenzt", das Feld
+  // verschwand, und eine neue Zahl ließ sich gar nicht eintippen
+  // (Nutzer-Befund 28.09.2026). Schlüssel = Sub-Event-id.
+  const [seCapDraft, setSeCapDraft] = React.useState<{ id: string; text: string } | null>(null);
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
@@ -367,10 +373,20 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                               type="number"
                               min={0}
                               className="form-input"
-                              value={se.maxParticipants || 0}
+                              value={seCapDraft && seCapDraft.id === se.id ? seCapDraft.text : String(se.maxParticipants || 0)}
+                              onFocus={() => setSeCapDraft({ id: se.id, text: String(se.maxParticipants || 0) })}
                               onChange={e => {
-                                const v = parseInt(e.target.value, 10) || 0;
-                                updateSub({ maxParticipants: v });
+                                const text = e.target.value;
+                                setSeCapDraft({ id: se.id, text });
+                                // Eine echte Zahl > 0 gilt sofort (Zähler, Vorschau);
+                                // leer oder 0 erst beim Verlassen des Feldes.
+                                const v = parseInt(text, 10);
+                                if (v > 0) updateSub({ maxParticipants: v });
+                              }}
+                              onBlur={() => {
+                                const v = parseInt(seCapDraft && seCapDraft.id === se.id ? seCapDraft.text : '', 10);
+                                setSeCapDraft(null);
+                                if (!(v > 0)) updateSub({ maxParticipants: 0, waitlistEnabled: false });
                               }}
                               placeholder={isDe ? 'Anzahl' : 'Count'}
                             />

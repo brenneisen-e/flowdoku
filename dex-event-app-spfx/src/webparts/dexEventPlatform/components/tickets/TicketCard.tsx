@@ -40,7 +40,7 @@ const WizardStepPreviewModal = React.lazy(() => import('./WizardStepPreviewModal
 function wizardStepLabels(isDe: boolean): string[] {
   // 1-basiert; Reihenfolge identisch zum Event-Wizard (EventCreationPage.steps).
   return isDe
-    ? ['Grundlagen', 'Organizer & Team', 'Sub-Events', 'Ort & Programm', 'Kapazität & Sichtbarkeit', 'Felder', 'Kommunikation', 'Team-Anmeldung', 'Dokumente', 'Fun-Zone']
+    ? ['Grundlagen', 'Organizer & Team', 'Sub-Events', 'Ort & Programm', 'Kapazität & Sichtbarkeit', 'Abfragen', 'Kommunikation', 'Team-Anmeldung', 'Dokumente', 'Fun-Zone']
     : ['Basics', 'Organizers & team', 'Sub-events', 'Location & programme', 'Capacity & visibility', 'Fields', 'Communication', 'Team registration', 'Documents', 'Fun zone'];
 }
 
