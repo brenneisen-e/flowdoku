@@ -3,6 +3,7 @@
  * gibt ein Fragment zurueck, damit die Geschwister-Reihenfolge im Elternbaum
  * exakt bleibt. */
 import * as React from 'react';
+import * as ReactDOM from 'react-dom';
 import { STEP_HINTS_DE, STEP_HINTS_EN } from '../../data/wizardHints';
 import { BasicsStep, BasicsStepProps } from '../wizard/steps/BasicsStep';
 import { DetailsStep, DetailsStepProps } from '../wizard/steps/DetailsStep';
@@ -255,7 +256,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
             .dex-wizard-sticky.is-pinned .dex-wizard-step:hover { transform: none; }
             .dex-wizard-sticky.is-pinned .dex-step-circle { width: 28px !important; height: 28px !important; font-size: 0.8rem !important; border-width: 2px !important; }
             .dex-wizard-sticky.is-pinned .dex-step-line { top: 12px !important; height: 4px !important; }
-            .dex-wizard-sticky.is-pinned .dex-step-label { font-size: 0.68rem !important; line-height: 1.2; }
+            .dex-wizard-sticky.is-pinned .dex-step-label { font-size: 0.64rem !important; line-height: 1.2; white-space: nowrap; letter-spacing: -0.01em; }
             .dex-wizard-sticky.is-pinned .dex-step-hint { display: none !important; }
             .dex-wizard-sticky.is-pinned #dex-scope-bar { margin-top: 0 !important; padding: 2px 0 10px !important; }
             /* v22.30: Schritt-Kopf bündig als Kopf der weißen Karte (negative
@@ -355,6 +356,9 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                 }}
                 onMouseLeave={() => setHintStepIdx(null)}
                 onClick={() => {
+                  // v32.0.3: Nach dem Klick ist der Hinweis erledigt — er kommt
+                  // erst beim nächsten Überfahren wieder (Nutzer 28.09.2026).
+                  setHintStepIdx(null);
                   // v29.21 (Audit B3): Zurück ist immer frei; nach vorn nur,
                   // wenn ALLE übersprungenen Schritte fehlerfrei sind. Vorher
                   // prüfte der Klick nur den aktuellen Schritt — ein Sprung
@@ -407,7 +411,11 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                     Hover zeigt die Hints für diesen Step.
                     v9.37: Styling identisch zur InfoTooltip-Komponente (serif, 20x20,
                     1.5px-Border) — sonst wirkt das wizard-i im Vergleich klobig. */}
-                {hintStepIdx === idx && hintAnchor && (
+                {/* v32.0.3: Per Portal an document.body — der Schritt ist ein
+                    Flex-Item mit z-index und damit ein eigener Stapelkontext;
+                    darin verlor der Kasten gegen die Vorlagen-Bilder in
+                    Schritt 1, die über ihm lagen (Screenshot 28.09.2026). */}
+                {hintStepIdx === idx && hintAnchor && ReactDOM.createPortal(
                     <div
                       role="tooltip"
                       style={{
@@ -437,7 +445,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                         fontStyle: 'normal',
                         textAlign: 'left',
                         whiteSpace: 'normal',
-                        zIndex: 1500,
+                        zIndex: 100000,
                         pointerEvents: 'none',
                       }}
                     >
@@ -449,7 +457,8 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                           <li key={bi} style={{ marginBottom: 4 }}>{b}</li>
                         ))}
                       </ul>
-                    </div>
+                    </div>,
+                    document.body,
                   )}
               </div>
             ))}
@@ -816,29 +825,57 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                 v22.26: Position + Look exakt wie die Jump-Buttons im Organizer
                 Center (unten MITTIG, grüne Pille) — bewährtes fixed-Muster,
                 kollidiert nicht mit dem Chat-Icon unten rechts. */}
-            {currentStep < steps.length - 1 && (
-              <button
-                type="button"
-                aria-hidden={actionRowVisible}
-                tabIndex={actionRowVisible ? -1 : 0}
-                onClick={proceedNext}
-                style={{
-                  position: 'fixed', left: '50%', bottom: 20, zIndex: 900,
-                  background: 'var(--dex-green, #86bc25)', color: '#fff',
-                  border: 'none', padding: '10px 16px', borderRadius: 999,
-                  cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  fontFamily: 'inherit',
-                  transition: 'opacity 0.3s ease, transform 0.3s ease',
-                  opacity: actionRowVisible ? 0 : 1,
-                  transform: actionRowVisible ? 'translate(-50%, 14px)' : 'translate(-50%, 0)',
-                  pointerEvents: actionRowVisible ? 'none' : 'auto',
-                }}
-              >
-                {t('create.next')}
-              </button>
-            )}
+            {/* v32.0.3: Aus der grünen Pille wird eine weiße Leiste, etwas
+                höher, mit Zurück · Speichern · Weiter (Nutzer-Ansage
+                28.09.2026: „den Weiter-Button bisschen höher und in einer
+                weißen Box, daneben Zurück — und auch Event speichern").
+                Dieselben Handler wie die Aktions-Zeile unten; die Leiste
+                blendet weiter aus, sobald jene im Bild ist. */}
+            <div
+              aria-hidden={actionRowVisible}
+              style={{
+                position: 'fixed', left: '50%', bottom: 36, zIndex: 900,
+                background: '#fff', borderRadius: 14, padding: '8px 10px',
+                boxShadow: '0 8px 28px rgba(0,0,0,0.18)', border: '1px solid var(--dex-gray-200, #e1e1e1)',
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                transition: 'opacity 0.3s ease, transform 0.3s ease',
+                opacity: actionRowVisible ? 0 : 1,
+                transform: actionRowVisible ? 'translate(-50%, 14px)' : 'translate(-50%, 0)',
+                pointerEvents: actionRowVisible ? 'none' : 'auto',
+                maxWidth: 'calc(100vw - 32px)', boxSizing: 'border-box', flexWrap: 'wrap', justifyContent: 'center',
+              }}
+            >
+              {currentStep > 0 && (
+                <button type="button" className="btn btn-secondary" tabIndex={actionRowVisible ? -1 : 0}
+                  onClick={() => setCurrentStep(currentStep - 1)}>
+                  {t('general.back')}
+                </button>
+              )}
+              {currentStep < steps.length - 1 && (
+                <button type="button" className="btn btn-outline" tabIndex={actionRowVisible ? -1 : 0}
+                  disabled={isEditMode && !title}
+                  style={{ opacity: isEditMode && !title ? 0.5 : 1 }}
+                  onClick={() => {
+                    if (isEditMode) { attemptSubmitGuarded(); return; }
+                    const fehlt = ersterLueckenSchritt();
+                    if (fehlt >= 0) { setTriedNext(true); setCurrentStep(fehlt); return; }
+                    setTriedNext(false);
+                    attemptSubmitGuarded();
+                  }}>
+                  <Send size={16} /> {isEditMode ? (isDe ? 'Event speichern' : 'Save event') : t('create.submit')}
+                </button>
+              )}
+              {currentStep < steps.length - 1 ? (
+                <button type="button" className="btn btn-primary" tabIndex={actionRowVisible ? -1 : 0} onClick={proceedNext}>
+                  {t('create.next')}
+                </button>
+              ) : (
+                <button type="button" className="btn btn-primary" tabIndex={actionRowVisible ? -1 : 0}
+                  disabled={!title} style={{ opacity: !title ? 0.5 : 1 }} onClick={attemptSubmitGuarded}>
+                  <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
+                </button>
+              )}
+            </div>
             </>
           )}
         </div>
