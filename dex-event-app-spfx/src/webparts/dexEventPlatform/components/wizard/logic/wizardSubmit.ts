@@ -2502,12 +2502,13 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
                 emailData.subject, kreis.map(k => k.email).join('; '), kreis.map(k => k.name).join('; '), emailData.body,
                 'EventErstellt', title, String(eventId)
               ).catch(err => { console.warn('[DEX]', err); return false; });
+              abschluss.organizerMailOk = !!ok;
               lapC(ok ? `Mail "Event angelegt" eingereiht (${kreis.length} Empfänger)` : 'Mail "Event angelegt" NICHT eingereiht');
             }
           } else {
             console.warn('[DEX] Mail "Event angelegt" übersprungen: kein SPFx-Kontext');
           }
-        } catch (err) { console.warn('[DEX] Mail "Event angelegt" fehlgeschlagen:', err); }
+        } catch (err) { abschluss.organizerMailOk = false; console.warn('[DEX] Mail "Event angelegt" fehlgeschlagen:', err); }
         // v9.45: Soft-Refresh statt Hard-Reload. Statt die Success-Page zu rendern
         // (wo zwischen Wizard und SuccessPage ein React #300 auftrat) ODER die
         // Page hart zu reloaden (was den User auf der Landing-Seite landete),
