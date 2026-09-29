@@ -13,6 +13,8 @@ import * as React from 'react';
 import { AlertCircle, Calendar, ChevronDown, Pencil, Pin, Plus, Search, Trash2, X } from '../../Icons';
 import { cx, ensureDexUiStyles } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
+import { getCachedOrbBase64 } from '../../../services/EmailTemplates';
+import { DEX_ORB_PNG } from '../../../data/brandLogos';
 import { formatDate } from '../../../utils/eventStatus';
 import OrganizerList from '../../OrganizerList';
 import Modal from '../../Modal';
@@ -258,18 +260,18 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
                 }}
                 style={{ cursor: 'pointer', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 14 }}
               >
-                {/* v23.42: größeres Thumbnail. */}
+                {/* v23.42: größeres Thumbnail. v32.22: ohne Event-Bild das
+                    Mail-Logo, sonst das DEX-Logo — dieselbe Regel wie Event-Liste
+                    und Anmeldeseite (Nutzer-Ansage 29.09.2026); bis dahin stand
+                    hier ein grauer Kasten mit „—". */}
                 <div style={{
                   width: 84, height: 60, borderRadius: 10, flexShrink: 0,
                   background: event.imageUrl
                     ? `url(${event.imageUrl}) center/cover no-repeat`
-                    : 'linear-gradient(135deg, var(--dex-gray-200), var(--dex-gray-100))',
+                    : `#fff url(${event.mailImageBase64 || getCachedOrbBase64() || DEX_ORB_PNG}) center/contain no-repeat`,
+                  ...(event.imageUrl ? {} : { backgroundOrigin: 'content-box', padding: 6, boxSizing: 'border-box' as const, border: '1px solid var(--dex-gray-200)' }),
                   filter: opts?.muted ? 'grayscale(0.4)' : 'none',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'var(--dex-gray-400)', fontSize: '0.7rem',
-                }}>
-                  {!event.imageUrl && '—'}
-                </div>
+                }} />
                 <div style={{ flex: '1 1 280px', minWidth: 0 }}>
                   <div className="dex-ui-inline">
                     <h3 style={{ margin: 0, fontSize: '1.05rem' }}>{event.title}</h3>

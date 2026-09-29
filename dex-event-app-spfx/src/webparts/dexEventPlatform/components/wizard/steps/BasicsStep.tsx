@@ -10,7 +10,8 @@ import WizardHint from '../../WizardHint';
 import { StepBadge } from '../../wizard/StepBadge';
 import { InfoTooltip } from '../../InfoTooltip';
 import DatePicker from 'react-datepicker';
-import { Check, ChevronDown, Pencil, Plus, X } from '../../Icons';
+import { Check, ChevronDown, GraduationCap, Pencil, Plus, X } from '../../Icons';
+import { useTutorial } from '../../tutorial/TutorialGuide';
 import { DEX_ORB_PNG } from '../../../data/brandLogos';
 import { Icon } from '@fluentui/react/lib/Icon';
 // v31.2: gemeinsame UI-Klassen (Toggle-Zeilen, Kacheln, Aufklapper) — Hover
@@ -139,6 +140,8 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
   // eigenes Kopfbild liegt, das NICHT aus dem Foto stammt, ist der Haken
   // vorne aus — ein bewusst gesetztes Bild wird nicht ungefragt ersetzt.
   const [photoForEmail, setPhotoForEmail] = React.useState(true);
+  // v32.22: Tutorial-Knopf im Schritt-Kopf (vorher über der Schritt-Leiste).
+  const tutorial = useTutorial();
   // v32.18: aufgeklappte Namens-Gruppe in der Vorlagen-Auswahl.
   const [offeneVorlagenGruppe, setOffeneVorlagenGruppe] = React.useState<string | null>(null);
   const [photoForOutlook, setPhotoForOutlook] = React.useState(true);
@@ -180,6 +183,16 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                     style={{ flexShrink: 0, marginBottom: 4 }}
                   >
                     {isDe ? 'Demo-Vorlage' : 'Demo template'}
+                  </button>
+                )}
+                {/* v32.22: Tutorial-Knopf neben der Demo-Vorlage — nur beim frisch
+                    geöffneten neuen Event (v32.2.2: mitten im Ausfüllen wäre er
+                    ein Angebot, das den eigenen Stand verlässt). */}
+                {!isEditMode && !tutorialMode && tutorial.canCoach && !tutorial.coachActive && draftSavedAt === null && (
+                  <button type="button" className="dex-ui-chip" onClick={tutorial.startCoach}
+                    title={isDe ? 'Wir legen zusammen ein Test-Event an — du tippst und klickst selbst. Nur du siehst es, am Ende löschst du es mit einem Klick.' : 'We create a test event together — you type and click yourself. Only you see it; delete it with one click at the end.'}
+                    style={{ flexShrink: 0, marginBottom: 4, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <GraduationCap size={14} /> {isDe ? 'Tutorial' : 'Tutorial'}
                   </button>
                 )}
                 {/* v32.18: Einführungs-Event zu DEX (Nutzer-Ansage 29.09.2026:
