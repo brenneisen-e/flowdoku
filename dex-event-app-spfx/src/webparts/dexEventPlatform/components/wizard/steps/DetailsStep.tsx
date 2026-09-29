@@ -259,7 +259,7 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                <span className="dex-step-eyebrow">{isDe ? 'Schritt 2 von 9' : 'Step 2 of 9'}</span>
+                <span className="dex-step-eyebrow">{isDe ? 'Schritt 2 von 6' : 'Step 2 of 6'}</span>
                 {isDe ? 'Organizer & Team' : 'Organizers & team'}
               </h2>
               <p className="dex-step-head-lead">
@@ -269,7 +269,7 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
               </p>
 
               {/* ---- Frage 1: Wer verantwortet das Event? (Pflicht) ------------- */}
-              <div className="dex-ui-section" data-tour="wizard-organizer">
+              <div className="dex-ui-section dex-ui-section--pflicht" data-art={isDe ? 'Pflicht' : 'Required'} data-tour="wizard-organizer">
                 <div className="dex-ui-section-title">{isDe ? 'Wer verantwortet das Event?' : 'Who is responsible for the event?'}</div>
                 <p className="dex-ui-section-desc">
                   {isDe
@@ -484,7 +484,7 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                   (nur QR-Tool + KPIs), erscheinen NICHT in Organizer-Listen auf
                   MyEvents/RegistrationPage und bekommen KEINE Organizer-Mails.
                   Beide Picker via Graph-Search, beliebige Deloitte-User. */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 <div className="dex-ui-section-title">{isDe ? 'Wer hilft mit?' : 'Who helps out?'} <span className="dex-ui-label-optional" style={{ textTransform: 'none', letterSpacing: 0 }}>(optional)</span></div>
                 <p className="dex-ui-section-desc">
                   {isDe
@@ -816,7 +816,7 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
               </div>
 
               {/* ---- Frage 3: An wen wenden sich Teilnehmer bei Fragen? ---------- */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 <div className="dex-ui-section-title">{isDe ? 'An wen wenden sich Teilnehmer bei Fragen?' : 'Who do attendees contact with questions?'}</div>
                 {/* v28.5: Rückfragen-Kontakt — genau EINER; erneuter Klick entfernt
                     die Markierung. v28.10: Sprechblase statt „?". v31.2: als
@@ -1017,7 +1017,7 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                   v23.25/v24.15: Darstellungs-Größe der Organizer. Nur relevant,
                   wenn überhaupt Organizer angezeigt werden — also NICHT, wenn
                   ALLE ausgeblendet sind (hideOrganizer ohne Einzel-Modus). */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 <button
                   type="button"
                   className={cx('dex-ui-disclosure', moreOpen && 'is-open')}

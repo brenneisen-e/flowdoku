@@ -144,6 +144,14 @@ export default function EventCreationPage(): React.ReactElement {
   const [tcAccepted, setTcAccepted] = React.useState<boolean>(() => {
     if (resumeIdRef.current && readEventDraftById(resumeIdRef.current)?.tcAccepted) return true;
     if (coachAtStart) { try { return !!window.localStorage.getItem('dex_tc_accepted_v1'); } catch { return false; } }
+    // v32.40: Direkt nach dem Schließen des Tutorials (s. TutorialGuide) nicht
+    // noch einmal fragen, wenn die Person schon einmal bestätigt hat.
+    try {
+      if (window.sessionStorage.getItem('dex_tc_nach_tutorial')) {
+        window.sessionStorage.removeItem('dex_tc_nach_tutorial');
+        return !!window.localStorage.getItem('dex_tc_accepted_v1');
+      }
+    } catch { /* Speicher gesperrt → normal fragen */ }
     return false;
   });
   const [tcCheckbox, setTcCheckbox] = React.useState(false);
@@ -1811,7 +1819,7 @@ export default function EventCreationPage(): React.ReactElement {
     excludedCount: number
   ): React.ReactElement => {
     return renderVisibilitySummaryBoxImpl({
-      isDe,
+      isDe, isFictive, activeFrom,
     }, locList, audienceStr, mode, excludedCount);
   };
 

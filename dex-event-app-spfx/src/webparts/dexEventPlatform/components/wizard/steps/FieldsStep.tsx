@@ -213,7 +213,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                <span className="dex-step-eyebrow">{isDe ? 'Schritt 5 von 9' : 'Step 5 of 9'}</span>
+                <span className="dex-step-eyebrow">{isDe ? 'Schritt 5 von 6' : 'Step 5 of 6'}</span>
                 {isDe ? 'Fragen im Anmeldeformular' : 'Questions on the registration form'}
               </h2>
               <p className="dex-step-head-lead">
@@ -419,7 +419,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                 };
                 const seName = se.title || (isDe ? '(unbenanntes Sub-Event)' : '(unnamed sub-event)');
                 return (
-                  <div className="dex-ui-section">
+                  <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                     <h3 className="dex-ui-section-title">
                       {isDe ? `Fragen für ${seName}` : `Questions for ${seName}`}
                     </h3>
@@ -726,7 +726,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   Greyout — die Felder im ersten Tab sind „übergreifend"
                   und werden bei JEDER Sub-Event-Anmeldung abgefragt, also
                   in dem Modus besonders relevant. */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 {/* v15.0: im subEventsOnlyMode lautet die Überschrift
                     „Übergreifend für alle <childTermPlural>". */}
                 <h3 className="dex-ui-section-title">
@@ -1828,7 +1828,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   verfeinern das Formular, die Fragen sind das Eigentliche. Der
                   frühere „Anrede abfragen?"-Toggle ist als vorgeschlagenes Feld
                   im Katalog (Sonder-Key 'salutation'). */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 <h3 className="dex-ui-section-title">{isDe ? 'Sprache des Formulars' : 'Form language'}</h3>
                 <button type="button" className={cx('dex-ui-disclosure', langOpen && 'is-open')} aria-expanded={langOpen} onClick={() => setLangOpen(o => !o)}>
                   <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
@@ -1930,7 +1930,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   ganz unten in Schritt 5 (gilt event-weit, daher außerhalb der
                   Feld-Tabs). v31.2: Schalter-Zeile plus zwei Auswahl-Kacheln
                   statt Checkbox + Radio-Paar. */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 <h3 className="dex-ui-section-title">{isDe ? 'Vor dem Absenden' : 'Before submitting'}</h3>
                 <label className={cx('dex-ui-toggle-row', confirmDialogEnabled && 'is-active')}>
                   <input

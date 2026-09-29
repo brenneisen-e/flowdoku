@@ -194,7 +194,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
                 <h2 className="dex-step-head-title">
-                  <span className="dex-step-eyebrow">{isDe ? 'Schritt 6 von 9' : 'Step 6 of 9'}</span>
+                  <span className="dex-step-eyebrow">{isDe ? 'Schritt 6 von 6' : 'Step 6 of 6'}</span>
                   {t('create.step.communication')}
                 </h2>
                 <p className="dex-step-head-lead">
@@ -233,7 +233,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                     mit Pill (eigen / wie Haupt-Event) und einem Knopf, der
                     genau EIN Thema auf alle Termine verteilt. */}
                 {subEvents.length > 0 && (
-                  <div className="dex-ui-section">
+                  <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                     <div className="dex-ui-section-title">{isDe ? 'Geltung' : 'Scope'}</div>
                     <div className="dex-ui-label">
                       {isDe ? 'Gelten die Einstellungen für jeden Termin einzeln oder für alle gemeinsam?' : 'Do these settings apply per date or to all dates together?'}
@@ -358,7 +358,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                     verschickt die Klammer EINE. Nur im Klammer-Modus, weil
                     ein buchbares Haupt-Event ohnehin selbst verschickt. */}
                 {subEvents.length > 0 && subEventsOnlyMode && (
-                  <div className="dex-ui-section">
+                  <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                     <div className="dex-ui-section-title">{isDe ? 'Bündelung' : 'Bundling'}</div>
                     <div className="dex-ui-label">
                       {isDe ? 'Wie viele Mails bekommt jemand, der mehrere Termine bucht?' : 'How many emails does someone get who books several dates?'}
@@ -494,7 +494,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                 {/* v31.2: Kanal VOR Sprache — wer „Keine Kommunikation" wählt, braucht
                     keine Sprache mehr; die Sprach-Karte wird dann gedämpft. Die Badges
                     25/26 bleiben an ihren Fragen. */}
-                <div className="dex-ui-section">
+                <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                   <div className="dex-ui-section-title">{isDe ? 'Kanal' : 'Channel'}</div>
                   <div className="dex-ui-label">
                     <StepBadge n={25} />
@@ -612,7 +612,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                     </WizardHint>
                   )}
                 </div>
-                <div className="dex-ui-section">
+                <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                   <div className="dex-ui-section-title">{isDe ? 'Sprache' : 'Language'}</div>
                   <div className={cx('dex-ui-card', disableEmails && disableOutlook && 'dex-ui-card--muted')}>
                     <div className="dex-ui-label">
@@ -672,7 +672,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                   ];
                   const changedCount = chips.filter(c => c.changed).length;
                   return (
-                    <div className="dex-ui-section">
+                    <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                       <div className="dex-ui-section-title">{isDe ? 'So geht es raus' : 'What goes out'}</div>
                       <button type="button" className={cx('dex-ui-disclosure', previewOpen && 'is-open')} aria-expanded={previewOpen} onClick={() => setPreviewOpen(o => !o)}>
                         <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
@@ -984,7 +984,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                       {/* v31.2: Die drei Schalter als dex-ui-toggle-row statt über
                           commToggleRow — dieselben Werte an denselben Settern, aber mit
                           Hover und der Folge direkt unter dem Titel. */}
-                      {!disableEmails && (<div className="dex-ui-section">
+                      {!disableEmails && (<div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                         <div className="dex-ui-section-title">{isDe ? 'Mails an Teilnehmer' : 'Emails to attendees'}</div>
                         <div className="dex-ui-stack">
                           <label className={cx('dex-ui-toggle-row', !disableRegistrationEmail && 'is-active')}>
@@ -1013,7 +1013,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                           </label>
                         </div>
                       </div>)}
-                      {!disableOutlook && (<div className="dex-ui-section">
+                      {!disableOutlook && (<div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                         <div className="dex-ui-section-title">{isDe ? 'Outlook-Termin' : 'Outlook invite'}</div>
                         {/* v30.94: ausformuliert — „Termin abgesagt → Platz wird frei"
                             las sich als Pfeil-Rätsel (Nutzer: „das versteht man
@@ -1045,7 +1045,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                 {/* v30.89: Mitleser-Karte. v30.94: aus Ebene 1 in die Feineinstellungen
                     verlegt (Nutzer-Ansage 07.09.2026: das ist Feineinstellung). Die
                     Abmelde-Regel bleibt eingeklappt, bis jemand sie abweichend braucht. */}
-                <div className="dex-ui-section">
+                <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                   <div className="dex-ui-section-title">{isDe ? 'Organizer in Kopie' : 'Organizers in copy'}</div>
                   <div className="dex-ui-card">
                     <div className="dex-ui-label">
@@ -1138,7 +1138,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
                       nicht mehr bei Deloitte arbeitet. 'notify' = Organizer per
                       Mail informieren (Standard), 'autoderegister' = automatisch
                       abmelden (beim Öffnen der App durch einen Organizer). */}
-                  <div className="dex-ui-section">
+                  <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                     <div className="dex-ui-section-title">{isDe ? 'Konto nicht mehr aktiv' : 'Account no longer active'}</div>
                     <div className="dex-ui-label">
                       {isDe ? 'Was passiert, wenn eine angemeldete Person nicht mehr bei Deloitte arbeitet?' : 'What happens when a registered person no longer works at Deloitte?'}

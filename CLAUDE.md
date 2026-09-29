@@ -205,6 +205,11 @@ Anzeige-Bedingungen, dazu `steps`-Array, Schritt-Titel im Text, `STEP_HINTS_DE`/
 `STEP_HINTS_EN`, `getStepErrors`-Cases, `SCOPE_AWARE_STEPS` und die Tour-Grenze
 (`detail <= 7`). Wer einen Schritt hinzufügt oder entfernt, muss **alle** davon
 nachziehen.
+Seit v32.38 bündelt der Stepper die Schritte 6/7/8 (Team-Anmeldung, Dokumente,
+Fun-Zone) zu EINEM Knoten „Extras" (`EXTRA_IDX` in `WizardFormShell`), und
+„Weiter" aus Kommunikation (Index 5) öffnet die Zwischenkarte „Brauchst du
+Extras?". Die Indizes selbst sind unverändert; die Kopfzeilen sagen „Schritt N
+von 6" bzw. „Extra · optional".
 
 **Kommunikationsfelder der Sub-Events liegen nicht laufend im Draft.** Sie
 werden erst bei `switchCommTab` in den Slot geschrieben. Wer sie liest

@@ -53,7 +53,7 @@ export const FunZoneStep: React.FC<FunZoneStepProps> = ({
   return (
     <div style={{ display: visible ? 'block' : 'none' }}>
       <h2 className="dex-step-head-title">
-        <span className="dex-step-eyebrow">{isDe ? 'Schritt 9 von 9' : 'Step 9 of 9'}</span>
+        <span className="dex-step-eyebrow">{isDe ? 'Extra · optional' : 'Extra · optional'}</span>
         {t('create.step.funzone')}
       </h2>
       <p className="dex-step-head-lead">

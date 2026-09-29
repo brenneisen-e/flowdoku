@@ -4,6 +4,7 @@
  * `visible` schaltet display:none statt unmount — Eingaben ueberleben den
  * Schrittwechsel genauso wie vorher. */
 import * as React from 'react';
+import { Aufklapper } from '../Aufklapper';
 import { SubEventDraft } from '../../wizard/wizardTypes';
 import { AgendaItem } from '../../../types';
 import { StepBadge } from '../../wizard/StepBadge';
@@ -196,7 +197,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                <span className="dex-step-eyebrow">{isDe ? 'Schritt 3 von 9' : 'Step 3 of 9'}</span>
+                <span className="dex-step-eyebrow">{isDe ? 'Schritt 3 von 6' : 'Step 3 of 6'}</span>
                 {isDe ? 'Ort & Programm' : 'Location & Programme'}
               </h2>
               <p className="dex-step-head-lead">
@@ -275,7 +276,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                         {isDe ? 'Vom Hauptevent kopieren' : 'Copy from main event'}
                       </button>
                     </div>
-                    <div className="dex-ui-section">
+                    <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                       <div className="dex-ui-section-title">{isDe ? 'Wo findet dieser Termin statt?' : 'Where does this date take place?'}</div>
                       <div className="dex-ui-field">
                         <label className="dex-ui-label">
@@ -337,8 +338,9 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                         </div>
                       )}
                     </div>
-                    <div className="dex-ui-section">
+                    <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                       <div className="dex-ui-section-title">{isDe ? 'Wie kommen die Teilnehmer hin?' : 'How do attendees get there?'}</div>
+                      <Aufklapper label={isDe ? 'Organisierte Anreisen (Bus, Shuttle, Bahn) · optional' : 'Organised travel (bus, shuttle, train) · optional'} anzahl={seTransfers.length} startOffen={seTransfers.length > 0}>
                       <TransfersSection
                         items={seTransfers}
                         onChange={next => updateSub({ transferTimes: next })}
@@ -348,9 +350,11 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                         defaultDate={seDefaultDate}
                         tooltip={isDe ? TRANSFERS_TOOLTIP.de : TRANSFERS_TOOLTIP.en}
                       />
+                      </Aufklapper>
                     </div>
-                    <div className="dex-ui-section">
+                    <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                       <div className="dex-ui-section-title">{isDe ? 'Was passiert wann?' : 'What happens when?'}</div>
+                      <Aufklapper label={isDe ? 'Programm / Ablauf · optional' : 'Programme / schedule · optional'} anzahl={seAgenda.length} startOffen={agendaCheckIn || seAgenda.length > 0}>
                       <label className="dex-ui-label" style={{ fontSize: '0.95rem' }}>
                         <StepBadge n={17} />
                         {isDe ? 'Wie sieht das Programm aus?' : 'What does the programme look like?'}
@@ -366,6 +370,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                         termPlural={agendaCheckIn ? agendaTermPlural : (isDe ? 'Programmpunkte' : 'Agenda items')}
                         defaultDate={seDefaultDate}
                       />
+                      </Aufklapper>
                     </div>
                   </div>
                 );
@@ -378,7 +383,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                   Events"-Card usw.). Sie bleiben immer relevant, auch wenn
                   das Hauptevent nicht anmeldbar ist. */}
               <div>
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
               <div className="dex-ui-section-title">{isDe ? 'Wo findet das Event statt?' : 'Where does the event take place?'}</div>
               <div className="dex-ui-field">
                 <label className="dex-ui-label">
@@ -596,8 +601,10 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
               {/* ===== Transferzeiten ===== v31.2: vor dem Programm — die
                   Geschichte des Schritts ist „Wo? → Wie kommt man hin? → Was
                   passiert wann?". Badge 16, das Programm 17 — Nummern in Renderreihenfolge (07.09.2026). */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 <div className="dex-ui-section-title">{isDe ? 'Wie kommen die Teilnehmer hin?' : 'How do attendees get there?'}</div>
+                {/* v32.38: eingeklappt, solange leer (Nutzer-Ansage 29.09.2026). */}
+                <Aufklapper label={isDe ? 'Organisierte Anreisen (Bus, Shuttle, Bahn) · optional' : 'Organised travel (bus, shuttle, train) · optional'} anzahl={transferTimes.length} startOffen={transferTimes.length > 0}>
                 <TransfersSection
                   items={transferTimes}
                   onChange={setTransferTimes}
@@ -608,11 +615,15 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                   defaultDate={startDate ? startDate.slice(0, 10) : ''}
                   tooltip={isDe ? TRANSFERS_TOOLTIP.de : TRANSFERS_TOOLTIP.en}
                 />
+                </Aufklapper>
               </div>
 
               {/* ===== Agenda Editor ===== */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 <div className="dex-ui-section-title">{isDe ? 'Was passiert wann?' : 'What happens when?'}</div>
+                {/* v32.38: eingeklappt, solange leer — im Programmpunkte-Modus
+                    immer offen, dort ist die Liste die Check-in-Liste. */}
+                <Aufklapper label={agendaCheckIn ? agendaPlural : (isDe ? 'Programm / Ablauf · optional' : 'Programme / schedule · optional')} anzahl={agenda.length} startOffen={agendaCheckIn || agenda.length > 0}>
                 <label className="dex-ui-label" style={{ fontSize: '0.95rem' }}>
                   <StepBadge n={17} />
                   {agendaCheckIn ? agendaPlural : (isDe ? 'Wie sieht das Programm aus?' : 'What does the programme look like?')}
@@ -673,6 +684,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                   termPlural={agendaCheckIn ? agendaTermPlural : (isDe ? 'Programmpunkte' : 'Agenda items')}
                   defaultDate={startDate ? startDate.slice(0, 10) : ''}
                 />
+                </Aufklapper>
               </div>
 
               </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 3) */}

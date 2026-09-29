@@ -16,7 +16,9 @@ import { CommunicationStep, CommunicationStepProps } from '../wizard/steps/Commu
 import { DocumentsStep } from '../wizard/steps/DocumentsStep';
 import { FunZoneStep } from '../wizard/steps/FunZoneStep';
 import { BillingStep } from '../wizard/steps/BillingStep';
-import { Eye, Send, Trash2, GraduationCap } from '../Icons';
+import { Eye, Send, Trash2, GraduationCap, Sparkles, Users, FileText, Gamepad, Check } from '../Icons';
+import Modal from '../Modal';
+import { cx } from '../dexUi';
 import { useTutorial } from '../tutorial/TutorialGuide';
 import { SubmitOverlay } from '../registration/RegistrationBanners';
 // v31.2: gemeinsame UI-Klassen (Karten, Chips, Schalter, Aufklapper …) —
@@ -143,6 +145,13 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
     return -1;
   };
   const alleSchritteVollstaendig = ersterLueckenSchritt() < 0;
+  // v32.38: „Weiter" aus Kommunikation (Index 5) fragt nach den Extras, statt
+  // blind in Team-Anmeldung zu laufen. Mit Fehlern bleibt es bei proceedNext,
+  // das die Fehler zeigt.
+  const weiter = (): void => {
+    if (currentStep === 5 && getStepErrorsFor(5).length === 0) { setExtrasFrage(true); return; }
+    proceedNext();
+  };
 
   /**
    * v31.64: Schritt-Leiste und Scope-Karte bleiben beim Scrollen oben stehen.
@@ -169,6 +178,25 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
   const stickyPhRef = React.useRef<HTMLDivElement | null>(null);
   const [hintAnchor, setHintAnchor] = React.useState<{ x: number; y: number } | null>(null);
   const [stickyPin, setStickyPin] = React.useState<null | { top: number; left: number; width: number; height: number }>(null);
+  // v32.38: Team-Anmeldung, Dokumente und Fun-Zone als „Extras" gebündelt
+  // (Nutzer-Ansage 29.09.2026: der Wizard soll für neue Organizer nicht so
+  // lang wirken). Die Schritte behalten ihre festen Indizes 6/7/8 — nur der
+  // Stepper zeigt sie als EINEN Knoten, und „Weiter" aus Kommunikation fragt
+  // zuerst, ob man sie braucht. Kein Umnummerieren (CLAUDE.md: Wizard-Schritte
+  // hängen an festen Indizes).
+  const EXTRA_IDX = [6, 7, 8];
+  const extraGenutzt = (i: number): boolean =>
+    i === 6 ? !!teamRegistrationEnabled
+      : i === 7 ? ((documents || []).length > 0)
+      : i === 8 ? ((quiz || []).length > 0)
+      : false;
+  const extrasGenutzt = EXTRA_IDX.filter(extraGenutzt).length;
+  const [extrasOffen, setExtrasOffen] = React.useState<boolean>(() => EXTRA_IDX.indexOf(currentStep) >= 0 || extrasGenutzt > 0);
+  const [extrasFrage, setExtrasFrage] = React.useState(false);
+  React.useEffect(() => {
+    if (EXTRA_IDX.indexOf(currentStep) >= 0) setExtrasOffen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep]);
   React.useEffect(() => {
     const update = (): void => {
       const ph = stickyPhRef.current;
@@ -358,14 +386,55 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
             }
           `}</style>
           {(() => {
-            const sidePct = 100 / (steps.length * 2);
+            type Eintrag = { art: 'schritt'; idx: number } | { art: 'extras' };
+            const anzeige: Eintrag[] = [];
+            steps.forEach((_s, i) => {
+              if (i === EXTRA_IDX[0]) anzeige.push({ art: 'extras' });
+              if (EXTRA_IDX.indexOf(i) >= 0 && !extrasOffen) return;
+              anzeige.push({ art: 'schritt', idx: i });
+            });
+            const posAktuell = anzeige.findIndex(e => (e.art === 'schritt' && e.idx === currentStep) || (e.art === 'extras' && !extrasOffen && EXTRA_IDX.indexOf(currentStep) >= 0));
+            const sidePct = 100 / (anzeige.length * 2);
             const spanPct = 100 - 2 * sidePct;
+            const extrasDurch = currentStep > EXTRA_IDX[EXTRA_IDX.length - 1];
+            const extrasAktiv = EXTRA_IDX.indexOf(currentStep) >= 0;
+            const renderExtrasKnoten = (): React.ReactElement => (
+              <div
+                key="extras"
+                className="dex-wizard-step"
+                data-tour="wizard-extras"
+                role="button"
+                aria-expanded={extrasOffen}
+                title={isDe ? 'Optionale Extras: Team-Anmeldung, Dokumente, Fun-Zone' : 'Optional extras: team registration, documents, fun zone'}
+                onClick={() => setExtrasOffen(o => !o)}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, zIndex: 2, cursor: 'pointer', flex: 1 }}
+              >
+                <div className="dex-step-circle" style={{
+                  width: 40, height: 40, borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: extrasDurch || (extrasAktiv && !extrasOffen) ? 'var(--dex-green)' : '#fff',
+                  color: extrasDurch || (extrasAktiv && !extrasOffen) ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
+                  border: extrasDurch || (extrasAktiv && !extrasOffen) ? '3px solid var(--dex-green)' : '3px dashed var(--dex-green, #86bc25)',
+                  boxShadow: extrasAktiv && !extrasOffen ? '0 0 0 4px rgba(134,188,37,0.2)' : 'none',
+                  position: 'relative',
+                  transition: 'all 0.3s ease',
+                }}>
+                  <Sparkles size={18} />
+                  {extrasGenutzt > 0 && (
+                    <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, background: 'var(--dex-green-dark, #4a7c1f)', color: '#fff', fontSize: '0.65rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{extrasGenutzt}</span>
+                  )}
+                </div>
+                <span className="dex-step-label" style={{ fontSize: '0.75rem', fontWeight: extrasAktiv ? 700 : 500, color: 'var(--dex-green-dark, #4a7c1f)', textAlign: 'center' }}>
+                  {isDe ? 'Extras' : 'Extras'} <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}>{extrasOffen ? '▴' : (isDe ? '(optional)' : '(optional)')}</span>
+                </span>
+              </div>
+            );
             return (
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', position: 'relative' }}>
             {/* Verbindungslinie */}
             <div className="dex-step-line" style={{ position: 'absolute', top: 17, left: `${sidePct}%`, right: `${sidePct}%`, height: 5, background: 'var(--dex-gray-200)', borderRadius: 3, zIndex: 0 }} />
-            <div className="dex-step-line" style={{ position: 'absolute', top: 17, left: `${sidePct}%`, height: 5, background: 'var(--dex-green)', borderRadius: 3, zIndex: 1, width: `${(currentStep / Math.max(1, steps.length - 1)) * spanPct}%`, transition: 'width 0.4s ease' }} />
-            {steps.map((step, idx) => (
+            <div className="dex-step-line" style={{ position: 'absolute', top: 17, left: `${sidePct}%`, height: 5, background: 'var(--dex-green)', borderRadius: 3, zIndex: 1, width: `${(Math.max(0, posAktuell) / Math.max(1, anzeige.length - 1)) * spanPct}%`, transition: 'width 0.4s ease' }} />
+            {anzeige.map(eintrag => eintrag.art === 'extras' ? renderExtrasKnoten() : ((step: typeof steps[number], idx: number) => (
               <div
                 key={idx}
                 className="dex-wizard-step"
@@ -421,7 +490,8 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                   fontWeight: 700, fontSize: '1rem',
                   background: idx <= currentStep ? 'var(--dex-green)' : '#fff',
                   color: idx <= currentStep ? '#fff' : 'var(--dex-gray-400)',
-                  border: idx <= currentStep ? '3px solid var(--dex-green)' : '3px solid var(--dex-gray-200)',
+                  // v32.38: Extras mit gestricheltem Rand — optional, nicht „noch offen".
+                  border: idx <= currentStep ? '3px solid var(--dex-green)' : (EXTRA_IDX.indexOf(idx) >= 0 ? '3px dashed var(--dex-gray-300, #d4d4d4)' : '3px solid var(--dex-gray-200)'),
                   transition: 'all 0.3s ease',
                   boxShadow: idx === currentStep ? '0 0 0 4px rgba(134,188,37,0.2)' : 'none',
                 }}>
@@ -489,7 +559,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                     document.body,
                   )}
               </div>
-            ))}
+            ))(steps[eintrag.idx], eintrag.idx))}
           </div>
             );
           })()}
@@ -519,6 +589,47 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                 : `Auto-saved on ${new Date(draftSavedAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })} at ${new Date(draftSavedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`}
             </span>
           </div>
+        )}
+
+        {/* v32.38: Zwischenkarte „Brauchst du Extras?" nach Kommunikation. */}
+        {extrasFrage && (
+          <Modal open={true} onClose={() => setExtrasFrage(false)} maxWidth={760}
+            title={isDe ? 'Brauchst du noch Extras?' : 'Do you need any extras?'}
+            subtitle={isDe ? 'Die meisten Events brauchen keine — du kannst sie auch später über „Extras" im Stepper öffnen.' : 'Most events need none — you can open them later via “Extras” in the stepper.'}
+            icon={<Sparkles size={20} />}
+            footer={<>
+              <button type="button" className="btn btn-secondary" onClick={() => setExtrasFrage(false)}>{isDe ? 'Zurück' : 'Back'}</button>
+              <button type="button" className="btn btn-primary" data-tour="wizard-extras-skip" onClick={() => {
+                setExtrasFrage(false);
+                if (steps.length > EXTRA_IDX[EXTRA_IDX.length - 1] + 1) { setCurrentStep(EXTRA_IDX[EXTRA_IDX.length - 1] + 1); return; }
+                const fehlt = ersterLueckenSchritt();
+                if (fehlt >= 0) { setTriedNext(true); setCurrentStep(fehlt); zeigeSchrittFehler(fehlt); return; }
+                setTriedNext(false);
+                attemptSubmitGuarded();
+              }}>
+                {steps.length > EXTRA_IDX[EXTRA_IDX.length - 1] + 1
+                  ? (isDe ? 'Ohne Extras weiter' : 'Continue without extras')
+                  : isEditMode ? (isDe ? 'Ohne Extras speichern' : 'Save without extras') : (isDe ? 'Ohne Extras: Event erstellen' : 'No extras: create event')}
+              </button>
+            </>}>
+            <div className="dex-ui-grid-2" style={{ gap: 10 }}>
+              {([
+                { i: 6, icon: <Users size={18} />, de: 'Team-Anmeldung', en: 'Team registration', dDe: 'Mehrere Personen melden sich gemeinsam als Team an.', dEn: 'Several people register together as a team.' },
+                { i: 7, icon: <FileText size={18} />, de: 'Dokumente', en: 'Documents', dDe: 'Agenda, Anfahrt oder Unterlagen zum Herunterladen.', dEn: 'Agenda, directions or handouts to download.' },
+                { i: 8, icon: <Gamepad size={18} />, de: 'Fun-Zone', en: 'Fun zone', dDe: 'Quiz und kleine Spiele rund um das Event.', dEn: 'Quiz and small games around the event.' },
+              ]).map(x => (
+                <button key={x.i} type="button" className={cx('dex-ui-choice', extraGenutzt(x.i) && 'is-active')}
+                  onClick={() => { setExtrasFrage(false); setExtrasOffen(true); setTriedNext(false); setCurrentStep(x.i); }}>
+                  <span className="dex-ui-choice-icon">{x.icon}</span>
+                  <span className="dex-ui-choice-body">
+                    <span className="dex-ui-choice-title" style={{ display: 'block' }}>{isDe ? x.de : x.en}</span>
+                    <span className="dex-ui-choice-desc" style={{ display: 'block' }}>{isDe ? x.dDe : x.dEn}</span>
+                  </span>
+                  <span className="dex-ui-choice-check">{extraGenutzt(x.i) && <Check size={12} />}</span>
+                </button>
+              ))}
+            </div>
+          </Modal>
         )}
 
         {/* ===== Formular ===== */}
@@ -831,7 +942,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                   <button
                     className="btn btn-primary"
                     data-tour="wizard-next"
-                    onClick={proceedNext}
+                    onClick={weiter}
                   >
                     {t('create.next')}
                   </button>
@@ -905,7 +1016,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                 </button>
               )}
               {currentStep < steps.length - 1 ? (
-                <button type="button" className="btn btn-primary" data-tour="wizard-next" tabIndex={actionRowVisible ? -1 : 0} onClick={proceedNext}>
+                <button type="button" className="btn btn-primary" data-tour="wizard-next" tabIndex={actionRowVisible ? -1 : 0} onClick={weiter}>
                   {t('create.next')}
                 </button>
               ) : (

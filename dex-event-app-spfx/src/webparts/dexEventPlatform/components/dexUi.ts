@@ -253,6 +253,26 @@ input.dex-ui-checkbox:not([hidden]):disabled { opacity: 0.55; cursor: not-allowe
 
 /* ---- Abschnitte, Felder, Raster ------------------------------------ */
 .dex-ui-section { margin: 22px 0 0; }
+/* v32.39: Pflicht / Optional als gekippte Leiste am linken Rand (Nutzer-Ansage
+   29.09.2026). Der Text kommt aus data-art, damit er zweisprachig ist. Die
+   Leiste liegt im Innenabstand der Karte (32 px), der Abschnitt selbst
+   verschiebt sich nicht. Auf dem Handy wird sie zur Pille über dem Titel. */
+.dex-ui-section--pflicht, .dex-ui-section--optional { position: relative; }
+.dex-ui-section--pflicht::before, .dex-ui-section--optional::before {
+  content: attr(data-art); position: absolute; left: -26px; top: 2px; bottom: 2px; width: 16px;
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+  font-size: 0.58rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  border-radius: 4px; pointer-events: none;
+}
+.dex-ui-section--pflicht::before { background: rgba(134,188,37,0.18); color: #3f6a12; }
+.dex-ui-section--optional::before { background: ${G100}; color: ${G500}; }
+@media (max-width: 768px) {
+  .dex-ui-section--pflicht::before, .dex-ui-section--optional::before {
+    position: static; writing-mode: horizontal-tb; transform: none; display: inline-block;
+    width: auto; padding: 1px 8px; margin: 0 0 6px; border-radius: 999px;
+  }
+}
 .dex-ui-section:first-child { margin-top: 0; }
 .dex-ui-section-title {
   display: flex; align-items: center; gap: 10px; margin: 0 0 10px;

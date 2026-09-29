@@ -170,7 +170,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   Fehler aus den ersten Screenshots. */}
               <h2 className="dex-step-head-title" style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span className="dex-step-eyebrow">{isDe ? 'Schritt 1 von 9' : 'Step 1 of 9'}</span>
+                  <span className="dex-step-eyebrow">{isDe ? 'Schritt 1 von 6' : 'Step 1 of 6'}</span>
                   <span>{isDe ? 'Grundlagen' : 'Basics'}</span>
                 </span>
                 {!isEditMode && !tutorialMode && (
@@ -532,7 +532,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   hatten nur „Teilnahme" und „Veröffentlichung" eine, die vier
                   vorderen nicht. Auf einem Sub-Event-Reiter heißt der erste
                   Abschnitt wie der Termin selbst, nicht „Event". */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--pflicht" data-art={isDe ? 'Pflicht' : 'Required'}>
                 <div className="dex-ui-section-title">{scopeSub ? (childTermSingular || 'Sub-Event') : 'Event'}</div>
                 <label className="dex-ui-label">
                   <StepBadge n={1} />
@@ -583,7 +583,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
 
               {/* v9.24: Event-Datum direkt nach Title — auto-fillt die Deadlines.
                   Vorher in Step 1, jetzt in Step 0 weil das fundamentale Info ist. */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--pflicht" data-art={isDe ? 'Pflicht' : 'Required'}>
                 <div className="dex-ui-section-title">{isDe ? 'Zeitraum' : 'Dates'}</div>
                 <div className="dex-ui-label">
                   <StepBadge n={2} />
@@ -766,7 +766,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
               {p.seriesSlot}
               </div>
 
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 {/* v28.7: kein <label> mehr, sondern <div> — rechts sitzt jetzt
                     der „Beschreibung anzeigen"-Schalter mit eigenem <label>;
                     verschachtelte Labels würden Klicks auf die Überschrift
@@ -904,7 +904,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                 })()}
               </div>
 
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 <div className="dex-ui-section-title">{isDe ? 'Bild' : 'Image'}</div>
                 <div className="dex-ui-label">
                   <StepBadge n={4} />
@@ -1346,7 +1346,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   v31.2: eigener Abschnitt statt Anhang ans Bild — die Frage
                   hat mit dem Bild nichts zu tun. */}
               {scopeSub && (
-                <div className="dex-ui-section">
+                <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                   <div className="dex-ui-section-title">{isDe ? 'Teilnahme' : 'Participation'}</div>
                   <label className={cx('dex-ui-toggle-row', !!scopeSub.mandatory && 'is-active')}>
                     <input type="checkbox" checked={!!scopeSub.mandatory} onChange={e => patchScopeSub({ mandatory: e.target.checked })} />
@@ -1393,7 +1393,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   jemand sieht. Bleibt event-weit (nur auf der Klammer-Ebene);
                   Badge 5 — die Nummern folgen der Reihenfolge (07.09.2026). */}
               {activeScopeIdx === 0 && (
-                <div className="dex-ui-section" data-tour="wizard-draft">
+                <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'} data-tour="wizard-draft">
                   <div className="dex-ui-section-title">{isDe ? 'Veröffentlichung' : 'Publishing'}</div>
                   <label className={cx('dex-ui-toggle-row', isFictive && 'is-active')} style={isFictive ? { borderColor: 'var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.06)' } : undefined}>
                     <input type="checkbox" checked={isFictive} onChange={e => setIsFictive(e.target.checked)} />
