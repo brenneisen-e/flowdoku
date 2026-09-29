@@ -29,7 +29,7 @@ import { DateOptionsPicker } from '../DateOptionsPicker';
 export interface FieldsStepProps {
   visible: boolean;
   activeFieldsTabIdx: number;
-  addCustomField: () => void;
+  addCustomField: (at?: number) => void;
   addStartblock: () => void;
   addSubEventCustomField: (subEventId: string) => void;
   askSalutation: boolean;
@@ -193,6 +193,19 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
     const e = bsp[typ] || bsp.text;
     return isDe ? `Frage eingeben – z. B. „${e[0]}"` : `Enter the question – e.g. “${e[1]}”`;
   };
+  // v32.14: „+" zwischen und unter den Fragen (Nutzer-Ansage 29.09.2026) —
+  // bisher hing jede neue Frage am Ende, und eine Folgefrage direkt unter
+  // ihre Bedingung zu setzen hieß: anlegen, dann nach oben schieben.
+  const einfuegeZeile = (at: number, unten: boolean): React.ReactNode => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: unten ? '0 0 4px' : '-6px 0 6px' }}>
+      <span style={{ flex: 1, height: 1, background: 'var(--dex-gray-200)' }} />
+      <button type="button" className="dex-ui-textbtn" onClick={() => addCustomField(at)} style={{ fontSize: '0.78rem' }}
+        title={unten ? (isDe ? 'Neue Frage am Ende anlegen' : 'Add a question at the end') : (isDe ? 'Neue Frage an dieser Stelle einfügen' : 'Insert a question here')}>
+        <Plus size={12} /> {unten ? (isDe ? 'Weitere Frage' : 'Another question') : (isDe ? 'Frage hier einfügen' : 'Insert question here')}
+      </button>
+      <span style={{ flex: 1, height: 1, background: 'var(--dex-gray-200)' }} />
+    </div>
+  );
   const ROW_GRID: React.CSSProperties = {
     display: 'grid', gridTemplateColumns: '24px 26px 200px minmax(160px, 1fr) 244px 90px 32px',
     columnGap: 10, alignItems: 'center',
@@ -752,7 +765,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   {/* v31.2: Der Schritt heißt „Fragen im Anmeldeformular" — die Knöpfe
                       sprechen dieselbe Sprache („Frage", nicht „Feld"). Lokal über isDe,
                       der i18n-Schlüssel create.addfield bleibt unangetastet. */}
-                  <button className="btn btn-primary dex-ui-btn-sm" data-tour="wizard-add-question" onClick={addCustomField}>
+                  <button className="btn btn-primary dex-ui-btn-sm" data-tour="wizard-add-question" onClick={() => addCustomField()}>
                     <Plus size={14} /> {isDe ? 'Frage hinzufügen' : 'Add question'}
                   </button>
                   <button
@@ -920,6 +933,8 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   const isExpanded = !!fieldExpandOverride[field.id];
                   const isPeople = field.type === 'user' || field.type === 'roommate';
                   return (
+                  <React.Fragment key={field.id}>
+                  {idx > 0 && einfuegeZeile(idx, false)}
                   <div
                     key={field.id}
                     className="dex-ui-card"
@@ -1798,8 +1813,10 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     </div>
                     )}
                   </div>
+                  </React.Fragment>
                   );
                 })}
+                {customFields.length > 0 && einfuegeZeile(customFields.length, true)}
               </div>
 
               {/* v22.38/v31.2: Die generellen Formular-Optionen (Zweisprachigkeit,

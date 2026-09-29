@@ -224,12 +224,16 @@ export function useWizardOptionState(ctx: UseWizardOptionStateCtx) {
 
   const locationOptions = ['Berlin', 'Dresden', 'Düsseldorf', 'Frankfurt', 'Görlitz', 'Halle', 'Hamburg', 'Hannover', 'Köln', 'Leipzig', 'Magdeburg', 'Mannheim', 'München', 'Nürnberg', 'Stuttgart', 'Walldorf', 'All'];
 
-  const addCustomField = (): void => {
+  // v32.14: `at` = Position, an der die Frage eingefügt wird (Knopf „Frage
+  // hier einfügen" zwischen den Fragen); ohne Angabe wie bisher am Ende.
+  const addCustomField = (at?: number): void => {
     const newId = `cf-${Date.now()}`;
-    setCustomFields([...customFields, {
+    const neu: CustomFieldInput = {
       id: newId, label: '', type: 'text',
       required: false, options: [], visible: true,
-    }]);
+    };
+    const pos = typeof at === 'number' && at >= 0 && at <= customFields.length ? at : customFields.length;
+    setCustomFields([...customFields.slice(0, pos), neu, ...customFields.slice(pos)]);
     // v18.55: neues Feld direkt aufgeklappt, damit man es sofort ausfüllen kann.
     setFieldExpandOverride(prev => ({ ...prev, [newId]: true }));
   };
