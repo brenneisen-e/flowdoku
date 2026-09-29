@@ -128,6 +128,12 @@ function AppContent(): React.ReactElement {
             : currentPage === 'protokoll' ? t('Protokoll', 'Log')
               : APP_NAME;
   const istLanding = currentPage === 'landing';
+  // Feste Höchstbreite für die schmalen Seiten. `.page-container` ist ein Flex-Kind mit
+  // `margin: 0 auto` und damit shrink-to-fit: Ohne Breite war die Pflegeseite 528 px schmal, das
+  // Protokoll eine andere Breite und die Kachelwand voll breit (Sichtprüfung, 29.09.2026).
+  // Die Kachelwand und die Start-Übersicht bringen ihre Breite selbst mit.
+  const seitenBreite = currentPage === 'rollen' ? 1100
+    : (currentPage === 'detail' || currentPage === 'studio' || currentPage === 'protokoll') ? 900 : 0;
 
   // v1.2: Der Seitenwechsel muss den Scroller zuruecksetzen, der WIRKLICH
   // scrollt. In DEX setzt der Effekt `scrollTop` auf window, body und
@@ -181,7 +187,9 @@ function AppContent(): React.ReactElement {
               `height:100%`, um den grauen Grund bis zum unteren Rand zu
               ziehen — ein gepolsterter Wrapper darum macht daraus eine Karte
               mit weissem Rand, und genau so sah es vorher aus. */}
-          {istLanding ? seite : <div className="page-container">{seite}</div>}
+          {istLanding ? seite : (
+            <div className="page-container" style={seitenBreite ? { width: '100%', maxWidth: seitenBreite } : undefined}>{seite}</div>
+          )}
         </main>
 
         {/* Dritter Flex-Sohn, ausserhalb des Scrollers: `flex-shrink: 0`,

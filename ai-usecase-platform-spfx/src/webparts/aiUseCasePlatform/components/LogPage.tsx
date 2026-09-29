@@ -224,7 +224,7 @@ export default function LogPage(props: { useCaseId?: number }): React.ReactEleme
             <div key={e.id} className="dex-ui-row dex-ui-row--bordered dex-ui-row--static">
               <span className="dex-ui-row-main">
                 <span className="dex-ui-row-title dex-ui-row-title--wrap">
-                  <span className={cx('dex-ui-pill', 'dex-ui-pill--sm', aktionFarbe(e.aktion))}>{aktionLabel(e.aktion, isDe)}</span>
+                  <span className={cx('dex-ui-pill', 'dex-ui-pill--sm', 'dex-ui-pill--lead', aktionFarbe(e.aktion))}>{aktionLabel(e.aktion, isDe)}</span>
                   {zeilenTitel(e)}
                 </span>
                 {e.detail && !detailIstTitel(e.aktion) && (

@@ -53,7 +53,7 @@ const EMAIL_FORMAT = /^[^\s@;]+@[^\s@;]+\.[^\s@;]+$/;
 
 export default function ManagePage(props: { editId?: number }): React.ReactElement {
   ensureDexUiStyles();
-  const { useCases, ladeStatus, saveUseCase, remove } = useUseCases();
+  const { useCases, ladeStatus, letzterStatus, letzterFehler, reload, saveUseCase, remove } = useUseCases();
   const { t, isDe } = useLanguage();
   const { navigate } = useNavigation();
   const { isOrganizer } = useRoles();
@@ -281,20 +281,51 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
         <div>
           <h1 className="dex-ui-page-head-title">Use Case Studio</h1>
           <p className="dex-ui-page-head-meta">
-            {useCases.length} {t('Einträge', 'entries')} · {useCases.filter(u => u.status === 'Live').length} {t('aufrufbar', 'callable')}
+            {ladeStatus === 'ok'
+              ? `${useCases.length} ${t('Einträge', 'entries')} · ${useCases.filter(u => u.status === 'Live').length} ${t('aufrufbar', 'callable')}`
+              : ladeStatus === 'laedt' ? t('Wird geladen …', 'Loading …') : t('Nicht lesbar', 'Not readable')}
           </p>
         </div>
         <div className="dex-ui-page-head-actions">
           <button type="button" className="dex-ui-textbtn" onClick={() => navigate('protokoll')}>
             {t('Protokoll', 'Log')}
           </button>
-          <button type="button" className="btn btn-primary" onClick={() => oeffne()}>
+          {/* Bei einem Lesefehler kennt niemand den Bestand — ein neuer Eintrag könnte
+              eine Dublette sein. Erst wieder anbieten, wenn die Liste gelesen ist. */}
+          <button type="button" className="btn btn-primary" disabled={ladeStatus !== 'ok'} onClick={() => oeffne()}>
             <Plus size={15} /> {t('Neuer Use Case', 'New use case')}
           </button>
         </div>
       </div>
 
-      {useCases.length === 0 ? (
+      {/* Drei Zustände, drei Aussagen. Bis v1.2 zeigte diese Seite bei einem Lesefehler
+          „0 Einträge · Noch nichts angelegt" und bot an, die Start-Use-Cases anzulegen —
+          auf einer bereits befüllten Liste wären das Dubletten gewesen. Ein Lesefehler ist
+          keine leere Liste (Sichtprüfung mit dem Harness, 29.09.2026). */}
+      {ladeStatus === 'laedt' && (
+        <div className="dex-ui-empty" role="status" aria-live="polite">
+          <div className="dex-ui-progress dex-ui-progress--indeterminate"><div className="dex-ui-progress-bar" /></div>
+          <div className="dex-ui-empty-desc" style={{ marginTop: 12 }}>{t('Use Cases werden geladen …', 'Loading use cases …')}</div>
+        </div>
+      )}
+
+      {ladeStatus === 'fehler' && (
+        <div className="dex-ui-callout dex-ui-callout--danger" role="alert" style={{ marginBottom: 16 }}>
+          <span>
+            <strong>{t('Die Use Cases konnten nicht gelesen werden.', 'The use cases could not be read.')}</strong>
+            <br />
+            {letzterStatus === 403
+              ? t('Dir fehlt das Leserecht auf der Liste.', 'You do not have read access to the list.')
+              : t('Das ist ein Lesefehler, keine leere Liste — es wurde nichts angelegt und nichts gelöscht. Versuch es gleich noch einmal.', 'This is a read error, not an empty list — nothing was created or deleted. Please try again shortly.')}
+            {letzterStatus > 0 && <span className="dex-ui-muted"> (HTTP {letzterStatus})</span>}
+            {letzterFehler && (<><br /><span className="dex-ui-muted" style={{ fontSize: '0.78rem' }}>{letzterFehler}</span></>)}
+            <br />
+            <button type="button" className="dex-ui-textbtn" style={{ marginTop: 8 }} onClick={() => { void reload(); }}>{t('Erneut versuchen', 'Try again')}</button>
+          </span>
+        </div>
+      )}
+
+      {ladeStatus === 'ok' && useCases.length === 0 ? (
         <div className="dex-ui-empty">
           <div className="dex-ui-empty-title">{t('Noch nichts angelegt', 'Nothing here yet')}</div>
           <div className="dex-ui-empty-desc">
@@ -312,14 +343,14 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
               : t('Die Start-Use-Cases anlegen', 'Create the starter use cases')}
           </button>
         </div>
-      ) : (
+      ) : useCases.length > 0 && (
         <div className="dex-ui-stack">
           {useCases.map(uc => (
             <div key={uc.id} className="dex-ui-row dex-ui-row--bordered">
               <span className="dex-ui-row-main">
                 <span className="dex-ui-row-title dex-ui-row-title--wrap">
                   {uc.titel}
-                  <span className={cx('dex-ui-pill', 'dex-ui-pill--sm', uc.status === 'Live' ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}>
+                  <span className={cx('dex-ui-pill', 'dex-ui-pill--sm', 'dex-ui-pill--trail', uc.status === 'Live' ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}>
                     {uc.status === 'InArbeit' ? t('In Arbeit', 'In progress') : uc.status}
                   </span>
                 </span>

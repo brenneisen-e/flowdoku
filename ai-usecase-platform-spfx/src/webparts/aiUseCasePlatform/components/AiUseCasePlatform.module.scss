@@ -536,6 +536,13 @@
     .start-card:hover .start-card__icon svg { animation: dexStartIconBounce 0.6s ease; }
     .start-card:nth-child(1):hover .start-card__icon svg { animation: dexStartIconWiggle 0.7s ease; }
     .start-card--admin:hover .start-card__icon svg { animation: dexStartIconSpin 0.8s ease; }
+    /* v1.3: Eine gesperrte Kachel („Organizer werden?") tut beim Überfahren nichts — sie wird
+       deshalb auch nicht grün. Hover ohne Aktion verspricht etwas, das es nicht gibt. */
+    .start-card--locked:hover { background: var(--dex-white); border-color: var(--dex-gray-200); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04); }
+    .start-card--locked:hover h2 { color: var(--dex-gray-800); }
+    .start-card--locked:hover p { color: var(--dex-gray-600); }
+    .start-card--locked:hover .start-card__icon { background: var(--dex-gray-100); color: var(--dex-gray-600); transform: none; }
+    .start-card--locked:hover .start-card__icon svg { animation: none; }
     .start-card__icon svg { transition: transform 0.2s ease; transform-origin: center; }
 
     /* ========== Event Grid ========== */

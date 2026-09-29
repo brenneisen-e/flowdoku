@@ -16,10 +16,20 @@
 
 import { UseCase } from '../types';
 
+/**
+ * Speicherwerte, die in der Oberfläche anders heißen. Im Protokoll stand
+ * „Aufruf: fenster → eingebettet" und „Status: InArbeit → Live" — die Werte der
+ * Spalte statt der Wörter, die die Pflegeseite zeigt (Sichtprüfung, 29.09.2026).
+ */
+const ANZEIGE: { [wert: string]: string } = {
+  InArbeit: 'In Arbeit',
+  fenster: 'neues Fenster',
+};
+
 /** Für das Protokoll lesbar: leer wird zum Gedankenstrich. */
 const kurz = (v: string | number | undefined): string => {
   const s = v === undefined || v === null ? '' : String(v);
-  return s === '' ? '—' : s;
+  return s === '' ? '—' : (ANZEIGE[s] || s);
 };
 
 export function geaendertText(alt: UseCase | undefined, neu: Partial<UseCase>): string {

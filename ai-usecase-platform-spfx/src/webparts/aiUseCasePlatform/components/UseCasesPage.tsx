@@ -133,6 +133,9 @@ export default function UseCasesPage(): React.ReactElement {
           <select
             id="uc-bereich"
             className="dex-ui-select dex-ui-select--sm"
+            // Ohne Suchfeld daneben (seit v1.3 sitzt sie in der Kopfzeile) dehnte sich die
+            // Auswahl über die ganze Zeile.
+            style={{ width: 'auto', minWidth: 200, maxWidth: 280 }}
             value={bereich}
             onChange={e => setBereich(e.target.value)}
             aria-label={t('Bereich', 'Area')}
@@ -153,7 +156,7 @@ export default function UseCasesPage(): React.ReactElement {
 
         {isOrganizer && (
           <button type="button" className="btn btn-secondary" onClick={() => navigate('studio')}>
-            {t('Use Case Studio', 'Use Case Studio')}
+            Use Case Studio
           </button>
         )}
       </div>

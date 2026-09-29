@@ -223,6 +223,9 @@ export default function StartPage(): React.ReactElement {
           flex: 0 0 auto !important; width: 380px !important; max-width: 100% !important;
           padding: 32px 22px !important; min-height: 0 !important; aspect-ratio: 1 / 1; gap: 10px !important;
         }
+        /* v1.3: Die gesperrte Kachel trägt Knopf und ggf. einen Hinweis und wächst deshalb mit
+           dem Inhalt; im Quadrat lief das Symbol oben und der Hinweis unten über den Rand. */
+        .dex-cluster .start-card--locked { aspect-ratio: auto !important; min-height: 300px !important; }
         /* Echter KREIS hinter dem Symbol: flex 0 0 auto + aspect-ratio verhindern,
            dass die Flex-Stauchung den Kreis zur Ellipse macht. */
         .dex-cluster .start-card__icon { width: 104px !important; height: 104px !important; flex: 0 0 auto !important; aspect-ratio: 1 / 1 !important; border-radius: 50% !important; margin-bottom: 6px !important; }
@@ -253,33 +256,35 @@ export default function StartPage(): React.ReactElement {
               {c.items.map(it => (
                 <div
                   key={it.key}
-                  className={cx('card', !it.anfrage && 'card-clickable', 'start-card', it.cardClass)}
-                  style={it.anfrage ? { position: 'relative', cursor: 'default', opacity: 0.55 } : (isRolesLoading && it.key === 'studio' && !isOrganizer ? { opacity: 0.55, cursor: 'default' } : undefined)}
+                  className={cx('card', !it.anfrage && 'card-clickable', 'start-card', it.anfrage && 'start-card--locked', it.cardClass)}
+                  style={isRolesLoading && it.key === 'studio' && !isOrganizer ? { opacity: 0.55, cursor: 'default' } : (it.anfrage ? { cursor: 'default' } : undefined)}
                   onClick={it.anfrage ? undefined : () => oeffne(it)}
                   role={it.anfrage ? undefined : 'button'}
                   tabIndex={it.anfrage ? undefined : 0}
                   onKeyDown={it.anfrage ? undefined : e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); oeffne(it); } }}
                 >
-                  <div className="start-card__icon">{it.icon(64, 1)}</div>
-                  <h2>{it.title}</h2>
-                  <p>{it.desc}</p>
+                  {/* v1.3: Bei der gesperrten Kachel ist nur der INHALT abgedunkelt, nicht die ganze
+                      Karte. Vorher lag der Knopf samt Hinweis als Overlay über dem Symbol, und die
+                      Abdunklung traf auch den Hinweis — orange auf grauem Grund, kaum lesbar
+                      (Sichtprüfung mit dem Harness, 29.09.2026). */}
+                  <div className="start-card__icon" style={it.anfrage ? { opacity: 0.55 } : undefined}>{it.icon(64, 1)}</div>
+                  <h2 style={it.anfrage ? { opacity: 0.55 } : undefined}>{it.title}</h2>
+                  <p style={it.anfrage ? { opacity: 0.55 } : undefined}>{it.desc}</p>
                   {it.anfrage && (
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', justifyContent: 'center', padding: 10 }}>
+                    <>
                       <button
                         type="button"
                         onClick={e => { e.stopPropagation(); oeffne(it); }}
                         style={{
                           background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 14,
-                          padding: '8px 12px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
-                          fontSize: '0.74rem', lineHeight: 1.25, textAlign: 'center', fontFamily: 'inherit',
+                          padding: '10px 18px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
+                          fontSize: '0.86rem', lineHeight: 1.25, textAlign: 'center', fontFamily: 'inherit',
                         }}
                       >{it.cta}</button>
                       {it.note && (
-                        <div style={{ fontSize: '0.7rem', lineHeight: 1.3, textAlign: 'center', color: 'var(--dex-orange-dark, #b35a00)', background: 'rgba(255,255,255,0.92)', borderRadius: 8, padding: '6px 8px', maxWidth: 240 }}>
-                          {it.note}
-                        </div>
+                        <span className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" style={{ display: 'flex', textAlign: 'left', maxWidth: 260 }}>{it.note}</span>
                       )}
-                    </div>
+                    </>
                   )}
                 </div>
               ))}

@@ -25,16 +25,7 @@
       "videoUrl": "",
       "categories": []
     },
-    "webApiPermissionRequests": [
-      {
-        "resource": "Microsoft Graph",
-        "scope": "User.Read"
-      },
-      {
-        "resource": "Microsoft Graph",
-        "scope": "User.Read.All"
-      }
-    ],
+    "webApiPermissionRequests": [],
     "features": [
       {
         "title": "AI Use Case Platform Feature",

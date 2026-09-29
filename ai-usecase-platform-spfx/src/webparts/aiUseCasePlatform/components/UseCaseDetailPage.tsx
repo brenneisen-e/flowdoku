@@ -50,8 +50,9 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
 
   if (ladeStatus === 'laedt') {
     return (
-      <div className="dex-ui-empty">
+      <div className="dex-ui-empty" role="status" aria-live="polite">
         <div className="dex-ui-progress dex-ui-progress--indeterminate"><div className="dex-ui-progress-bar" /></div>
+        <div className="dex-ui-empty-desc" style={{ marginTop: 12 }}>{t('Use Case wird geladen …', 'Loading use case …')}</div>
       </div>
     );
   }
@@ -125,7 +126,7 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
 
   return (
     <div>
-      <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" style={{ marginBottom: 12 }} onClick={() => (canGoBack ? goBack() : navigate('start'))}>
+      <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" style={{ marginBottom: 12 }} onClick={() => (canGoBack ? goBack() : navigate('usecases'))}>
         <ChevronLeft size={14} /> {t('Zurück', 'Back')}
       </button>
 

@@ -79,7 +79,9 @@ export default function UseCaseCard(props: UseCaseCardProps): React.ReactElement
         )}
         <span
           className={cx('dex-ui-pill', istLive ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}
-          style={{ position: 'absolute', top: 10, right: 10 }}
+          // Auf einem Bild liegt die Pille auf dunklem Grund: Die hellgrüne Fläche der Klasse
+          // verschwand dort (Sichtprüfung, 29.09.2026). Deckend weiß bleibt sie überall lesbar.
+          style={{ position: 'absolute', top: 10, right: 10, background: uc.bildUrl ? 'rgba(255,255,255,0.94)' : undefined, boxShadow: uc.bildUrl ? '0 1px 4px rgba(0,0,0,0.25)' : undefined }}
         >{statusLabel}</span>
       </span>
 

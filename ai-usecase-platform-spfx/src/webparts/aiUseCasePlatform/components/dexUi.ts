@@ -159,8 +159,11 @@ export const DEX_UI_CSS = `
 .dex-ui-menuitem > span:last-child { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 .dex-ui-row--bordered:last-child { border-bottom: none; }
 .dex-ui-row-main { flex: 1; min-width: 0; }
-.dex-ui-row-title { font-weight: 600; font-size: 0.88rem; color: ${G800}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dex-ui-row-sub { font-size: 0.76rem; color: ${G500}; margin-top: 2px; }
+.dex-ui-row-title { display: block; font-weight: 600; font-size: 0.88rem; color: ${G800}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* v1.3: display:block — Titel und Untertitel sind in dieser App span-Elemente (in DEX
+   stehen sie meist in div). Als inline liefen Titel, Status-Pille und Untertitel in
+   einer Zeile ineinander (Sichtprüfung mit dem Harness, 29.09.2026). */
+.dex-ui-row-sub { display: block; font-size: 0.76rem; color: ${G500}; margin-top: 2px; }
 .dex-ui-row-actions { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; opacity: 0.7; transition: opacity ${EASE}; }
 .dex-ui-row:hover .dex-ui-row-actions { opacity: 1; }
 .dex-ui-drag-handle { cursor: grab; color: ${G400}; display: inline-flex; align-items: center; padding: 4px; border-radius: 6px; transition: color ${EASE}, background ${EASE}; }
@@ -240,7 +243,9 @@ input.dex-ui-checkbox:not([hidden]):disabled { opacity: 0.55; cursor: not-allowe
 }
 .dex-ui-section-title::after { content: ''; flex: 1; height: 1px; background: ${G200}; }
 .dex-ui-section-desc { font-size: 0.82rem; color: ${G500}; margin: -4px 0 12px; line-height: 1.5; }
-.dex-ui-field { margin-bottom: 16px; }
+.dex-ui-field { display: block; margin-bottom: 16px; }
+/* v1.3: display:block — ein Feld ist hier meist ein label-Element (inline); dann greift der
+   Abstand nach unten nicht, und die Felder kleben aneinander. */
 .dex-ui-field:last-child { margin-bottom: 0; }
 .dex-ui-label { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-weight: 600; font-size: 0.88rem; color: ${G800}; }
 .dex-ui-label-optional { font-weight: 500; font-size: 0.74rem; color: ${G400}; }
@@ -506,6 +511,10 @@ input.dex-ui-checkbox:not([hidden]):disabled { opacity: 0.55; cursor: not-allowe
    weiter unten im Stylesheet und gewinnt deshalb bei gleicher Spezifitaet. */
 .dex-ui-row--static:hover { background: transparent; }
 .dex-ui-row-title--wrap { white-space: normal; overflow: visible; text-overflow: clip; word-break: break-word; }
+/* v1.3: Eine Status-Pille neben dem Titel braucht Abstand (trail = dahinter, lead = davor) — ohne klebt sie am letzten Buchstaben
+   (Sichtprüfung mit dem Harness, 29.09.2026). */
+.dex-ui-pill--trail { margin-left: 8px; vertical-align: 1px; }
+.dex-ui-pill--lead { margin-right: 8px; vertical-align: 1px; }
 .dex-ui-row-link { color: ${GDT}; text-decoration: none; }
 .dex-ui-row-link:hover { text-decoration: underline; }
 /* Aktionen in einer Zeile bleiben auf dem Handy voll sichtbar — die
@@ -527,6 +536,11 @@ input.dex-ui-checkbox:not([hidden]):disabled { opacity: 0.55; cursor: not-allowe
 .dex-ui-callout-body { min-width: 0; flex: 1 1 auto; }
 .dex-ui-empty-desc { font-size: 0.84rem; color: ${G500}; line-height: 1.45; margin-top: 2px; }
 .dex-ui-empty-action { margin-top: 14px; }
+/* v1.3: Als Knopf trägt die Klasse bisher nur den Abstand — der Knopf erschien im
+   Browser-Standard-Aussehen (grau, eckig). Jetzt wie der Primärknopf der App. */
+button.dex-ui-empty-action { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 24px; border: none; border-radius: 12px; background: ${G}; color: #fff; font-family: inherit; font-size: 0.95rem; font-weight: 600; line-height: 1.2; cursor: pointer; transition: background ${EASE}; }
+button.dex-ui-empty-action:hover { background: ${GD}; }
+button.dex-ui-empty-action:focus-visible { outline: 2px solid ${GD}; outline-offset: 2px; }
 /* Ladebalken ohne bekannten Fortschritt. Stand bisher zweimal handgebaut im
    Code (Boot-Loader und „Meine Events") mit demselben Keyframe. */
 .dex-ui-progress--indeterminate .dex-ui-progress-bar { width: 40%; animation: dexUiSlide 1.1s ease-in-out infinite; }

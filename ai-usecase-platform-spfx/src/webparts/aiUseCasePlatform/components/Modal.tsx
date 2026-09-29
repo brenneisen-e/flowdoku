@@ -92,8 +92,16 @@ function ensureModalStyles(): void {
    Die Regeln stehen hier statt in dexUi.ts, weil sie nur den Modal-Rahmen
    betreffen und das Overlay seine Maße per Inline-Style setzt — dagegen
    kommt eine Klasse nur mit !important an. */
+/* v1.3: Der Fuß mit Speichern/Abbrechen bleibt am unteren Rand der Karte stehen, statt beim
+   Blättern mitzurutschen. Bei langen Formularen (Neuer Use Case) lag der Speichern-Knopf sonst
+   unterhalb des Fensters und war erst nach dem Blättern erreichbar (Harness, 29.09.2026).
+   Die Karte ist der Scroller; der Fuß reicht mit negativen Rändern in ihren Innenabstand, und
+   bottom ist genauso negativ — sticky misst ab der Innenkante des Innenabstands, sonst blieben
+   22 px Formular unterhalb des Fußes sichtbar (Sichtprüfung, 29.09.2026). */
+.dex-modal-overlay .dex-ui-modal-foot { position: sticky; bottom: -22px; z-index: 2; background: #fff; margin: 4px -26px -22px; padding: 14px 26px 22px; }
 @media (max-width: 520px) {
   .dex-modal-overlay { padding: 10px 8px !important; }
+  .dex-modal-overlay .dex-ui-modal-foot { bottom: -16px; margin: 4px -14px -16px; padding: 12px 14px 16px; }
   .dex-modal-overlay .dex-modal-card-pad { padding: 16px 14px !important; }
   .dex-modal-overlay .dex-ui-modal-head { gap: 10px; }
   .dex-modal-overlay .dex-ui-modal-head-icon { width: 32px; height: 32px; border-radius: 10px; }
