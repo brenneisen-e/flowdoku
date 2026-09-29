@@ -208,8 +208,9 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
-                  ? <>Titel, Zeitraum, Beschreibung und Bild — das, was Teilnehmer zuerst sehen. Ganz unten legst du fest, <strong>wann das Event sichtbar wird</strong>.</>
-                  : <>Title, dates, description and image — what attendees see first. At the bottom you decide <strong>when the event becomes visible</strong>.</>}
+                  // v32.42: als Satz, der sagt, was man HIER tut (Nutzer-Ansage 29.09.2026).
+                  ? <>Hier legst du <strong>Titel, Zeitraum, Beschreibung und Bild</strong> fest — das, was Teilnehmer zuerst sehen. Weiter unten folgen, ob das Event aus mehreren Teilen besteht (Sub-Events oder Programmpunkte), und <strong>wann es sichtbar wird</strong>.</>
+                  : <>Here you set the <strong>title, dates, description and image</strong> — what attendees see first. Further down you decide whether the event has several parts (sub-events or agenda items) and <strong>when it becomes visible</strong>.</>}
               </p>
 
               {/* v28.89: Alles zwischen hier und dem Titel-Feld gilt für das

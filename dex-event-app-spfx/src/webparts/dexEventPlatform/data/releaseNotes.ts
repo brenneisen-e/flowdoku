@@ -128,6 +128,8 @@ export function splitReleaseNote(text: string): ReleaseNoteParts {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '32.42.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Bugfix', text: 'Der Assistent behauptete, der erste Organizer stehe in Mails als Absender. Das stimmte nicht: In den Mails stehen alle Organizer in der Reihenfolge der Liste, abgeschickt wird über das DEX-Postfach. Der Text sagt das jetzt so.' },
+  { version: '32.42.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Feature', text: 'Die Einleitung von Schritt 1 sagt jetzt klar: „Hier legst du Titel, Zeitraum, Beschreibung und Bild fest“ – und dass weiter unten Sub-Events bzw. Programmpunkte und die Sichtbarkeit folgen.' },
   { version: '32.41.0', date: '2026-09-29', bereich: 'Allgemein', type: 'Bugfix', text: 'Events ohne Foto zeigen jetzt überall den grünen DEX-Orb. Das eingebaute Ersatzbild war noch das alte bunte Ring-Logo – es erschien, solange das Bild aus SharePoint noch nicht geladen war.' },
   { version: '32.41.0', date: '2026-09-29', bereich: 'Anmeldung', type: 'Feature', text: 'Unter „Meine Events“ steht beim Einführungs-Event die animierte Kugel jetzt als Kreis über der Karte, wie auf der Anmeldeseite – nicht mehr klein oben links.' },
   { version: '32.41.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Feature', text: 'Fragen im Anmeldeformular: Die fünf Profilfragen stehen jetzt vor dem Hinweis „Noch keine Zusatzfragen“, und das Plus darin legt direkt eine neue Frage an. Der Platzhalter im Fragefeld heißt nur noch „z. B. …“.' },
