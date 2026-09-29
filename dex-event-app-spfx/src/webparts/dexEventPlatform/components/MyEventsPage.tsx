@@ -27,6 +27,8 @@ import { DeloitteEvent } from '../types';
 import { SPRegistration, EventCommRow } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
 import { isEventOver } from '../utils/eventFormat';
+import { monatKurz } from '../utils/monatKurz';
+import { useIsMobile } from '../utils/useIsMobile';
 import { selfCancelLocked, selfCancelLockReason } from '../utils/cancelPolicy';
 import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
@@ -46,6 +48,8 @@ export default function MyEventsPage(): React.ReactElement {
   const currentUserEmail = (currentUser?.email || '').toLowerCase();
   // v24.41: Assistenz-Verknüpfungen — INFO-Ansicht für Anmeldungen, die jemand
   // ANDERES verwaltet (proxy: jemand hat MICH angemeldet → ich sehe nur Info).
+  // v32.11: Zeitleiste nur ab Tablet-Breite (renderTimeline).
+  const isMobile = useIsMobile();
   const [assistantLinks, setAssistantLinks] = React.useState<import('../services/EventService').AssistantLink[]>([]);
   React.useEffect(() => {
     let cancelled = false;
@@ -999,8 +1003,11 @@ export default function MyEventsPage(): React.ReactElement {
   // v31.8: Der erste Cluster hieß „Aktive Events“; er zeigt aber
   // `upcomingEntries`, also die kommenden — ein Wartelisten-Eintrag ist dort
   // kein „aktiver" Platz. Nur die Überschrift, die Filter bleiben.
-  const upcomingEntries = activeEntries.filter(e => !isEventOver(e.event));
-  const pastEntries = activeEntries.filter(e => isEventOver(e.event));
+  // v32.11: Reihenfolge wie eine Zeitleiste „von aktuell bis vergangen":
+  // kommende aufsteigend (das nächste zuerst), vergangene absteigend.
+  const startTs = (e: MyEventEntry): number => { const t = new Date(e.event.startDate || '').getTime(); return isNaN(t) ? 0 : t; };
+  const upcomingEntries = activeEntries.filter(e => !isEventOver(e.event)).sort((a, b) => startTs(a) - startTs(b));
+  const pastEntries = activeEntries.filter(e => isEventOver(e.event)).sort((a, b) => startTs(b) - startTs(a));
 
   // v31.8: `ensureDexUiStyles()` ist KEIN Hook (idempotenter DOM-Aufruf) und
   // darf deshalb im Rumpf stehen. Es steht bewusst VOR den frühen Returns:
@@ -1203,6 +1210,34 @@ export default function MyEventsPage(): React.ReactElement {
   const renderMyEventCard = (entry: MyEventEntry): React.ReactElement | null => (
     <MyEventCard key={entry.event.id} entry={entry} {...myEventCardProps} />
   );
+  // v32.11: Zeitleiste wie „Aktuelle Events" und Check-in (Klasse dex-tl):
+  // links der Monat, wo er wechselt, der Punkt je Event — grün angemeldet,
+  // orange Warteliste, grau vorbei. Auf dem Handy ohne Schiene (gleiche
+  // Regel wie EventListPage).
+  const renderTimeline = (entries: MyEventEntry[]): React.ReactElement => {
+    if (isMobile) return <div className="my-events-list">{entries.map(renderMyEventCard)}</div>;
+    let letzterMonat = '';
+    return (
+      <div className="my-events-list dex-tl">
+        {entries.map(entry => {
+          const monat = monatKurz(entry.event.startDate, isDe ? 'de' : 'en');
+          const monatNeu = monat !== letzterMonat;
+          letzterMonat = monat;
+          const vorbei = isEventOver(entry.event);
+          const wait = entry.registration.Status === 'Warteliste';
+          return (
+            <React.Fragment key={entry.event.id}>
+              <div className="dex-tl-rail" aria-hidden="true">
+                {monatNeu && <span className="dex-tl-month">{monat}</span>}
+                <span className={`dex-tl-dot${vorbei ? '' : wait ? ' is-wait' : ' is-reg'}`} />
+              </div>
+              <div style={{ minWidth: 0 }}>{renderMyEventCard(entry)}</div>
+            </React.Fragment>
+          );
+        })}
+      </div>
+    );
+  };
   // v24.41: INFO-Anmeldungen — jemand anderes (Assistenz) hat MICH
   // angemeldet und verwaltet die Anmeldung; ich sehe nur Info. Nur die
   // zeigen, die nicht ohnehin schon als eigene Karte erscheinen.
@@ -1404,7 +1439,7 @@ export default function MyEventsPage(): React.ReactElement {
             {isDe ? 'Kommende Events' : 'Upcoming events'}
             <span className="dex-ui-pill dex-ui-pill--gray">{upcomingEntries.length}</span>
           </h3>
-          <div className="my-events-list">{upcomingEntries.map(renderMyEventCard)}</div>
+          {renderTimeline(upcomingEntries)}
         </section>
       )}
       {pastEntries.length > 0 && (
@@ -1422,7 +1457,7 @@ export default function MyEventsPage(): React.ReactElement {
               ? 'Unterlagen, Programm und — wenn deine Anwesenheit erfasst wurde — die Teilnahmebescheinigung findest du weiterhin auf der Karte. Abmelden ist bei vergangenen Events nicht mehr möglich.'
               : 'Documents, schedule and — if your attendance was recorded — your attendance certificate are still on the card. Cancelling is no longer possible for past events.'}
           </p>
-          <div className="my-events-list">{pastEntries.map(renderMyEventCard)}</div>
+          {renderTimeline(pastEntries)}
         </section>
       )}
 

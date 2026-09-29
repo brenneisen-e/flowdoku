@@ -242,6 +242,8 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                         alignItems: 'center',
                         justifyContent: 'center',
                         overflow: 'hidden',
+                        // v32.11: vergangene Events grau (Nutzer-Ansage 29.09.2026).
+                        ...(istVorbei ? { filter: 'grayscale(1)', opacity: 0.7 } : {}),
                       }}
                     >
                       <CachedImg
@@ -261,7 +263,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {/* Titel + Status-Pille + Gruppe (alles reine Anzeige) */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{event.title}</h3>
+                      <h3 style={{ margin: 0, fontSize: '1.1rem', ...(istVorbei ? { color: 'var(--dex-gray-500)' } : {}) }}>{event.title}</h3>
                       {sessionsOnly ? (() => {
                         // v15.15: Im subEventsOnlyMode komplett ausblenden —
                         // Badge UND Hinweisbox sind dort redundant, weil
@@ -284,7 +286,15 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                             {badgeText}
                           </span>
                         );
-                      })() : (
+                      })() : istVorbei ? (
+                        // v32.11: Vorbei = graues „Abgeschlossen" statt des grünen
+                        // Anmeldestatus; wer eingecheckt wurde, liest „Teilgenommen".
+                        <span className="dex-ui-pill dex-ui-pill--gray" style={{ flexShrink: 0 }}>
+                          {registration.Status === 'Eingecheckt'
+                            ? (isDe ? 'Teilgenommen' : 'Attended')
+                            : (isDe ? 'Abgeschlossen' : 'Completed')}
+                        </span>
+                      ) : (
                         <span className={`badge ${getStatusBadgeClass(registration.Status)}`} style={{ flexShrink: 0 }}>
                           {registration.Status === 'Warteliste' && registration.TeilnehmerID && event.maxParticipants > 0
                             ? `${getStatusLabel(registration.Status, t)} #${registration.TeilnehmerID - event.maxParticipants}`
@@ -306,7 +316,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                             ? ((event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter')
                             : grp;
                         return (
-                          <span className="dex-ui-pill dex-ui-pill--green">
+                          <span className={istVorbei ? 'dex-ui-pill dex-ui-pill--gray' : 'dex-ui-pill dex-ui-pill--green'}>
                             <Icon iconName="Group" style={{ fontSize: 13 }} />
                             {(isDe ? 'Gruppe: ' : 'Group: ')}{grpLabel}
                           </span>
@@ -315,12 +325,12 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                     </div>
 
                     {/* Wann · Wo · Teilnahme-Link */}
-                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
+                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 24px', fontSize: '0.88rem', color: istVorbei ? 'var(--dex-gray-500)' : 'var(--dex-gray-700)' }}>
                       {/* v27.8: Ort einzeilig als „Name, Stadt" (vorher zweizeilig
                           mit voller Adresse). */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Icon iconName="MapPin" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} />
-                        <span style={{ fontWeight: 700, color: 'var(--dex-gray-800)' }}>
+                        <span style={{ fontWeight: 700, color: istVorbei ? 'var(--dex-gray-500)' : 'var(--dex-gray-800)' }}>
                           {(() => {
                             // v29.39: Eine Teams-URL im Ort gehört nicht in die
                             // Ort-Zeile — sie steht daneben als Knopf.
