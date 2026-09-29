@@ -15,10 +15,15 @@ import * as React from 'react';
 import { cx } from './dexUi';
 import { UseCase, Bewertung } from '../types';
 import { useLanguage } from '../context/LanguageContext';
+import { sichereUrl } from '../utils/sicher';
+import { statusText } from '../utils/anzeige';
 
 /** Kuerzel aus dem Titel, wenn kein Bild hinterlegt ist. */
 function kuerzel(titel: string): string {
   const worte = (titel || '?').split(/[\s/-]+/).filter(Boolean);
+  // Ein Titel wie „-" oder „/" bleibt ohne Wort — der Zugriff darauf warf und ließ die ganze
+  // Kachelwand weiß (Review 29.09.2026).
+  if (worte.length === 0) return '?';
   if (worte.length === 1) return worte[0].slice(0, 2).toUpperCase();
   return (worte[0][0] + worte[1][0]).toUpperCase();
 }
@@ -41,10 +46,9 @@ export default function UseCaseCard(props: UseCaseCardProps): React.ReactElement
   const { t, isDe } = useLanguage();
 
   const istLive = uc.status === 'Live';
-  const statusLabel = uc.status === 'Live' ? t('Live', 'Live')
-    : uc.status === 'InArbeit' ? t('In Arbeit', 'In progress')
-      : uc.status === 'Geplant' ? t('Geplant', 'Planned')
-        : t('Archiviert', 'Archived');
+  const statusLabel = statusText(uc.status, t);
+  // Die Adresse kommt aus der Liste, die auch direkt beschreibbar ist: nur http(s).
+  const bild = sichereUrl(uc.bildUrl);
 
   return (
     <button
@@ -65,13 +69,13 @@ export default function UseCaseCard(props: UseCaseCardProps): React.ReactElement
           // Anführungszeichen in der Adresse würden den `url("…")`-Wert
           // aufbrechen; seit dem Upload (v1.3) kommt die Adresse zwar von uns,
           // ältere Einträge tragen aber eine von Hand getippte URL.
-          background: uc.bildUrl
-            ? `center/cover no-repeat url("${uc.bildUrl.replace(/"/g, '%22')}")`
+          background: bild
+            ? `center/cover no-repeat url("${bild.replace(/"/g, '%22')}")`
             : 'linear-gradient(135deg, rgba(134,188,37,0.16), rgba(134,188,37,0.05))',
           position: 'relative', flexShrink: 0,
         }}
       >
-        {!uc.bildUrl && (
+        {!bild && (
           <span style={{
             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '2rem', fontWeight: 700, color: 'var(--dex-green-dark, #6b9a1e)', letterSpacing: '0.04em',
@@ -81,7 +85,7 @@ export default function UseCaseCard(props: UseCaseCardProps): React.ReactElement
           className={cx('dex-ui-pill', istLive ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}
           // Auf einem Bild liegt die Pille auf dunklem Grund: Die hellgrüne Fläche der Klasse
           // verschwand dort (Sichtprüfung, 29.09.2026). Deckend weiß bleibt sie überall lesbar.
-          style={{ position: 'absolute', top: 10, right: 10, background: uc.bildUrl ? 'rgba(255,255,255,0.94)' : undefined, boxShadow: uc.bildUrl ? '0 1px 4px rgba(0,0,0,0.25)' : undefined }}
+          style={{ position: 'absolute', top: 10, right: 10, background: bild ? 'rgba(255,255,255,0.94)' : undefined, boxShadow: bild ? '0 1px 4px rgba(0,0,0,0.25)' : undefined }}
         >{statusLabel}</span>
       </span>
 

@@ -209,11 +209,21 @@ export default function LogPage(props: { useCaseId?: number }): React.ReactEleme
       )}
 
       {status === 'ok' && gefiltert.length === 0 && (
+        // Gelesen werden nur die letzten 500 Einträge, der Filter „nur dieser Use Case" läuft im
+        // Browser darüber. Ist die Antwort voll und der Filter leer, weiß niemand, ob es ältere
+        // Einträge gibt — „noch nichts protokolliert" wäre eine Aussage über ungelesene Daten.
         <div className="dex-ui-empty">
-          <div className="dex-ui-empty-title">{t('Noch nichts protokolliert', 'Nothing logged yet')}</div>
+          <div className="dex-ui-empty-title">
+            {eintraege.length >= 500 && nurDieser
+              ? t('In den letzten 500 Einträgen nichts gefunden', 'Nothing found in the latest 500 entries')
+              : t('Noch nichts protokolliert', 'Nothing logged yet')}
+          </div>
           <div className="dex-ui-empty-desc">
-            {t('Sobald jemand einen Use Case anlegt, ändert oder löscht, steht es hier.',
-              'As soon as someone creates, changes or deletes a use case, it shows up here.')}
+            {eintraege.length >= 500 && nurDieser
+              ? t('Ältere Einträge werden hier nicht gelesen. Sie stehen in der Liste AIUC_Log auf der Site.',
+                'Older entries are not read here. They are in the AIUC_Log list on the site.')
+              : t('Sobald jemand einen Use Case anlegt, ändert oder löscht, steht es hier.',
+                'As soon as someone creates, changes or deletes a use case, it shows up here.')}
           </div>
         </div>
       )}

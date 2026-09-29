@@ -15,12 +15,20 @@
 
 import { UseCase } from '../types';
 
-/** Klein, ohne Umlaute, ohne alles außer Buchstaben und Ziffern. */
+/**
+ * Klein, ohne Umlaute, ohne alles außer Buchstaben und Ziffern.
+ *
+ * Auch die Ersatzschreibweise wird gefaltet: Wer „verguetung" tippt (Tastatur
+ * ohne Umlaute, Handy), muss „Vergütungswerk" finden. Suchtext UND Titel gehen
+ * durch dieselbe Funktion; die Faltung verschiebt also nur beide gleich und
+ * erzeugt höchstens einen Zufallstreffer, nie einen verpassten.
+ */
 export function normSuche(s: string): string {
   return (s || '')
     .toLowerCase()
     .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9]/g, '');
+    .replace(/[^a-z0-9]/g, '')
+    .replace(/ae/g, 'a').replace(/oe/g, 'o').replace(/ue/g, 'u');
 }
 
 /** Die Suchbegriffe: ein Wort je Begriff, alle müssen passen. */

@@ -36,7 +36,8 @@ import { SucheProvider } from '../context/SucheContext';
 import { HilfeProvider } from '../context/HilfeContext';
 import { APP_NAME } from '../constants';
 import { APP_VERSION } from '../version';
-import { rolleLabel } from '../utils/rollen';
+import { rolleAnzeige } from '../utils/rollen';
+import ErrorBoundary from './ErrorBoundary';
 
 const UseCaseDetailPage = React.lazy(() => import('./UseCaseDetailPage'));
 const ManagePage = React.lazy(() => import('./ManagePage'));
@@ -117,7 +118,7 @@ function AppContent(): React.ReactElement {
   ensureDexUiStyles();
   const { t, isDe } = useLanguage();
   const { currentPage, currentUseCaseId } = useNavigation();
-  const { isRolesLoading, currentUserRole } = useRoles();
+  const { isRolesLoading, currentUserRole, rolesReadStatus } = useRoles();
   const layoutRef = useShellHeight();
 
   const seitenName =
@@ -146,15 +147,20 @@ function AppContent(): React.ReactElement {
   }, [currentPage, currentUseCaseId, layoutRef]);
 
   const seite = (
-    <React.Suspense fallback={<LazyFallback name={seitenName} />}>
-      {currentPage === 'landing' && <LandingPage />}
-      {currentPage === 'start' && <StartPage />}
-      {currentPage === 'usecases' && <UseCasesPage />}
-      {currentPage === 'detail' && <UseCaseDetailPage useCaseId={currentUseCaseId} />}
-      {currentPage === 'studio' && <ManagePage editId={currentUseCaseId} />}
-      {currentPage === 'rollen' && <RolePage />}
-      {currentPage === 'protokoll' && <LogPage useCaseId={currentUseCaseId} />}
-    </React.Suspense>
+    <ErrorBoundary isDe={isDe} resetKey={`${currentPage}:${currentUseCaseId || 0}`}>
+      <React.Suspense fallback={<LazyFallback name={seitenName} />}>
+        {currentPage === 'landing' && <LandingPage />}
+        {currentPage === 'start' && <StartPage />}
+        {currentPage === 'usecases' && <UseCasesPage />}
+        {/* `key`: Beim Wechsel von einem Use Case zum nächsten (Suche in der Kopfzeile) bleibt die
+            Seite sonst dieselbe Komponente — ein offenes iframe und „Link kopiert" liefen mit
+            hinüber (Review 29.09.2026). */}
+        {currentPage === 'detail' && <UseCaseDetailPage key={currentUseCaseId} useCaseId={currentUseCaseId} />}
+        {currentPage === 'studio' && <ManagePage editId={currentUseCaseId} />}
+        {currentPage === 'rollen' && <RolePage />}
+        {currentPage === 'protokoll' && <LogPage useCaseId={currentUseCaseId} />}
+      </React.Suspense>
+    </ErrorBoundary>
   );
 
   return (
@@ -199,7 +205,7 @@ function AppContent(): React.ReactElement {
         <footer style={{ padding: '8px 16px', textAlign: 'center', flexShrink: 0, borderTop: '1px solid var(--dex-gray-200)', background: 'var(--dex-white)' }}>
           <span className="dex-ui-muted" style={{ fontSize: '0.72rem' }}>
             {APP_NAME} v{APP_VERSION}
-            {!isRolesLoading && ` · ${t('Deine Rolle', 'Your role')}: ${rolleLabel(currentUserRole)}`}
+            {!isRolesLoading && ` · ${t('Deine Rolle', 'Your role')}: ${rolleAnzeige(currentUserRole, rolesReadStatus, t)}`}
           </span>
         </footer>
       </div>
@@ -208,13 +214,10 @@ function AppContent(): React.ReactElement {
 }
 
 export default function AiUseCasePlatform(props: IAiUseCasePlatformProps): React.ReactElement {
-  // v1.1: Der SPFx-Context als Fenster-Merker — dasselbe Muster wie
-  // `__dexSpfxContext` in DEX. Komponenten, die tief im Baum sitzen und den
-  // Context nur einmal brauchen, holen ihn sich hier, statt ihn durch fuenf
-  // Ebenen durchzureichen. (Seit v1.3 liest die Begruessung den Namen ueber
-  // `UserContext`; der Merker bleibt fuer kuenftige Stellen.)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).__aiucSpfxContext = props.context;
+  // Bis v1.3 stand hier der SPFx-Context als Fenster-Merker (`window.__aiucSpfxContext`,
+  // wie `__dexSpfxContext` in DEX). Niemand las ihn — aber jedes Skript auf der Seite
+  // hätte damit `spHttpClient` und den Token-Anbieter in der Hand gehabt (Sicherheits-Review
+  // 29.09.2026). Der UserContext liefert den Namen, alles andere geht über die Provider.
   return (
     <LanguageProvider>
       <DialogProvider>

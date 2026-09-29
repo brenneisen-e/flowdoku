@@ -343,6 +343,10 @@ function grundText(grund: AktionsGrund, name: string, isDe: boolean): string {
         : `The surplus rights of ${name} were revoked, but the row in the roles list could not be changed afterwards. It still carries the old role — “Check rights” below shows what is missing, and you can repeat the change.`;
     case 'nicht-gefunden':
       return isDe ? 'Die Zeile gibt es nicht mehr. Lade die Liste neu.' : 'The row no longer exists. Reload the list.';
+    case 'keine-berechtigung':
+      return isDe
+        ? 'Rollen vergeben und ändern dürfen nur Admins. Es wurde nichts geändert.'
+        : 'Only admins may assign and change roles. Nothing was changed.';
     case 'herabstufung':
       return isDe
         ? `${name} hat schon eine höhere Rolle. „Person hinzufügen“ stuft nie herab — ändere die Rolle über die Auswahl in der Liste.`

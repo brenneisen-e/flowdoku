@@ -31,6 +31,15 @@ Chromium: `shot.js` sucht unter `/opt/pw-browsers/…` (Remote-Umgebung) und
 nimmt sonst das von Playwright installierte; `PLAYWRIGHT_CHROMIUM=<Pfad>`
 überschreibt.
 
+## `sicher-test.js` — die Bereinigung von Listenwerten
+
+`node sicher-test.js` bündelt `utils/sicher.ts` und wirft Angriffsbeispiele
+(`<img onerror>`, `javascript:`-Links mit Tabulator und Großschreibung,
+`mailto:`-Anhängsel, SVG-`onload`, `<form>`) durch `bereinigeHtml`, `sichereUrl`
+und `sichereMail` — im echten Chromium, mit Ausführung im DOM. Exit 1, wenn
+ein Fall durchrutscht. Das Produkt hat keine Tests; diese Datei ist der Ersatz
+für genau die Stelle, an der ein Fehler ein gespeichertes XSS wäre.
+
 ## Was `shot.js` tut
 
 `node shot.js` läuft etwa 6 Minuten und macht rund 300 Bilder (davon rund 50 `-voll`), dazu `out/shots/index.html` — eine Galerie mit allen Bildern, ihrem Satz und den Befunden je Lauf — und `out/report.json` mit den Befunden nach Problem gruppiert (`gruppiert`).
@@ -172,10 +181,13 @@ Proxy — die App importiert daraus nur Typen). Die Uhr steht fest auf
   (der Picker filtert auf `@deloitte.de`, das Verzeichnis hat neun Namen).
 - **Die eingebettete Demo** (`aufrufArt: eingebettet`): Der Knopf „Demo hier
   öffnen" wird gezeigt, aber nicht geklickt — das iframe würde ins Netz laden.
+  Die Härtung (`sandbox`, Schema-Prüfung, keine gleiche Herkunft) ist deshalb
+  nur im Code geprüft, nicht im Bild.
   „Demo starten" öffnet einen neuen Tab; auch das wird nicht geklickt.
-- **Kachelbild hochladen und zuschneiden** ist nicht Teil des Laufs
-  (Datei-Auswahl, Zuschnitt-Dialog, Anhang). Die Attrappe kann den Upload; über
-  `serve.js` liegt das Bild danach unter der Adresse, die die App merkt.
+- **Kachelbild: echte Kamera- und Datei-Auswahl.** Der Lauf `-bild` wählt eine
+  Beispieldatei, schneidet zu und speichert (Attrappe nimmt den Anhang; über
+  `serve.js` liegt das Bild danach unter der Adresse, die die App merkt) — die
+  Dateiauswahl des Betriebssystems und große Fotos vom Handy prüft er nicht.
 - **Zwischenablage** („Link kopieren"), `mailto:`-Link, Tastaturbedienung.
 - **Das Aussehen in SharePoint selbst**: Die Hülle wird nicht von SharePoint-
   Chrome umgeben (Kopfleiste, Seitentitel, Ränder) — `useShellHeight` rechnet

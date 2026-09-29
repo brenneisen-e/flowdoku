@@ -37,6 +37,8 @@ interface MenuItem {
   /** Ohne Rechte: ausgegraut, mit dem Weg zur Rolle statt einer Sackgasse. */
   anfrage?: boolean;
   cta?: string;
+  /** Was der Knopf `cta` tut — ohne Angabe: die Rolle anfragen. */
+  ctaAktion?: () => void;
   /** Sichtbarer Grund, warum der Punkt gesperrt ist — auf BEIDEN Wegen. */
   note?: string | null;
   /** Zusatzklasse der Kachel (Farbakzent bzw. Symbol-Animation aus dem SCSS-Modul). */
@@ -50,7 +52,7 @@ export default function StartPage(): React.ReactElement {
 
   const isMobile = useIsMobile();
   const { navigate } = useNavigation();
-  const { isAdmin, isOrganizer, isRolesLoading, rolesReadStatus, erstinstallation } = useRoles();
+  const { isAdmin, isOrganizer, isRolesLoading, rolesReadStatus, erstinstallation, refreshRoles } = useRoles();
   const { t } = useLanguage();
   const { openKontakt } = useHilfe();
 
@@ -69,7 +71,14 @@ export default function StartPage(): React.ReactElement {
     : rolesReadStatus === 'forbidden'
       ? t('Deine Rolle konnte nicht geprüft werden (fehlendes Leserecht). Bist du bereits Organizer? Dann bitte einen Admin, in der Rollenverwaltung „Rechte prüfen" auszuführen.',
         'Your role could not be checked (missing read access). Already an organizer? Ask an admin to run "Check rights" in role management.')
-      : null;
+      // Ein echter Lesefehler (Drosselung, Netz) ist etwas anderes als 403: Die Rolle ist UNBEKANNT,
+      // nicht „User". Ohne diesen Satz sah ein Admin „Organizer werden?" und keine Verwaltungskachel,
+      // und niemand sagte ihm, dass ein erneutes Laden hilft (Review 29.09.2026).
+      : rolesReadStatus === 'error'
+        ? t('Deine Rolle konnte nicht gelesen werden (Netzwerk oder Drosselung). Bis dahin siehst du die Ansicht eines normalen Nutzers.',
+          'Your role could not be read (network or throttling). Until then you see the view of a regular user.')
+        : null;
+  const rolleUnbekannt = rolesReadStatus === 'error' && erstinstallation !== 'nicht-gespeichert';
 
   const itemUseCases: MenuItem = {
     key: 'usecases',
@@ -94,7 +103,8 @@ export default function StartPage(): React.ReactElement {
     // ist: ausgegraut, aber ohne Angebot — sonst blitzt „Organizer werden?"
     // bei jedem Organizer kurz auf.
     anfrage: !isRolesLoading,
-    cta: t('Organizer werden?', 'Become an organizer?'),
+    cta: rolleUnbekannt ? t('Erneut prüfen', 'Check again') : t('Organizer werden?', 'Become an organizer?'),
+    ctaAktion: rolleUnbekannt ? () => { void refreshRoles(); } : undefined,
     note: rechteHinweis,
   };
 
@@ -130,7 +140,7 @@ export default function StartPage(): React.ReactElement {
   ].filter(c => c.items.length > 0);
 
   const oeffne = (it: MenuItem): void => {
-    if (it.anfrage) { openKontakt('organizer'); return; }
+    if (it.anfrage) { if (it.ctaAktion) it.ctaAktion(); else openKontakt('organizer'); return; }
     if (it.onClick) { it.onClick(); return; }
     if (it.ziel) navigate(it.ziel);
   };

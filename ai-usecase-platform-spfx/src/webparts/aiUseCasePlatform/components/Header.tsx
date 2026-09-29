@@ -27,7 +27,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useHilfe } from '../context/HilfeContext';
 import { useIsMobile } from '../utils/useIsMobile';
-import { rolleLabel } from '../utils/rollen';
+import { rolleAnzeige } from '../utils/rollen';
 import { DELOITTE_LOGO_HEADER } from '../data/brandLogos';
 
 /** Klick außerhalb schließt — für Menü und Profil-Popup. */
@@ -53,7 +53,7 @@ export default function Header(): React.ReactElement {
   const { currentPage, navigate, goBack, canGoBack } = useNavigation();
   const { t, isDe, setLocale } = useLanguage();
   const { currentUser, photoUrl } = useCurrentUser();
-  const { currentUserRole, originalIsOrganizer, previewAsUser, setPreviewAsUser } = useRoles();
+  const { currentUserRole, rolesReadStatus, originalIsOrganizer, previewAsUser, setPreviewAsUser } = useRoles();
   const { openKontakt, openAbout } = useHilfe();
   const isMobile = useIsMobile();
 
@@ -275,22 +275,28 @@ export default function Header(): React.ReactElement {
         </div>
 
         <div ref={profilRef} style={{ position: 'relative' }}>
-          {photoUrl && !fotoKaputt ? (
-            <img
-              src={photoUrl}
-              alt={currentUser.displayName}
-              onClick={() => setProfilOffen(o => !o)}
-              onError={() => setFotoKaputt(true)}
-              style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', cursor: 'pointer', display: 'block' }}
-            />
-          ) : (
-            <div
-              className="header-avatar"
-              title={currentUser.displayName}
-              onClick={() => setProfilOffen(o => !o)}
-              style={{ cursor: 'pointer' }}
-            >{initialen}</div>
-          )}
+          {/* Ein Knopf statt Klick auf das Bild/den Kreis: Ohne role und Tastaturhandler war das
+              Profil per Tastatur nicht erreichbar (Review 29.09.2026). */}
+          <button
+            type="button"
+            onClick={() => setProfilOffen(o => !o)}
+            aria-haspopup="true"
+            aria-expanded={profilOffen}
+            aria-label={t('Profil', 'Profile') + ': ' + currentUser.displayName}
+            title={currentUser.displayName}
+            style={{ background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer', borderRadius: '50%', display: 'block', font: 'inherit' }}
+          >
+            {photoUrl && !fotoKaputt ? (
+              <img
+                src={photoUrl}
+                alt=""
+                onError={() => setFotoKaputt(true)}
+                style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', display: 'block' }}
+              />
+            ) : (
+              <div className="header-avatar">{initialen}</div>
+            )}
+          </button>
           {profilOffen && (
             <div style={{
               position: 'absolute', right: 0, top: '100%', marginTop: 8,
@@ -314,7 +320,7 @@ export default function Header(): React.ReactElement {
               </div>
               <div style={{ fontSize: '0.85rem', marginBottom: 14 }}>
                 <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 12, background: rc.bg, color: rc.color, fontSize: '0.8rem', fontWeight: 500 }}>
-                  {rolleLabel(currentUserRole)}
+                  {rolleAnzeige(currentUserRole, rolesReadStatus, t)}
                 </span>
               </div>
               {/* Für Rückfragen: die Seiten-Kennung, wie in DEX. Wer „auf der

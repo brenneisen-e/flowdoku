@@ -52,8 +52,12 @@ export default function UseCaseSearch(): React.ReactElement {
     const onDown = (e: MouseEvent): void => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOffen(false);
     };
+    // Escape am Fenster, nicht nur im Eingabefeld: Liegt der Fokus auf einem Ergebnis, tat es
+    // bisher nichts (Review 29.09.2026).
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') setOffen(false); };
     window.addEventListener('mousedown', onDown);
-    return () => window.removeEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey); };
   }, [offen]);
 
   const zurWand = (): void => {

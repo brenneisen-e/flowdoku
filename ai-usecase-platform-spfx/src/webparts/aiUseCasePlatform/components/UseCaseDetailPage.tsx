@@ -16,6 +16,8 @@ import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
 import { UseCase } from '../types';
 import { linkZumUseCase } from '../constants';
+import { sichereUrl, sichereMail, bereinigeHtml } from '../utils/sicher';
+import { bewertungText } from '../utils/anzeige';
 
 interface RessourceZeile {
   key: string;
@@ -95,20 +97,34 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
     );
   }
 
-  const start = uc.ressourcen.deployment;
+  // Alle Links kommen aus der Liste — und die ist in SharePoint auch direkt beschreibbar.
+  // Nur absolute http(s)-Adressen gehen weiter; `javascript:` in einem iframe liefe im Origin
+  // dieser SharePoint-Seite, mit der Sitzung der Person (Sicherheits-Review 29.09.2026).
+  const start = sichereUrl(uc.ressourcen.deployment);
+  const startUngueltig = !!uc.ressourcen.deployment && !start;
   const kannStarten = uc.status === 'Live' && !!start;
+  // Liegt das Ziel auf DERSELBEN Herkunft wie diese Seite (ein Link auf die SharePoint-Site
+  // selbst), darf es nicht eingebettet werden: `allow-scripts` + `allow-same-origin` zusammen
+  // höben die Sandbox dort auf. Es öffnet dann im neuen Tab.
+  let gleicheHerkunft = false;
+  try {
+    const a = document.createElement('a');
+    a.href = start;
+    gleicheHerkunft = !!start && a.protocol + '//' + a.host === window.location.protocol + '//' + window.location.host;
+  } catch { gleicheHerkunft = true; }
+  const einbetten = uc.aufrufArt === 'eingebettet' && !gleicheHerkunft;
 
   const ressourcen: RessourceZeile[] = [
-    { key: 'code', url: uc.ressourcen.sourceCode, titel: t('Source Code', 'Source code'), beschreibung: t('Das Repository zur Demo.', 'The demo repository.'), icon: <LinkIcon size={16} /> },
-    { key: 'guide', url: uc.ressourcen.deploymentGuide, titel: t('Deployment-Guide', 'Deployment guide'), beschreibung: t('Wie du die Demo selbst aufsetzt.', 'How to set the demo up yourself.'), icon: <FileText size={16} /> },
-    { key: 'wiki', url: uc.ressourcen.wiki, titel: t('Wiki / Doku', 'Wiki / docs'), beschreibung: t('Fachliche Beschreibung des Use Cases.', 'The functional description of the use case.'), icon: <Book size={16} /> },
-    { key: 'video', url: uc.ressourcen.video, titel: t('Use-Case-Video', 'Use case video'), beschreibung: t('Aufzeichnung — falls die Live-Demo mal klemmt.', 'Recording — in case the live demo fails.'), icon: <Video size={16} /> },
+    { key: 'code', url: sichereUrl(uc.ressourcen.sourceCode), titel: t('Source Code', 'Source code'), beschreibung: t('Das Repository zur Demo.', 'The demo repository.'), icon: <LinkIcon size={16} /> },
+    { key: 'guide', url: sichereUrl(uc.ressourcen.deploymentGuide), titel: t('Deployment-Guide', 'Deployment guide'), beschreibung: t('Wie du die Demo selbst aufsetzt.', 'How to set the demo up yourself.'), icon: <FileText size={16} /> },
+    { key: 'wiki', url: sichereUrl(uc.ressourcen.wiki), titel: t('Wiki / Doku', 'Wiki / docs'), beschreibung: t('Fachliche Beschreibung des Use Cases.', 'The functional description of the use case.'), icon: <Book size={16} /> },
+    { key: 'video', url: sichereUrl(uc.ressourcen.video), titel: t('Use-Case-Video', 'Use case video'), beschreibung: t('Aufzeichnung — falls die Live-Demo mal klemmt.', 'Recording — in case the live demo fails.'), icon: <Video size={16} /> },
   ];
   const vorhandene = ressourcen.filter(r => !!r.url);
 
   const starte = (): void => {
     if (!kannStarten) return;
-    if (uc.aufrufArt === 'eingebettet') { setEingebettetOffen(true); return; }
+    if (einbetten) { setEingebettetOffen(true); return; }
     // `noopener` ist Pflicht: Ohne das kann die geoeffnete Seite ueber
     // `window.opener` auf diese hier zugreifen.
     window.open(start, '_blank', 'noopener,noreferrer');
@@ -171,14 +187,14 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
 
       {/* Das Kachelbild, groß. Nur wenn eines hochgeladen ist — ohne Bild
           würde ein leerer Kasten nach Ladefehler aussehen. */}
-      {uc.bildUrl && (
+      {sichereUrl(uc.bildUrl) && (
         <div
           role="img"
           aria-label={uc.titel}
           style={{
             width: '100%', maxWidth: 560, aspectRatio: '16 / 9', borderRadius: 12, marginBottom: 16,
             border: '1px solid var(--dex-gray-200, #e8e8e8)',
-            background: `#fff center/cover no-repeat url("${uc.bildUrl.replace(/"/g, '%22')}")`,
+            background: `#fff center/cover no-repeat url("${sichereUrl(uc.bildUrl).replace(/"/g, '%22')}")`,
           }}
         />
       )}
@@ -188,12 +204,12 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
         {kannStarten ? (
           <>
             <button type="button" className="btn btn-primary" onClick={starte} style={{ minHeight: 44 }}>
-              {uc.aufrufArt === 'eingebettet'
+              {einbetten
                 ? t('Demo hier öffnen', 'Open demo here')
                 : <>{t('Demo starten', 'Start demo')} <ExternalLink size={15} /></>}
             </button>
             <p className="dex-ui-help" style={{ marginTop: 8 }}>
-              {uc.aufrufArt === 'eingebettet'
+              {einbetten
                 ? t('Die Demo läuft eingebettet auf dieser Seite.', 'The demo runs embedded on this page.')
                 : t('Öffnet in einem neuen Tab.', 'Opens in a new tab.')}
             </p>
@@ -205,7 +221,8 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
               {uc.status === 'Geplant' && t('Dieser Use Case ist geplant — es gibt noch keine Demo zum Starten.', 'This use case is planned — there is no demo to start yet.')}
               {uc.status === 'InArbeit' && t('Die Demo wird gerade gebaut. Sobald sie steht, erscheint hier der Start-Knopf.', 'The demo is being built. The start button appears here as soon as it is ready.')}
               {uc.status === 'Archiviert' && t('Dieser Use Case ist archiviert.', 'This use case is archived.')}
-              {uc.status === 'Live' && !start && t('Der Use Case steht auf „Live", aber es ist kein Deployment-Link hinterlegt. Das ist ein Pflegefehler — ein Organizer kann ihn nachtragen.', 'The use case is marked "Live", but no deployment link is stored. An organizer can add it.')}
+              {uc.status === 'Live' && startUngueltig && t('Der Use Case steht auf „Live", aber der hinterlegte Deployment-Link ist keine gültige Adresse (sie muss mit https:// beginnen). Ein Organizer kann ihn korrigieren.', 'The use case is marked "Live", but the stored deployment link is not a valid address (it must start with https://). An organizer can correct it.')}
+              {uc.status === 'Live' && !start && !startUngueltig && t('Der Use Case steht auf „Live", aber es ist kein Deployment-Link hinterlegt. Das ist ein Pflegefehler — ein Organizer kann ihn nachtragen.', 'The use case is marked "Live", but no deployment link is stored. An organizer can add it.')}
             </span>
           </div>
         )}
@@ -214,7 +231,7 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
       {/* Eingebettet: erst nach dem Klick. Ein iframe, das beim Seitenaufbau
           mitlaedt, kostet jeden Besucher Ladezeit fuer etwas, das die
           meisten nicht oeffnen. */}
-      {eingebettetOffen && kannStarten && (
+      {eingebettetOffen && kannStarten && einbetten && (
         <div className="dex-ui-section">
           <div className="dex-ui-section-title">{t('Demo', 'Demo')}</div>
           <div className="dex-ui-inline" style={{ marginBottom: 8 }}>
@@ -225,9 +242,16 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
               {t('Schließen', 'Close')}
             </button>
           </div>
+          {/* sandbox: Die Demo darf Skripte, Formulare, Pop-ups und Downloads — aber die Seite
+              darüber NICHT umleiten (kein `allow-top-navigation`) und nicht an deren Origin
+              (kein Zugriff auf SharePoint). `allow-same-origin` heißt hier nur: Die Demo behält
+              ihren EIGENEN Origin (Cookies, localStorage — das Passwort-Gate des KI-Arbeitsplatzes
+              braucht das). Für Ziele auf dieser Herkunft ist Einbetten oben ausgeschlossen. */}
           <iframe
             src={start}
             title={uc.titel}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"
+            referrerPolicy="no-referrer"
             style={{ width: '100%', height: '70vh', minHeight: 420, border: '1px solid var(--dex-gray-200, #e8e8e8)', borderRadius: 'var(--dex-radius, 12px)', background: '#fff' }}
           />
           {/* Der Satz steht hier, weil ein leeres iframe sonst wie ein Fehler
@@ -250,10 +274,12 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
           {uc.beschreibung && (
             <div
               style={{ marginTop: 12 }}
-              // Der Text kommt aus der eigenen SharePoint-Liste und wird nur
-              // von Organizern gepflegt — dieselbe Vertrauensstellung wie die
-              // Event-Beschreibung in DEX.
-              dangerouslySetInnerHTML={{ __html: uc.beschreibung }}
+              // Die Beschreibung hat in der Pflegeseite gar kein Feld — sie steht nur direkt in
+              // SharePoint, wo jede Person mit Bearbeiten-Recht auf der Liste schreiben darf. Sie
+              // ist deshalb NICHT vertrauenswürdig: `bereinigeHtml` lässt nur einfache
+              // Auszeichnungen (Absatz, Fett, Liste, Link) durch — kein Skript, kein Ereignis-
+              // Attribut, kein Bild (gespeichertes XSS, Sicherheits-Review 29.09.2026).
+              dangerouslySetInnerHTML={{ __html: bereinigeHtml(uc.beschreibung) }}
             />
           )}
         </div>
@@ -271,7 +297,7 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
               <div className="dex-ui-kpi-value" style={{ letterSpacing: '0.1em' }}>{bewertungPunkte(k.wert)}</div>
               <div className="dex-ui-kpi-label">{k.label}</div>
               <div className="dex-ui-kpi-sub">
-                {k.wert === 'unbewertet' ? t('noch nicht bewertet', 'not assessed yet') : k.wert}
+                {k.wert === 'unbewertet' ? t('noch nicht bewertet', 'not assessed yet') : bewertungText(k.wert, t)}
               </div>
             </div>
           ))}
@@ -317,7 +343,11 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
               {uc.betreuerEmails.map((mail, i) => (
                 <React.Fragment key={mail}>
                   {i > 0 && ', '}
-                  <a href={`mailto:${mail}`} style={{ color: 'inherit' }}>{uc.betreuerNamen[i] || mail}</a>
+                  {/* Nur eine schlichte Adresse wird zum Link: `a@b.de?bcc=…` hängt in `mailto:`
+                      Empfänger und Text an. Sonst steht der Name ohne Link da. */}
+                  {sichereMail(mail)
+                    ? <a href={`mailto:${sichereMail(mail)}`} style={{ color: 'inherit' }}>{uc.betreuerNamen[i] || mail}</a>
+                    : <span>{uc.betreuerNamen[i] || mail}</span>}
                 </React.Fragment>
               ))}
               {'. '}

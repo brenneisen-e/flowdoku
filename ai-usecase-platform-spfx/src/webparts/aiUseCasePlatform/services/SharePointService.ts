@@ -12,13 +12,13 @@
  *    leeren Liste auf „nichts da" schliesst, braucht den geprueften Status.
  *
  * 2. **Eine Rechtevergabe ist erst gesetzt, wenn sie nachgelesen wurde.**
- *    `_grantVerified` wiederholt und liest danach `roledefinitionbindings` —
+ *    `grantVerified` wiederholt und liest danach `roledefinitionbindings` —
  *    ein `addroleassignment`-POST allein ist keine Vergabe. In DEX fehlten
  *    18 von 126 Rollen-Eintraegen mindestens ein Recht, und jede dieser
  *    Zuweisungen hatte „erfolgreich" gemeldet (v30.85).
  *
  * 3. **Wer Rechte vergibt, baut den Entzug im selben Commit.**
- *    `revokeAccessOnRolesList` liest danach nach; SharePoint antwortet auf
+ *    `entzieheListe` und `reduziereListe` lesen danach nach; SharePoint antwortet auf
  *    einen DELETE ohne vorhandene Zuweisung mit 404 ODER 500, der Status
  *    allein traegt also nicht (v30.67).
  *
@@ -74,7 +74,6 @@ const SEED_MARKER = 'erstbefuellung';
 const BILD_PREFIX = '__ucbild__';
 
 /** Was beim Lesen herauskam — `ok` heisst: die Daten sind belastbar. */
-export type LeseStatus = 'ok' | 'forbidden' | 'notfound' | 'error';
 
 interface SpUseCaseRow {
   Id: number;
@@ -117,9 +116,9 @@ interface SpLogRow {
  * mindestens braucht. Das ist die EINE Tabelle, gegen die „Rechte prüfen"
  * (`auditRoleRights`) liest und nach der `repairRoleRights` nachsetzt.
  *
- * Sie muss zu den Vergaben passen: `grantFullControlOnRolesList` /
- * `grantReadOnRolesList` (Rollenliste) und `grantOrganizerPermissions`
- * (Use-Case-Liste, Protokoll). Steht hier etwas anderes als dort, meldet der
+ * Sie muss zu den Vergaben passen: `grantRoleRights` und `grantListRights`
+ * lesen diese Tabelle selbst — es gibt keine zweite Liste von Stufen. Steht
+ * irgendwo im Code eine andere Stufe als hier, meldet der
  * Audit „fehlt" für ein Recht, das die Vergabe nie setzt — und die Meldung
  * kommt bei jedem Lauf wieder. Die Matrix in `data/rollenMatrix.ts` (Kategorie
  * „SharePoint") beschreibt dieselben Zeilen in Sätzen.
@@ -140,7 +139,10 @@ interface RechteSoll { key: RechteListe; liste: string; admin: number; organizer
  */
 const RECHTE_SOLL: RechteSoll[] = [
   { key: 'roles', liste: LIST.roles, admin: ROLE_DEF.full, organizer: ROLE_DEF.read },
-  { key: 'useCases', liste: LIST.useCases, admin: ROLE_DEF.full, organizer: ROLE_DEF.edit },
+  // Contribute reicht: Zeilen anlegen, ändern, recyceln und Anhänge tragen nur Add/Edit/Delete Items.
+  // „Edit“ enthielte zusätzlich „Manage Lists“ — ein Organizer könnte Spalten oder die ganze Liste
+  // löschen (Sicherheits-Review 29.09.2026).
+  { key: 'useCases', liste: LIST.useCases, admin: ROLE_DEF.full, organizer: ROLE_DEF.contribute },
   { key: 'log', liste: LIST.log, admin: ROLE_DEF.full, organizer: ROLE_DEF.contribute },
 ];
 
@@ -551,16 +553,7 @@ export class SharePointService {
     }
   }
 
-  /**
-   * Nur für Anzeige und Alt-Aufrufer: `true` heißt „lesbar". `false` heißt NICHT
-   * „gibt es nicht" (das kann auch 403 sein) — wer daraus „anlegen" ableitet,
-   * baut den Fehler aus Fund 11 wieder ein; dafür gibt es `listStatus`.
-   */
-  public async listExists(listName: string): Promise<boolean> {
-    return (await this.listStatus(listName)) === 'ja';
-  }
-
-  private _kannVerwaltenMerker: Promise<boolean> | null = null;
+  private _basisRechteMerker: Promise<number | null> | null = null;
 
   /**
    * Darf die angemeldete Person auf dieser Site Listen verwalten (Berechtigung
@@ -571,8 +564,28 @@ export class SharePointService {
    * geschrieben werden soll).
    */
   private kannListenVerwalten(): Promise<boolean> {
-    if (!this._kannVerwaltenMerker) {
-      this._kannVerwaltenMerker = (async (): Promise<boolean> => {
+    // Bit 11 (0x800) = ManageLists. `&` rechnet auf 32 Bit — die unteren Bits
+    // bleiben auch bei Werten über 2^31 erhalten.
+    return this.basisRechte().then(low => low !== null && (low & 0x800) !== 0);
+  }
+
+  /**
+   * Darf dieses Konto Berechtigungen setzen (ManagePermissions, Bit 25 = 0x2000000)?
+   *
+   * `breakroleinheritance` und `addroleassignment` brauchen dieses Recht, NICHT
+   * ManageLists. Wer die Listen anlegen darf (Edit-Mitglied), kann die Rollenliste
+   * deshalb noch lange nicht sperren — der Guard über `kannListenVerwalten` allein
+   * ließ solche Konten bis an den POST kommen, der dann mit 403 scheiterte
+   * (Review 29.09.2026, Fund 8).
+   */
+  private kannRechteVerwalten(): Promise<boolean> {
+    return this.basisRechte().then(low => low !== null && (low & 0x2000000) !== 0);
+  }
+
+  /** Die unteren 32 Bit der effektiven Web-Rechte — `null` = nicht lesbar. Einmal je Sitzung gemerkt. */
+  private basisRechte(): Promise<number | null> {
+    if (!this._basisRechteMerker) {
+      this._basisRechteMerker = (async (): Promise<number | null> => {
         try {
           const r = await this._sp.get(
             `${this.siteUrl}/_api/web/effectivebasepermissions`,
@@ -582,19 +595,18 @@ export class SharePointService {
           // Nicht lesbar heißt „nein" für DIESEN Aufruf, wird aber nicht gemerkt:
           // Eine Drosselung beim ersten Start würde sonst die Erstinstallation
           // für die ganze Sitzung sperren.
-          if (!r.ok) { this._kannVerwaltenMerker = null; return false; }
+          if (!r.ok) { this._basisRechteMerker = null; return null; }
           const d = await r.json();
           const low = Number(d.Low ?? d.d?.EffectiveBasePermissions?.Low ?? d.d?.Low);
-          // Bit 11 (0x800) = ManageLists. `&` rechnet auf 32 Bit — die unteren
-          // Bits bleiben auch bei Werten über 2^31 erhalten.
-          return !isNaN(low) && (low & 0x800) !== 0;
+          if (isNaN(low)) { this._basisRechteMerker = null; return null; }
+          return low;
         } catch {
-          this._kannVerwaltenMerker = null;
-          return false;
+          this._basisRechteMerker = null;
+          return null;
         }
       })();
     }
-    return this._kannVerwaltenMerker;
+    return this._basisRechteMerker;
   }
 
   /** Die Antwort von SharePoint lesbar machen — der Text sagt, was fehlt. */
@@ -640,6 +652,11 @@ export class SharePointService {
         SPHttpClient.configurations.v1,
       );
       if (probe.ok) return true;
+      // 403 und 429 sagen NICHTS über die Spalte (kein Recht, gedrosselt) — weder anlegen
+      // noch als fehlend melden: Ein Anlegeversuch auf eine vorhandene Spalte scheitert bei
+      // SharePoint mit 400/500 (Lehre 4 im Kopfkommentar), und „Spalte fehlt" behauptete
+      // bei normalen Nutzern etwas Unbelegtes (Review 29.09.2026).
+      if (probe.status === 403 || probe.status === 429) return true;
     } catch { /* nicht lesbar -> Anlegen versuchen */ }
 
     // v1.3 (Fund 11): Wer keine Listen verwalten darf, bekommt auf das Anlegen
@@ -816,32 +833,43 @@ export class SharePointService {
       // jeder Nutzer aussichtslose Schreibanfragen aus — und ein Site-Owner, der
       // in der App nur „User" ist, vergäbe sich beim Start selbst Full Control auf
       // der Rollenliste, ohne dass es eine Rolle gibt (Review 29.09.2026).
-      if (!(await this.kannListenVerwalten())) return;
+      if (!(await this.kannRechteVerwalten())) return;
 
-      await this._post(`${this.list(listName)}/breakroleinheritance(copyRoleAssignments=false,clearSubscopes=true)`, {});
-
-      const owners = await this._sp.get(
-        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
-        SPHttpClient.configurations.v1,
-      );
-      if (owners.ok) {
-        const od = await owners.json();
-        const ownerId = od.Id ?? od.d?.Id;
-        if (ownerId) {
-          await this._post(
-            `${this.list(listName)}/roleassignments/addroleassignment(principalid=${ownerId}, roledefid=${ROLE_DEF.full})`,
-            {},
-          );
-        }
-      }
-      // Die anlegende Person braucht Full Control, sonst sperrt sie sich
-      // selbst aus der gerade erzeugten Liste aus.
+      // Ohne bekannte eigene Id gäbe es nach dem Kappen niemanden, dem man Full Control
+      // nachweisbar zurückgeben könnte — dann wird gar nicht erst gekappt.
       const me = this.context.pageContext.legacyPageContext?.userId;
-      if (me) {
-        await this._post(
-          `${this.list(listName)}/roleassignments/addroleassignment(principalid=${me}, roledefid=${ROLE_DEF.full})`,
-          {},
+      if (!me) return;
+
+      // Reihenfolge nach dem Sicherheits-Review (29.09.2026, Fund 4): Vor dem Kappen
+      // steht fest, wer Owner ist; nach dem Kappen kommt die anlegende Person ZUERST
+      // (mit Nachlesen), dann die Owners. Bis v1.3 waren das zwei rohe POSTs ohne Prüfung
+      // von `ok` — schlug der Lesevorgang auf die Owners-Gruppe fehl oder scheiterten
+      // beide POSTs, stand die Liste ohne jede Zuweisung da, alle Rollenlesungen
+      // antworteten 403, und nur ein Site-Collection-Admin konnte helfen.
+      let ownerId = 0;
+      try {
+        const owners = await this._sp.get(
+          `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
+          SPHttpClient.configurations.v1,
         );
+        if (owners.ok) {
+          const od = await owners.json();
+          ownerId = Number(od.Id ?? od.d?.Id) || 0;
+        }
+      } catch { /* ohne Owners-Gruppe wird nur die anlegende Person eingetragen */ }
+
+      const brk = await this._post(`${this.list(listName)}/breakroleinheritance(copyRoleAssignments=false,clearSubscopes=true)`, {});
+      if (!brk.ok) return;
+
+      // Die anlegende Person braucht Full Control, sonst sperrt sie sich selbst aus.
+      const ichOk = await this.grantVerified(this.list(listName), me, ROLE_DEF.full, 'ensureRolesListPermissions:me');
+      if (ownerId) await this.grantVerified(this.list(listName), ownerId, ROLE_DEF.full, 'ensureRolesListPermissions:owners');
+      if (!ichOk) {
+        // Nicht gesetzt oder nicht nachlesbar: die Vererbung zurückholen, statt eine Liste
+        // ohne Zugriff zu hinterlassen. Das Zurücksetzen darf nur, wer noch Rechte hat —
+        // scheitert es, steht die Warnung in der Konsole, und der Audit meldet die Lücke.
+        console.warn('[AIUC] Rollenliste: Full Control der anlegenden Person ließ sich nicht bestätigen — die Vererbung wird zurückgeholt.');
+        await this._post(`${this.list(listName)}/resetroleinheritance`, {}).catch(() => undefined);
       }
     } catch (e) {
       console.warn('[AIUC] Rechte der Rollenliste konnten nicht gesetzt werden:', e);
@@ -1077,20 +1105,6 @@ export class SharePointService {
     return `${key}:${name}` as RechteCode;
   }
 
-  /** Leserecht auf der Rollenliste — ohne das ist jede Rolle wirkungslos. */
-  public async grantReadOnRolesList(userEmail: string): Promise<boolean> {
-    const id = await this.resolveUserId(userEmail);
-    if (!id) return false;
-    return this.grantVerified(this.list(LIST.roles), id, ROLE_DEF.read, 'grantReadOnRolesList');
-  }
-
-  /** Vollzugriff auf der Rollenliste — nur fuer Admins. */
-  public async grantFullControlOnRolesList(userEmail: string): Promise<boolean> {
-    const id = await this.resolveUserId(userEmail);
-    if (!id) return false;
-    return this.grantVerified(this.list(LIST.roles), id, ROLE_DEF.full, 'grantFullControlOnRolesList');
-  }
-
   /** Rechte auf den angegebenen Listen für eine schon aufgelöste Person — je Recht mit Nachlesen. */
   private async grantListRights(id: number, rolle: UserRole, keys: RechteListe[]): Promise<RechteCode[]> {
     const fehlend: RechteCode[] = [];
@@ -1116,29 +1130,6 @@ export class SharePointService {
     const id = await this.resolveUserId(userEmail);
     if (!id) return ['konto'];
     return this.grantListRights(id, rolle, ['roles', 'useCases', 'log']);
-  }
-
-  /**
-   * Use Case Organizer duerfen Use Cases pflegen: Edit auf der Use-Case-Liste,
-   * Contribute im Protokoll (ein Admin: Full Control auf beiden, siehe
-   * `RECHTE_SOLL`).
-   *
-   * **Nebenwirkung, die man kennen muss (Review-Fund 10):** Die ERSTE Vergabe
-   * kappt die Vererbung von AIUC_UseCases und AIUC_Log (`ensureListeEigeneRechte`,
-   * `breakroleinheritance` mit Kopie). Die Zuweisungen von damals bleiben als
-   * Kopie stehen; was danach am WEB vergeben wird — eine neue AD-Gruppe, „Everyone
-   * except external users", eine neu geteilte Site —, erreicht diese zwei Listen
-   * NICHT mehr. Neue Leser müssen dann auf der Liste selbst eingetragen werden.
-   * Das ist gewollt (eine Liste nimmt sonst keine Zuweisung an einzelne Personen
-   * an), aber es steht sonst nirgends; die Rechte-Matrix (Kategorie
-   * „SharePoint") sagt es deshalb ebenfalls.
-   */
-  public async grantOrganizerPermissions(userEmail: string, rolle: UserRole = 'Organizer'): Promise<RechteCode[]> {
-    const id = await this.resolveUserId(userEmail);
-    if (!id) return ['konto'];
-    // Das Ergebnis der Vererbung zählt hier nicht: Ob es geklappt hat, sagt
-    // `grantVerified` je Liste (in `grantListRights`).
-    return this.grantListRights(id, rolle, ['useCases', 'log']);
   }
 
   /** Leseversuch der Zuweisungen mit EINER Wiederholung nach kurzer Pause — außer bei 401/403/404, die nichts ändert. */
@@ -1292,24 +1283,6 @@ export class SharePointService {
       ergebnis = this.schlimmer(ergebnis, r);
     }
     return ergebnis;
-  }
-
-  /**
-   * Nur die direkte Zuweisung auf der ROLLENLISTE entziehen — die ganze, mit
-   * Nachlesen. Selbstschutz wie bei `revokeAllAccess`.
-   *
-   * Die Herabstufung Admin → Organizer läuft seit dem Review-Nachzug über
-   * `reduziereRechte` (Lesen bleibt durchgehend bestehen); diese Methode bleibt
-   * für den Fall, dass jemand die Rollenliste ganz freiräumen will.
-   */
-  public async revokeRolesListAccess(userEmail: string): Promise<EntzugsCode> {
-    if (isCurrentUser(this.context, userEmail)) {
-      console.warn(`[AIUC] Rollenliste: Rechte von ${userEmail} werden NICHT entzogen — das ist die angemeldete Person (Selbstschutz).`);
-      return 'selbst';
-    }
-    const id = await this.resolveUserId(userEmail);
-    if (id && id === this.meineId()) return 'selbst';
-    return this.entzieheListe('roles', userEmail, id);
   }
 
   /**
@@ -1528,6 +1501,13 @@ export class SharePointService {
    * einzelne Person annimmt. Für die ROLLENLISTE gilt das nicht — sie soll
    * eigene Rechte OHNE die Kopie haben (Owners, sonst niemand);
    * `ensureRolesListPermissions` macht das.
+   *
+   * **Nebenwirkung, die man kennen muss:** Was danach am WEB vergeben wird — eine
+   * neue AD-Gruppe, „Everyone except external users", eine neu geteilte Site —,
+   * erreicht diese Liste NICHT mehr. Neue Leser müssen dann auf der Liste selbst
+   * eingetragen werden. Das ist gewollt (eine Liste nimmt sonst keine Zuweisung
+   * an einzelne Personen an); die Rechte-Matrix (Kategorie „SharePoint") und die
+   * README sagen es ebenfalls.
    *
    * true = die Liste hat danach eigene Rechte.
    */
@@ -2006,7 +1986,7 @@ export class SharePointService {
     const name = LIST.log;
     const status = await this.listStatus(name);
     if (status === 'unbekannt') return status;
-    if (status === 'nein' && !(await this.createList(name, 'Aenderungsprotokoll der AI Use Case Platform'))) return status;
+    if (status === 'nein' && !(await this.createList(name, 'Änderungsprotokoll der AI Use Case Platform'))) return status;
     await this.feldZahl(name, 'UseCaseId');
     await this.feldText(name, 'Aktion');
     await this.feldNote(name, 'Detail');
@@ -2072,19 +2052,35 @@ export class SharePointService {
     this.lastUseCasesReadStatus = 0;
     this.lastReadError = '';
     try {
-      const r = await this._sp.get(
-        `${this.list(LIST.useCases)}/items?$top=500`,
-        SPHttpClient.configurations.v1,
-        { headers: { 'Accept': 'application/json;odata=nometadata' } },
-      );
-      this.lastUseCasesReadStatus = r.status;
-      if (!r.ok) {
-        this.lastReadError = await this.fehlertext(r);
-        console.warn(`[AIUC] Use Cases lesen: HTTP ${r.status} — ${this.lastReadError}`);
-        return null;
+      // Mit Paging, wie `getRoles`: `$top=500` allein lieferte ab Zeile 501 eine stille
+      // Teilliste mit Status ok. Ist die Liste größer als der Lesepfad (5 000 Zeilen),
+      // gilt das Ergebnis als NICHT lesbar — kein stiller Teil-Erfolg.
+      let url: string | null = `${this.list(LIST.useCases)}/items?$top=500`;
+      const alle: SpUseCaseRow[] = [];
+      let seiten = 0;
+      while (url) {
+        seiten++;
+        const r: SPHttpClientResponse = await this._sp.get(
+          url,
+          SPHttpClient.configurations.v1,
+          { headers: { 'Accept': 'application/json;odata=nometadata' } },
+        );
+        this.lastUseCasesReadStatus = r.status;
+        if (!r.ok) {
+          this.lastReadError = await this.fehlertext(r);
+          console.warn(`[AIUC] Use Cases lesen: HTTP ${r.status} — ${this.lastReadError}`);
+          return null;
+        }
+        const d = await r.json();
+        ((d.value || []) as SpUseCaseRow[]).forEach(z => alle.push(z));
+        url = d['odata.nextLink'] || d['@odata.nextLink'] || null;
+        if (url && (alle.length >= 5000 || seiten >= 10)) {
+          this.lastReadError = `Mehr als ${alle.length} Use Cases — der Lesepfad ist gekappt.`;
+          console.warn(`[AIUC] ${this.lastReadError}`);
+          return null;
+        }
       }
-      const d = await r.json();
-      const rows = ((d.value || []) as SpUseCaseRow[]).map(row => this.mapUseCase(row));
+      const rows = alle.map(row => this.mapUseCase(row));
       rows.sort((a, b) => (a.reihenfolge - b.reihenfolge) || a.titel.localeCompare(b.titel, 'de'));
       return rows;
     } catch (e) {
@@ -2170,7 +2166,10 @@ export class SharePointService {
   public async deleteUseCase(id: number): Promise<boolean> {
     try {
       const r = await this._post(`${this.list(LIST.useCases)}/items(${id})/recycle`, {});
-      return r.ok;
+      // 404: Die Zeile ist schon weg (eine andere Person war schneller). Das Ziel ist
+      // erreicht — als Fehler gemeldet, blieb die Kachel stehen und das Protokoll
+      // bekam eine falsche „Löschen fehlgeschlagen"-Zeile.
+      return r.ok || r.status === 404;
     } catch (e) {
       console.error('[AIUC] deleteUseCase:', e);
       return false;
@@ -2278,7 +2277,7 @@ export class SharePointService {
         // Nacheinander — mehrere gleichzeitige POSTs gegen dieselbe Zeile sind
         // das Muster, das SharePoint drosselt.
         // eslint-disable-next-line no-await-in-loop
-        const rr = await this._post(`${zeile}/AttachmentFiles/getByFileName('${encodeURIComponent(fn)}')/recycleObject`, {});
+        const rr = await this._post(`${zeile}/AttachmentFiles/getByFileName('${encodeURIComponent(fn.replace(/'/g, "''"))}')/recycleObject`, {});
         if (!rr.ok) alleWeg = false;
       }
       return alleWeg;
@@ -2373,21 +2372,34 @@ export class SharePointService {
     }
   }
 
-  /** Den Merker setzen, damit die Erstbefuellung genau einmal passiert. */
-  public async merkeErstbefuellung(anzahl: number): Promise<void> {
-    await this.log(0, SEED_MARKER, `${anzahl} Start-Use-Cases angelegt`);
+  /** Den Merker setzen, damit die Erstbefuellung genau einmal passiert. `false` = nicht gespeichert. */
+  public async merkeErstbefuellung(anzahl: number): Promise<boolean> {
+    return this.log(0, SEED_MARKER, `${anzahl} Start-Use-Cases angelegt`);
   }
 
-  /** Protokollzeile schreiben. Best-effort — ein fehlendes Protokoll darf keine Aktion verhindern. */
-  public async log(useCaseId: number, aktion: string, detail: string): Promise<void> {
+  /**
+   * Protokollzeile schreiben.
+   *
+   * Ein fehlendes Protokoll darf keine Aktion verhindern — deshalb wirft das nie.
+   * Aber die Rückgabe sagt die Wahrheit: `true` nur, wenn SharePoint die Zeile
+   * angenommen hat. Bis v1.3 wertete die Funktion den Status nicht aus; bei 400
+   * (Spalte fehlt), 403 oder 429 galt der Eintrag als geschrieben, und das
+   * Löschen lief ohne Protokollzeile weiter, obwohl die Reihenfolge „prüfbare
+   * Nebenbuchhaltung zuerst" genau das verhindern soll (Review 29.09.2026).
+   */
+  public async log(useCaseId: number, aktion: string, detail: string): Promise<boolean> {
     try {
-      await this._postItem(LIST.log, {
+      const r = await this._postItem(LIST.log, {
         'Title': aktion,
         'UseCaseId': useCaseId,
         'Aktion': aktion,
         'Detail': detail,
         'Wer': this.context.pageContext.user.email,
       });
-    } catch { /* Protokoll ist Nebenbuchhaltung */ }
+      if (!r.ok) console.warn(`[AIUC] Protokoll schreiben (${aktion}): HTTP ${r.status}`);
+      return r.ok;
+    } catch {
+      return false;
+    }
   }
 }

@@ -27,45 +27,9 @@ export const Settings = ({ size = 20, strokeWidth = 2 }: IconProps): React.React
   </svg>
 );
 
-export const GraduationCap = ({ size = 20, strokeWidth = 2 }: IconProps): React.ReactElement => (
-  // v28.14: Einführungs-Hinweis auf der LandingPage (Lernen/Onboarding).
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z" />
-    <path d="M22 10v6" />
-    <path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5" />
-  </svg>
-);
-
-export const BarChart3 = ({ size = 20, strokeWidth = 2 }: IconProps): React.ReactElement => (
-  // Balkendiagramm — für das Statistik-Archiv.
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 3v18h18" />
-    <rect x="7" y="12" width="3" height="6" />
-    <rect x="12" y="8" width="3" height="10" />
-    <rect x="17" y="4" width="3" height="14" />
-  </svg>
-);
-
-export const CaptainHat = ({ size = 20, strokeWidth = 2 }: IconProps): React.ReactElement => (
-  // Kapitänsmütze (Schirmmütze): runde Krone, Band mit Emblem, breiter Schirm.
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5 12.5C5 7.5 8 5 12 5s7 2.5 7 7.5" />
-    <path d="M3.5 16c2-1 5.5-1.5 8.5-1.5s6.5.5 8.5 1.5c-2 1-5.5 1.5-8.5 1.5S5.5 17 3.5 16Z" />
-    <path d="M4.8 12.5h14.4" />
-    <circle cx="12" cy="9.4" r="1.3" />
-  </svg>
-);
-
 export const Mail = ({ size = 20 }: IconProps): React.ReactElement => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-  </svg>
-);
-
-export const Star = ({ size = 20, strokeWidth = 2 }: IconProps): React.ReactElement => (
-  // Stern (Outline) — „cooles" Symbol für die Admin-Kachel.
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 2.5l2.9 6.1 6.6.9-4.8 4.5 1.2 6.6L12 18l-5.9 3.1 1.2-6.6L2.5 9.5l6.6-.9z" />
   </svg>
 );
 
@@ -75,37 +39,9 @@ export const Book = ({ size = 20 }: IconProps): React.ReactElement => (
   </svg>
 );
 
-export const QrCode = ({ size = 20, strokeWidth = 2 }: IconProps): React.ReactElement => (
-  // v13.14: strokeWidth-Prop respektiert — die StartPage-Kachel ruft sie
-  // mit strokeWidth={1} auf, damit die Kontur zu Calendar/Pin/Settings
-  // passt; im Header wird der Default 2 verwendet.
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="7" height="7" rx="1" />
-    <rect x="14" y="3" width="7" height="7" rx="1" />
-    <rect x="3" y="14" width="7" height="7" rx="1" />
-    <path d="M14 14h3v3" />
-    <path d="M21 14v.01" />
-    <path d="M14 21h3" />
-    <path d="M21 21v-3" />
-    <path d="M17 17h4" />
-  </svg>
-);
-
 export const Info = ({ size = 18 }: IconProps): React.ReactElement => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
-  </svg>
-);
-
-export const Calendar = ({ size = 64, strokeWidth = 1 }: IconProps): React.ReactElement => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-    <rect width="18" height="18" x="3" y="4" rx="2" ry="2" /><line x1="16" x2="16" y1="2" y2="6" /><line x1="8" x2="8" y1="2" y2="6" /><line x1="3" x2="21" y1="10" y2="10" />
-  </svg>
-);
-
-export const Pin = ({ size = 64, strokeWidth = 1 }: IconProps): React.ReactElement => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
-    <line x1="12" x2="12" y1="17" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
   </svg>
 );
 
@@ -175,12 +111,6 @@ export const Check = ({ size = 14 }: IconProps): React.ReactElement => (
   </svg>
 );
 
-export const ChevronUp = ({ size = 16 }: IconProps): React.ReactElement => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 15l-6-6-6 6" />
-  </svg>
-);
-
 export const ChevronDown = ({ size = 16 }: IconProps): React.ReactElement => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M6 9l6 6 6-6" />
@@ -226,28 +156,9 @@ export const AlertCircle = ({ size = 18 }: IconProps): React.ReactElement => (
   </svg>
 );
 
-export const Hash = ({ size = 18 }: IconProps): React.ReactElement => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="4" x2="20" y1="9" y2="9" /><line x1="4" x2="20" y1="15" y2="15" /><line x1="10" x2="8" y1="3" y2="21" /><line x1="16" x2="14" y1="3" y2="21" />
-  </svg>
-);
-
-/** v30.60: T-Shirt — Aktion „Benötigte T-Shirts". */
-export const Shirt = ({ size = 18 }: IconProps): React.ReactElement => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z" />
-  </svg>
-);
-
 export const Columns = ({ size = 18 }: IconProps): React.ReactElement => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect width="18" height="18" x="3" y="3" rx="2" /><path d="M12 3v18" />
-  </svg>
-);
-
-export const Wrench = ({ size = 18 }: IconProps): React.ReactElement => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
   </svg>
 );
 

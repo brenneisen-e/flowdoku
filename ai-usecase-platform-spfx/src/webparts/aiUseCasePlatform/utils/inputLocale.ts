@@ -33,28 +33,3 @@
 export function inputLocaleTag(isDe: boolean): string {
   return isDe ? 'de-DE' : 'en-GB';
 }
-
-/**
- * Anzeige-Format für die gespeicherte ISO-Zeit — für alles, was DEX selbst
- * rendert (Tabellen, Mails, Karten). Native Felder brauchen das nicht, sie
- * formatieren selbst; hier geht es um Text, den wir schreiben.
- */
-export function formatDateDe(iso: string | undefined | null): string {
-  const d = new Date(iso || '');
-  if (!isFinite(d.getTime())) return '—';
-  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-/** Uhrzeit als HH:MM, 24 Stunden. */
-export function formatTimeDe(iso: string | undefined | null): string {
-  const d = new Date(iso || '');
-  if (!isFinite(d.getTime())) return '—';
-  return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', hour12: false });
-}
-
-/** „TT.MM.JJJJ, HH:MM" — Datum und Uhrzeit in einem. */
-export function formatDateTimeDe(iso: string | undefined | null): string {
-  const d = new Date(iso || '');
-  if (!isFinite(d.getTime())) return '—';
-  return `${formatDateDe(iso)}, ${formatTimeDe(iso)}`;
-}

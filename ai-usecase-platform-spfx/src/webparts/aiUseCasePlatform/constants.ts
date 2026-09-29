@@ -16,7 +16,7 @@
 /** Die SharePoint-Site, auf der die Plattform lebt. Ohne Schraegstrich am Ende. */
 export const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-AIUseCasePlatform';
 
-/** Die Seite, auf der das Webpart eingebunden ist — fuer Links von aussen. */
+/** Die Seite, auf der das Webpart eingebunden ist — für Links von außen. */
 export const APP_URL = `${SITE_URL}/SitePages/AIUseCases.aspx?env=WebView`;
 
 /**

@@ -54,6 +54,17 @@ export function rolleLabel(rolle: UserRole, kurz = false): string {
   return rolle;
 }
 
+/**
+ * Die Rolle für die Anzeige (Fußzeile, Profil) — „unbekannt", wenn das Lesen der
+ * Rollenliste fehlgeschlagen ist (429, 500, Netz). Ein Lesefehler wäre sonst als
+ * „User" zu sehen, und ein Admin oder Organizer läse sich selbst als herabgestuft.
+ * `forbidden` ist dagegen KEIN Fehler: Wer nicht in der Liste steht, darf sie nicht
+ * lesen — und ist zu Recht User.
+ */
+export function rolleAnzeige(rolle: UserRole, lesestatus: 'loading' | 'ok' | 'forbidden' | 'error', t: (de: string, en: string) => string): string {
+  return lesestatus === 'error' ? t('unbekannt', 'unknown') : rolleLabel(rolle);
+}
+
 /** Höhere Zahl = mehr Rechte. Für „nie implizit herabstufen". */
 export function rolleRang(rolle: UserRole): number {
   return rolle === 'Admin' ? 3 : rolle === 'Organizer' ? 2 : 1;

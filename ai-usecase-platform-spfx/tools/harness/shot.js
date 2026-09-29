@@ -47,7 +47,7 @@ const exe = [process.env.PLAYWRIGHT_CHROMIUM, '/opt/pw-browsers/chromium-1194/ch
 const TEXTE = {
   de: {
     kUseCases: 'Use Cases', kStudio: 'Use Case Studio', kProtokoll: 'Protokoll', kRollen: 'Rollenverwaltung',
-    zurueck: 'Zurück', nurLive: 'Nur aufrufbare', neu: 'Neuer Use Case', speichern: 'Speichern', abbrechen: 'Abbrechen',
+    zurueck: 'Zurück', nurLive: 'Nur aufrufbare', neu: 'Neuer Use Case', speichern: 'Speichern', abbrechen: 'Abbrechen', schliessen: 'Schließen',
     bearbeiten: 'Bearbeiten', loeschen: 'Löschen', verlauf: 'Verlauf', mehr: 'Betreuer, Bewertung, Aufruf und Reihenfolge',
     vergeben: 'Rolle vergeben', allesKlar: 'Alles klar', menue: 'Menü', fragen: 'Hast du Fragen?', ueber: 'Über die App',
     userAnsicht: 'User-Ansicht', userZurueck: 'User-Ansicht · zurück', organizerWerden: 'Organizer werden?',
@@ -58,7 +58,7 @@ const TEXTE = {
   },
   en: {
     kUseCases: 'Use Cases', kStudio: 'Use Case Studio', kProtokoll: 'Log', kRollen: 'Role management',
-    zurueck: 'Back', nurLive: 'Only callable', neu: 'New use case', speichern: 'Save', abbrechen: 'Cancel',
+    zurueck: 'Back', nurLive: 'Only callable', neu: 'New use case', speichern: 'Save', abbrechen: 'Cancel', schliessen: 'Close',
     bearbeiten: 'Edit', loeschen: 'Delete', verlauf: 'History', mehr: 'Maintainers, assessment, launch and order',
     vergeben: 'Assign role', allesKlar: 'Got it', menue: 'Menu', fragen: 'Any questions?', ueber: 'About the app',
     userAnsicht: 'User view', userZurueck: 'User view · back', organizerWerden: 'Become an organizer?',
@@ -389,11 +389,17 @@ class Lauf {
     // Im Normalzustand ist jeder console.error unerwartet; in Fehlerzuständen melden die Seiten ihre Lesefehler selbst.
     if ((this.spec.state === 'ok' || !this.spec.state) && !this.spec.ohneFoto) k.fehler.forEach(e => this.befund('console', 'console.error im Normalzustand.', e));
     // Breite der Inhaltsspalte je Seite (nur am Rechner aussagekräftig): Sie soll nicht vom Inhalt abhängen.
+    // Die Breiten sind je Seite gewollt (`seitenBreite` in AiUseCasePlatform.tsx): Lese- und Formularseiten
+    // 900 px, die Rollenverwaltung 1100 px, die Kachelwand bringt ihre eigene (breite) mit. Geprüft wird
+    // gegen diese Vorgabe — vorher gegen „alle gleich", was die Absicht als Befund meldete. Der Fehler, den
+    // die Regel finden soll (shrink-to-fit: 528 px statt 900 px), bleibt sichtbar.
     const br = this.rec.breiten;
-    const namen = Object.keys(br).filter(n => /^(usecases|detail|studio|protokoll|rollen)$/.test(n) && br[n] > 0);
-    if (!this.mobil && namen.length >= 3) {
-      const w = namen.map(n => br[n]);
-      if (Math.max.apply(null, w) - Math.min.apply(null, w) > 150) this.befund('layout', 'Die Breite der Inhaltsspalte hängt vom Inhalt ab: Die Seiten sind unterschiedlich breit.', namen.map(n => `${n} ${br[n]} px`).join(', '));
+    const SOLL = { detail: 900, studio: 900, protokoll: 900, rollen: 1100 };
+    if (!this.mobil) {
+      Object.keys(SOLL).forEach(n => {
+        if (br[n] > 0 && Math.abs(br[n] - SOLL[n]) > 40) this.befund('layout', 'Eine Seite hat nicht die vorgesehene Breite der Inhaltsspalte.', `${n} ${br[n]} px statt ${SOLL[n]} px`);
+      });
+      if (br.usecases > 0 && br.usecases < 1000 && this.spec.state !== 'error') this.befund('layout', 'Die Kachelwand ist schmaler als vorgesehen.', `usecases ${br.usecases} px`);
     }
     k.harnessUnbehandelt.forEach(u => this.befund('rest', 'Die App ruft SharePoint-REST auf, den die Attrappe nicht kennt (entweder fehlt er im Harness oder die App ruft etwas Falsches).', u));
     const log = [];
@@ -621,7 +627,7 @@ async function reise(l) {
         return { rolle: z ? z.Role : null, rechte };
       });
       if (h.rolle !== 'Kurator') l.befund('rollen-vergeben', 'Die vergebene Rolle „Organizer" steht nicht als „Kurator" in der Rollenliste.', JSON.stringify(h));
-      if (!/roles:1073741826/.test(h.rechte) || !/useCases:1073741830/.test(h.rechte) || !/log:1073741827/.test(h.rechte)) l.befund('rollen-vergeben', 'Nach der Rollenvergabe fehlen Rechte auf den Listen (erwartet: Rollenliste Read, Use Cases Edit, Protokoll Contribute).', h.rechte);
+      if (!/roles:1073741826/.test(h.rechte) || !/useCases:1073741827/.test(h.rechte) || !/log:1073741827/.test(h.rechte)) l.befund('rollen-vergeben', 'Nach der Rollenvergabe fehlen Rechte auf den Listen (erwartet: Rollenliste Read, Use Cases Contribute, Protokoll Contribute).', h.rechte);
       await l.shot('rollen-vergeben', 'Rollenverwaltung nach „Als Use Case Organizer eintragen": grüne Rückmeldung, die Person steht in der Tabelle.', { voll: true });
     });
 
@@ -672,7 +678,7 @@ async function reise(l) {
       await l.kachel(t.kStudio).getByText(t.organizerWerden).click();
       await l.wartDialog();
       await l.shot('organizer-werden', 'Als User auf „Organizer werden?" geklickt: Dialog „Use Case Organizer werden" mit Vorlage für die Mail an die Plattform-Ansprechperson.');
-      await l.dialog().getByRole('button', { name: t.abbrechen }).click();
+      await l.dialog().getByRole('button', { name: t.schliessen }).last().click();
       await l.page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 5000 });
     });
   }
@@ -734,7 +740,7 @@ async function kopf(l) {
     await l.wartDialog();
     await l.dialog().locator('textarea').fill(`Wie starte ich die Demo „${D.titel[D.erste]}" für einen Kundentermin?`);
     await l.shot('fragen', 'Dialog „Hast du Fragen?": Anlass zur Auswahl, Textfeld ausgefüllt, „E-Mail schreiben" und Ausweichadresse.');
-    await l.dialog().getByRole('button', { name: t.abbrechen }).click();
+    await l.dialog().getByRole('button', { name: t.schliessen }).last().click();
     await l.page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 5000 });
   });
 

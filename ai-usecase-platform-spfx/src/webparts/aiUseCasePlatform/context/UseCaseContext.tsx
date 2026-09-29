@@ -11,10 +11,10 @@
 
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
-import { UseCase, BildAenderung, SpeicherErgebnis } from '../types';
+import { UseCase, BildAenderung, SpeicherErgebnis, StartbestandErgebnis } from '../types';
 import { useRoles } from './RoleContext';
 import { START_USE_CASES } from '../data/startUseCases';
-import { geaendertText } from '../utils/aenderungen';
+import { geaendertText, nurGeaendertes } from '../utils/aenderungen';
 
 export type LadeStatus = 'laedt' | 'ok' | 'fehler';
 
@@ -27,6 +27,14 @@ interface UseCaseContextType {
   letzterFehler: string;
   /** Spalten, die beim Anlegen der Liste nicht entstanden sind. */
   fehlendeSpalten: string[];
+  /**
+   * Das Nachladen ist fehlgeschlagen, aber es gibt einen früheren Stand — der bleibt
+   * sichtbar (statt die ganze Kachelwand durch eine Fehlermeldung zu ersetzen), und
+   * dieser Text sagt, dass er veraltet sein kann. Leer = alles aktuell.
+   */
+  aktualisierungFehler: string;
+  /** Die Start-Use-Cases sind nur teilweise angelegt (oder gar nicht) — mit Zahlen und Grund. */
+  startbestandTeilweise: StartbestandErgebnis | null;
   reload: () => Promise<void>;
   create: (uc: Partial<UseCase>) => Promise<number | null>;
   update: (id: number, uc: Partial<UseCase>) => Promise<boolean>;
@@ -46,17 +54,18 @@ interface UseCaseContextType {
   /** Alle vorkommenden Bereiche, alphabetisch — fuer den Filter. */
   bereiche: string[];
   /**
-   * Die fuenf Start-Use-Cases von Hand anlegen.
+   * Die Start-Use-Cases anlegen — nur die, deren Titel es noch nicht gibt.
    *
-   * Das Netz unter der automatischen Erstbefuellung: Die laeuft nur, wenn
-   * BEIDE Listen lesbar sind — bei einem 403 auf das Protokoll bliebe die
-   * Plattform sonst leer, ohne Weg sie zu fuellen. Genau dieser Zustand war
-   * der Fehler, der v1.1 ausgeloest hat.
+   * Das ist der EINE Weg dafür: Die automatische Erstbefüllung, der Knopf auf der
+   * Kachelwand und der Knopf im Studio rufen alle diese Funktion (bis v1.3 gab es
+   * drei Wege mit drei Verhalten: einer ohne Merker, einer mit stummem Teilerfolg).
+   * Wiederholbar ohne Doppelte; läuft schon ein Lauf, kommt `fehler: 'laeuft'`
+   * zurück statt eines zweiten (sonst 36 Kacheln bei zwei Klicks).
    *
-   * Rueckgabe: wie viele angelegt wurden. 0 heisst, dass SharePoint sie
-   * abgelehnt hat — der Grund steht dann in `letzterFehler`.
+   * Der Grund eines Misserfolgs steht im Ergebnis, nicht in einem State: Der State
+   * wäre beim Lesen der Meldung noch der von VOR dem Lauf.
    */
-  seedStartUseCases: () => Promise<number>;
+  seedStartUseCases: () => Promise<StartbestandErgebnis>;
 }
 
 const UseCaseContext = React.createContext<UseCaseContextType | undefined>(undefined);
@@ -67,90 +76,119 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
   const [ladeStatus, setLadeStatus] = React.useState<LadeStatus>('laedt');
   const [letzterStatus, setLetzterStatus] = React.useState(0);
   const [letzterFehler, setLetzterFehler] = React.useState('');
+  const [aktualisierungFehler, setAktualisierungFehler] = React.useState('');
+  const [startbestandTeilweise, setStartbestandTeilweise] = React.useState<StartbestandErgebnis | null>(null);
+
+  // Zähler: Jeder Ladevorgang bekommt eine Nummer, und nur der ZULETZT gestartete
+  // darf den State setzen. Parallele Nachladevorgänge (nach jedem Speichern, „Erneut
+  // versuchen", Startbestand) überholen sich sonst — zwei schnelle Löschungen, und
+  // die ältere Antwort (nur A gelöscht) kam zuletzt und ließ B wieder auftauchen.
+  const reloadNr = React.useRef(0);
+  const hatteDaten = React.useRef(false);
 
   const reload = React.useCallback(async (): Promise<void> => {
+    const nr = ++reloadNr.current;
     const rows = await service.getUseCases();
-    setLetzterStatus(service.lastUseCasesReadStatus);
-    setLetzterFehler(service.lastReadError);
+    // Sofort nach dem await lesen: Die Felder gehören dem Service und werden vom
+    // nächsten Lesen überschrieben.
+    const status = service.lastUseCasesReadStatus;
+    const fehler = service.lastReadError;
+    if (nr !== reloadNr.current) return;
+    setLetzterStatus(status);
+    setLetzterFehler(fehler);
     if (rows === null) {
       // NICHT auf [] setzen. Ein Lesefehler ist keine Aussage ueber die Daten.
-      setLadeStatus('fehler');
+      // Gibt es schon einen Stand, bleibt er stehen — die Kachelwand durch eine
+      // Fehlermeldung zu ersetzen, obwohl das Speichern gerade geklappt hat (429
+      // beim Nachladen), sperrte auch „Neuer Use Case" für nichts.
       console.warn('[AIUC] Use Cases nicht lesbar — bestehender Stand bleibt.');
+      if (hatteDaten.current) setAktualisierungFehler(fehler || `HTTP ${status}`);
+      else setLadeStatus('fehler');
       return;
     }
+    hatteDaten.current = true;
+    setAktualisierungFehler('');
     setUseCases(rows);
     setLadeStatus('ok');
   }, [service]);
 
-  React.useEffect(() => {
-    let abgebrochen = false;
-    (async (): Promise<void> => {
-      // Die Listen sicherstellen, bevor gelesen wird. Beim ersten Start der
-      // App existiert noch nichts; ohne diesen Schritt sieht die erste Person
-      // einen Fehler statt einer leeren Plattform. Angelegt wird nur bei einem
-      // eindeutigen 404 — bei 403 & Co. schreibt das nichts (Review-Fund 11).
-      try {
-        await service.ensureUseCaseList();
-        await service.ensureLogList();
-      } catch (e) {
-        console.warn('[AIUC] Listen konnten nicht sichergestellt werden:', e);
-      }
-      if (!abgebrochen) await reload();
-    })().catch(() => setLadeStatus('fehler'));
-    return () => { abgebrochen = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /*
-   * Erstbefuellung mit den fuenf Use Cases aus dem Konzept-Deck.
+  /**
+   * Die Start-Use-Cases anlegen — der EINE Weg (siehe `UseCaseContextType`).
    *
-   * v1.1 (Fehlerbehebung): Die Bedingung war `isNewlyCreated` — „die
-   * Liste ist gerade erst entstanden". Das trug genau EINEN Start lang.
-   * Bei der ersten Installation legte v1.0.0 die Liste an, konnte wegen
-   * der fehlenden Spalten aber nichts hineinschreiben; beim naechsten
-   * Start war die Liste dann nicht mehr neu, und die Befuellung lief nie
-   * wieder. Die Plattform blieb leer, und es gab keinen Weg, das von
-   * Hand nachzuholen — die Kacheln waren weg und der Knopf dafuer auch.
-   *
-   * Bedingung ist jetzt der Zustand statt des Zeitpunkts: leer **und**
-   * noch nie befuellt. Der Merker steht im Protokoll; ohne ihn kaeme der
-   * Bestand zurueck, sobald jemand alle Eintraege absichtlich geloescht
-   * hat. Und weil die Richtung wichtig ist: Ist eine der beiden Listen
-   * nicht lesbar, wird NICHT befuellt — ein Lesefehler ist keine leere
-   * Plattform, und fuenf Kacheln neben einen unsichtbaren Bestand zu
-   * legen waere der teurere Fehler.
-   *
-   * v1.3 (Review-Fund 13): Die automatische Befüllung läuft NUR für Organizer
-   * und Admins und erst, NACHDEM die Rollen geladen sind — in einem eigenen
-   * Effekt, einmalig (Ref). Bis dahin lief sie beim ersten Start JEDER Person,
-   * ohne Rollenprüfung: Zwei Leute, die die leere Plattform gleichzeitig
-   * öffneten, befüllten beide (doppelte Kacheln), und ein User, der zufällig
-   * Schreibrecht auf der Liste hat, legte Inhalte an, die die Rollenverwaltung
-   * ihm nicht erlaubt. Das Protokoll (`log`) bleibt dabei best-effort.
+   * Nacheinander, nicht parallel: 18 gleichzeitige POSTs gegen dieselbe Liste sind
+   * genau das Muster, das SharePoint drosselt. Der Merker „schon befüllt" kommt nach
+   * dem ersten angelegten Eintrag ins Protokoll; ohne ihn käme der Bestand zurück,
+   * sobald jemand alle Einträge absichtlich löscht.
    */
-  const befuellungVersucht = React.useRef(false);
-  React.useEffect(() => {
-    if (isRolesLoading || !isOrganizer || befuellungVersucht.current) return;
-    befuellungVersucht.current = true;
-    // Kein Abbruch beim Aufräumen: Der Effekt läuft einmalig, und eine halb
-    // angelegte Startliste wäre schlimmer als eine fertige.
-    (async (): Promise<void> => {
-      if (!(await service.darfErstbefuellen())) return;
-      // Nacheinander, nicht parallel — fuenf gleichzeitige POSTs gegen
-      // dieselbe Liste sind genau das Muster, das SharePoint drosselt.
+  const seedLaeuft = React.useRef(false);
+  const seedStartUseCases = React.useCallback(async (): Promise<StartbestandErgebnis> => {
+    const ohne = (fehler: string): StartbestandErgebnis => ({ angelegt: 0, fehlend: 0, fehler, merker: true });
+    // Wie `create`/`update`/`remove`: ohne Organizer-Rolle wird nichts geschrieben.
+    if (!isOrganizer) return ohne('rechte');
+    if (seedLaeuft.current) return ohne('laeuft');
+    seedLaeuft.current = true;
+    try {
+      const aktuell = await service.getUseCases();
+      if (aktuell === null) return ohne(service.lastReadError || 'lesefehler');
+      const norm = (t: string | undefined): string => (t || '').toLowerCase().replace(/\s+/g, ' ').trim();
+      const vorhanden: { [titel: string]: boolean } = {};
+      aktuell.forEach(u => { vorhanden[norm(u.titel)] = true; });
+      const offen = START_USE_CASES.filter(u => !vorhanden[norm(u.titel)]);
       let angelegt = 0;
-      for (const uc of START_USE_CASES) {
+      let fehler = '';
+      for (const uc of offen) {
         // eslint-disable-next-line no-await-in-loop
         if (await service.createUseCase(uc)) angelegt++;
+        else fehler = service.lastReadError || 'Der Eintrag wurde von SharePoint abgelehnt.';
       }
-      if (angelegt > 0) {
-        await service.merkeErstbefuellung(angelegt);
-        await reload();
-      } else {
-        console.warn('[AIUC] Erstbefüllung: kein Eintrag angelegt — Grund steht oben in der Konsole.');
+      const merker = angelegt > 0 ? await service.merkeErstbefuellung(angelegt) : true;
+      const erg: StartbestandErgebnis = { angelegt, fehlend: offen.length, fehler, merker };
+      setStartbestandTeilweise(angelegt < offen.length ? erg : null);
+      await reload();
+      return erg;
+    } finally {
+      seedLaeuft.current = false;
+    }
+  }, [service, reload, isOrganizer]);
+
+  /*
+   * Start: erst die Rollen, dann die Listen.
+   *
+   * v1.3 (Sichtprüfung/Review): Bis dahin lief bei JEDEM Start jeder Person zuerst
+   * `ensureUseCaseList` und `ensureLogList` — rund 24 nacheinander gestellte GETs
+   * (Spalten-Proben), bevor die erste Kachel gelesen wurde. Angelegt wird aber nur
+   * von Organizern und Admins; für alle anderen war das reine Wartezeit. Jetzt
+   * wartet der Start auf die Rollen (die braucht die Oberfläche ohnehin) und
+   * stellt die Listen nur für Organizer sicher.
+   *
+   * Erstbefüllung: Bedingung ist der ZUSTAND, nicht der Zeitpunkt — leer UND noch
+   * nie befüllt (v1.1: „Liste ist gerade erst entstanden" trug genau einen Start
+   * lang). Der Merker steht im Protokoll. Ist eine der beiden Listen nicht
+   * lesbar, wird NICHT befüllt — ein Lesefehler ist keine leere Plattform (DEX
+   * v30.37). Sie läuft NACH dem ersten Lesen im selben Ablauf, nicht in einem
+   * eigenen Effekt: Zwei Effekte rennen gegeneinander, und auf einer frischen
+   * Installation las die Erstbefüllung, bevor die Liste angelegt war.
+   */
+  const startRef = React.useRef(false);
+  React.useEffect(() => {
+    if (isRolesLoading || startRef.current) return;
+    startRef.current = true;
+    (async (): Promise<void> => {
+      if (isOrganizer) {
+        try {
+          await service.ensureUseCaseList();
+          await service.ensureLogList();
+        } catch (e) {
+          console.warn('[AIUC] Listen konnten nicht sichergestellt werden:', e);
+        }
       }
-    })().catch(e => console.warn('[AIUC] Erstbefüllung:', e));
-  }, [isRolesLoading, isOrganizer, service, reload]);
+      await reload();
+      if (isOrganizer && await service.darfErstbefuellen()) await seedStartUseCases();
+    })().catch(e => {
+      console.warn('[AIUC] Start:', e);
+      if (!hatteDaten.current) setLadeStatus('fehler');
+    });
+  }, [isRolesLoading, isOrganizer, service, reload, seedStartUseCases]);
 
   const create = React.useCallback(async (uc: Partial<UseCase>): Promise<number | null> => {
     if (!isOrganizer) return null;
@@ -216,10 +254,14 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
     }
 
     // 2. Die Zeile speichern — mit der neuen Adresse (oder leer beim Entfernen).
-    const daten: Partial<UseCase> = { ...uc };
+    //    Geschrieben wird nur, was sich gegenüber dem Stand geändert hat — der Entwurf
+    //    ist der Stand vom Öffnen des Dialogs, und ihn ganz zurückzuschreiben
+    //    überschriebe, was jemand inzwischen geändert hat (u. a. das Bild: `bildUrl`
+    //    stand dann wieder auf einer längst recycelten Datei).
+    const daten: Partial<UseCase> = nurGeaendertes(alt, uc);
     if (neuesBild) daten.bildUrl = neuesBild.url;
     else if (bild.art === 'entfernen') daten.bildUrl = '';
-    const ok = await service.updateUseCase(id, daten);
+    const ok = Object.keys(daten).length === 0 ? true : await service.updateUseCase(id, daten);
     if (!ok) {
       // Rückbau: das gerade hochgeladene Bild gehört jetzt niemandem.
       if (neuesBild) await service.entferneBilder(id, { nur: neuesBild.name });
@@ -242,34 +284,24 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
     // Protokoll VOR dem Loeschen — danach ist der Titel weg, und das
     // Protokoll waere die Nebenbuchhaltung, die nichts mehr belegt.
     // (Dieselbe Reihenfolge wie in DEX: pruefbare Nebenbuchhaltung zuerst,
-    // der unumkehrbare Schritt zuletzt.)
+    // der unumkehrbare Schritt zuletzt.) Das Löschen geht in den Papierkorb und ist
+    // damit umkehrbar — ein Protokollfehler blockiert es deshalb nicht, aber die
+    // Zeile wird danach nachgeholt statt still zu fehlen.
     const uc = useCases.filter(u => u.id === id)[0];
-    await service.log(id, 'geloescht', uc ? uc.titel : `Id ${id}`);
+    const titel = uc ? uc.titel : `Id ${id}`;
+    const vorher = await service.log(id, 'geloescht', titel);
     const ok = await service.deleteUseCase(id);
-    if (ok) await reload();
+    if (ok) {
+      if (!vorher) await service.log(id, 'geloescht', titel);
+      await reload();
     // Das Protokoll steht VOR dem Löschen und behauptet „gelöscht". Schlägt
     // das Löschen fehl, muss die Gegenbuchung dastehen — sonst sagt das
     // Protokoll etwas, das nicht stimmt.
-    else await service.log(id, 'loeschen-fehlgeschlagen', uc ? uc.titel : `Id ${id}`);
+    } else if (vorher) {
+      await service.log(id, 'loeschen-fehlgeschlagen', titel);
+    }
     return ok;
   }, [service, reload, useCases, isOrganizer]);
-
-  const seedStartUseCases = React.useCallback(async (): Promise<number> => {
-    // Wie `create`/`update`/`remove`: ohne Organizer-Rolle wird nichts geschrieben
-    // (die Oberfläche zeigt den Knopf ohnehin nur Organizern).
-    if (!isOrganizer) return 0;
-    let angelegt = 0;
-    for (const uc of START_USE_CASES) {
-      // eslint-disable-next-line no-await-in-loop
-      if (await service.createUseCase(uc)) angelegt++;
-    }
-    setLetzterFehler(service.lastReadError);
-    if (angelegt > 0) {
-      await service.merkeErstbefuellung(angelegt);
-      await reload();
-    }
-    return angelegt;
-  }, [service, reload, isOrganizer]);
 
   const bereiche = React.useMemo(() => {
     const set: Record<string, true> = {};
@@ -279,8 +311,9 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
 
   const value = React.useMemo<UseCaseContextType>(() => ({
     useCases, ladeStatus, letzterStatus, letzterFehler, fehlendeSpalten: service.fehlendeSpalten,
+    aktualisierungFehler, startbestandTeilweise,
     reload, create, update, remove, saveUseCase, bereiche, seedStartUseCases,
-  }), [useCases, ladeStatus, letzterStatus, letzterFehler, reload, create, update, remove, saveUseCase, bereiche, seedStartUseCases, service]);
+  }), [useCases, ladeStatus, letzterStatus, letzterFehler, aktualisierungFehler, startbestandTeilweise, reload, create, update, remove, saveUseCase, bereiche, seedStartUseCases, service]);
 
   return React.createElement(UseCaseContext.Provider, { value }, props.children);
 }

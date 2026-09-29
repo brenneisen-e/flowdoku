@@ -95,8 +95,11 @@ export default function ContactModal(props: { open: boolean; art: KontaktArt; on
       title={titel}
       subtitle={untertitel}
       footer={<>
-        <button type="button" className="btn btn-secondary" onClick={onClose}>{t('Abbrechen', 'Cancel')}</button>
-        <a className="btn btn-primary" href={link} onClick={onClose} style={{ textDecoration: 'none' }}>
+        <button type="button" className="btn btn-secondary" onClick={onClose}>{t('Schließen', 'Close')}</button>
+        {/* Kein `onClose` am Link: Öffnet sich kein Mailprogramm (Handy-Browser, kein Handler,
+            abgebrochene Rückfrage), waren Text und Notausgang (sichtbare Adresse, Kopieren) genau
+            dann weg, wenn man sie brauchte. Der Dialog bleibt stehen, bis man ihn selbst schließt. */}
+        <a className="btn btn-primary" href={link} style={{ textDecoration: 'none' }}>
           <Mail size={16} /> {t('E-Mail schreiben', 'Write email')}
         </a>
       </>}

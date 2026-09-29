@@ -62,7 +62,7 @@ import { rolleAusSpeicher, rolleRang } from '../utils/rollen';
  *  - `herabstufung`      — „Person hinzufügen" würde herabstufen und tut es nie.
  *  - `nur-zeile`         — KEIN Fehler: Es war ein überzähliger Eintrag; nur die Zeile wurde geändert.
  */
-export type AktionsGrund = '' | 'lesefehler' | 'selbst' | 'entzug' | 'zeile' | 'zeile-nach-entzug' | 'nicht-gefunden' | 'herabstufung' | 'nur-zeile';
+export type AktionsGrund = '' | 'lesefehler' | 'selbst' | 'entzug' | 'zeile' | 'zeile-nach-entzug' | 'nicht-gefunden' | 'herabstufung' | 'nur-zeile' | 'keine-berechtigung';
 
 /**
  * Wie die Erstinstallation ausging (leere Rollenliste, erste Person wird Admin).
@@ -195,6 +195,11 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const [rolesReadStatus, setRolesReadStatus] = React.useState<'loading' | 'ok' | 'forbidden' | 'error'>('loading');
   const [previewAsUser, setPreviewAsUser] = React.useState(false);
   const [erstinstallation, setErstinstallation] = React.useState<ErstinstallationsStatus>('keine');
+  // Die ECHTE Rolle für die Schreibaktionen unten (nicht die der Vorschau „als User ansehen"):
+  // Sie stehen in `useCallback`s mit fester Abhängigkeitsliste und lesen den Wert deshalb aus
+  // einem Ref. SharePoint hält ohnehin dagegen (Organizer haben nur Lesen auf der Rollenliste),
+  // aber ohne diese Sperre stünde die Rollenverwaltung ohne Netz da, sobald die Liste erbt.
+  const echterAdminRef = React.useRef(false);
   const [erstinstallationFehlt, setErstinstallationFehlt] = React.useState<RechteCode[]>([]);
   // Adressen (klein), die zum ANGEMELDETEN Konto auflösen, obwohl `isCurrentUser`
   // sie nicht erkennt (Alias in der Rollenliste). Im Ref für die Aktionen (stabile
@@ -351,6 +356,10 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
       // Bestehenden Stand STEHEN LASSEN. Ein Netzwerkfehler mitten in der
       // Nutzung darf niemanden herabstufen.
       console.warn('[AIUC] Rollen nicht lesbar — bestehender Stand bleibt.');
+      // Antwortet die Liste jetzt eindeutig mit 403, war der frühere „error" nur ein
+      // Fehlversuch — die Person darf die Liste nicht lesen und ist User; der Hinweis
+      // „Rolle konnte nicht gelesen werden" gilt dann nicht mehr.
+      if (service.lastRolesReadStatus === 403) setRolesReadStatus(prev => (prev === 'error' ? 'forbidden' : prev));
       return;
     }
     setRolesReadStatus('ok');
@@ -472,6 +481,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const addRole = React.useCallback(async (email: string, name: string, role: UserRole): Promise<boolean> => {
     rightsMissingRef.current = [];
     grundRef.current = '';
+    if (!echterAdminRef.current) { grundRef.current = 'keine-berechtigung'; return false; }
     // Frisch lesen statt dem zwischengespeicherten State zu glauben: Zwei Admins
     // gleichzeitig hätten sonst zwei Zeilen für dieselbe Adresse angelegt.
     const rows = await frischeRollen();
@@ -511,6 +521,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const updateRole = React.useCallback(async (itemId: number, role: UserRole): Promise<boolean> => {
     rightsMissingRef.current = [];
     grundRef.current = '';
+    if (!echterAdminRef.current) { grundRef.current = 'keine-berechtigung'; return false; }
     const rows = await frischeRollen();
     if (rows === null) { grundRef.current = 'lesefehler'; return false; }
     const before = rows.filter(r => r.id === itemId)[0];
@@ -524,6 +535,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const removeRole = React.useCallback(async (itemId: number): Promise<boolean> => {
     rightsMissingRef.current = [];
     grundRef.current = '';
+    if (!echterAdminRef.current) { grundRef.current = 'keine-berechtigung'; return false; }
     const rows = await frischeRollen();
     if (rows === null) { grundRef.current = 'lesefehler'; return false; }
     const entry = rows.filter(r => r.id === itemId)[0];
@@ -654,6 +666,8 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const effectiveRole: UserRole = previewAsUser ? 'User' : currentUserRole;
   const isAdmin = effectiveRole === 'Admin';
   const isOrganizer = effectiveRole === 'Organizer' || isAdmin;
+
+  echterAdminRef.current = currentUserRole === 'Admin';
 
   const value = React.useMemo<RoleContextType>(() => ({
     roles, currentUserRole, isRolesLoading, rolesReadStatus,
