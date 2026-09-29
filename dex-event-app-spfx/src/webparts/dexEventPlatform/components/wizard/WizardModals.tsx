@@ -20,7 +20,7 @@ import { DESCRIPTION_TEMPLATES } from '../../data/descriptionTemplates';
 import { formatOrganizerList } from '../../context/EventContext';
 import { RegisterPreviewModal } from '../RegisterPreviewModal';
 import BulkUserImportModal from '../BulkUserImportModal';
-import { SummaryData, exportSummaryAsDoc, exportSummaryAsPdf } from '../../services/EventSummaryExport';
+import { SummaryData, exportSummaryAsPdf } from '../../services/EventSummaryExport';
 import Modal from '../Modal';
 import { OutlookConfirmItem, SubEventDraft, SuggestedEntry } from '../wizard/wizardTypes';
 import { Icon } from '@fluentui/react/lib/Icon';
@@ -1330,12 +1330,6 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
           }
           closeAndDispatch();
         };
-        const onDoc = (): void => {
-          try { exportSummaryAsDoc(buildData()); } catch (err) {
-            console.warn('[DEX] exportSummaryAsDoc failed:', err);
-          }
-          closeAndDispatch();
-        };
         // v32.0.6: Der Dialog sagt zuerst, WAS passiert ist (Nutzer-Ansage
         // 28.09.2026) — angelegt, Outlook, Mail an die Organizer — dann den
         // nächsten Schritt mit dem Weg ins Organizer Center; die Zusammen-
@@ -1370,9 +1364,7 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                   title={isDe ? 'A4-Seite mit allen Angaben — der Druckdialog öffnet sich, dort „Als PDF speichern" wählen.' : 'A4 page with all details — the print dialog opens, choose “Save as PDF”.'}>
                   <Download size={14} /> {isDe ? 'Zusammenfassung als PDF' : 'Summary as PDF'}
                 </button>
-                <button type="button" className="dex-ui-textbtn" onClick={onDoc} style={{ marginLeft: 8 }}>
-                  {isDe ? 'als Word' : 'as Word'}
-                </button>
+                {/* v32.25: „als Word" entfernt (Nutzer-Ansage 29.09.2026) — das PDF reicht. */}
               </div>
               <button type="button" className="btn btn-primary" onClick={closeAndDispatch}>
                 {isDe ? 'Zum Organizer Center' : 'Go to Organizer Center'}

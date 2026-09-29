@@ -279,7 +279,10 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
                   Die Metazeile bricht auf dem Handy um, statt zwei gleich
                   breite Blöcke zu erzwingen. Symbole aus Icons.tsx statt
                   Fluent: die Icon-Schrift fehlt in der Harness-Vorschau. */}
-              <div className="dex-ui-meta">
+              {/* v32.25: Zeit und Ort UNTEREINANDER mit kurzem Trennstrich
+                  (Nutzer-Ansage 29.09.2026) — nebeneinander stand die
+                  mehrzeilige Adresse neben einer einzeiligen Zeit. */}
+              <div className="dex-ui-meta" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
                 <span className="dex-ui-meta-item">
                   <Calendar size={15} strokeWidth={1.8} />
                   <span>
@@ -291,6 +294,9 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
                       : formatDateRange(event.startDate, event.endDate)}
                   </span>
                 </span>
+                {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (
+                  <span aria-hidden="true" style={{ display: 'block', width: 40, height: 1, background: 'var(--dex-gray-300, #d4d4d4)', marginLeft: 23 }} />
+                )}
                 {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (() => {
                   const addr = event.locationAddress;
                   const hasAddr = !!(addr && (addr.street || addr.city));
