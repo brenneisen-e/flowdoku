@@ -276,7 +276,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                         {isDe ? 'Vom Hauptevent kopieren' : 'Copy from main event'}
                       </button>
                     </div>
-                    <div className="dex-ui-section">
+                    <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                       <div className="dex-ui-section-title">{isDe ? 'Wo findet dieser Termin statt?' : 'Where does this date take place?'}</div>
                       <div className="dex-ui-field">
                         <label className="dex-ui-label">
@@ -338,7 +338,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                         </div>
                       )}
                     </div>
-                    <div className="dex-ui-section">
+                    <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                       <div className="dex-ui-section-title">{isDe ? 'Wie kommen die Teilnehmer hin?' : 'How do attendees get there?'}</div>
                       <Aufklapper label={isDe ? 'Organisierte Anreisen (Bus, Shuttle, Bahn) · optional' : 'Organised travel (bus, shuttle, train) · optional'} anzahl={seTransfers.length} startOffen={seTransfers.length > 0}>
                       <TransfersSection
@@ -352,7 +352,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                       />
                       </Aufklapper>
                     </div>
-                    <div className="dex-ui-section">
+                    <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                       <div className="dex-ui-section-title">{isDe ? 'Was passiert wann?' : 'What happens when?'}</div>
                       <Aufklapper label={isDe ? 'Programm / Ablauf · optional' : 'Programme / schedule · optional'} anzahl={seAgenda.length} startOffen={agendaCheckIn || seAgenda.length > 0}>
                       <label className="dex-ui-label" style={{ fontSize: '0.95rem' }}>
@@ -383,7 +383,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
                   Events"-Card usw.). Sie bleiben immer relevant, auch wenn
                   das Hauptevent nicht anmeldbar ist. */}
               <div>
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
               <div className="dex-ui-section-title">{isDe ? 'Wo findet das Event statt?' : 'Where does the event take place?'}</div>
               <div className="dex-ui-field">
                 <label className="dex-ui-label">
@@ -601,7 +601,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
               {/* ===== Transferzeiten ===== v31.2: vor dem Programm — die
                   Geschichte des Schritts ist „Wo? → Wie kommt man hin? → Was
                   passiert wann?". Badge 16, das Programm 17 — Nummern in Renderreihenfolge (07.09.2026). */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 <div className="dex-ui-section-title">{isDe ? 'Wie kommen die Teilnehmer hin?' : 'How do attendees get there?'}</div>
                 {/* v32.38: eingeklappt, solange leer (Nutzer-Ansage 29.09.2026). */}
                 <Aufklapper label={isDe ? 'Organisierte Anreisen (Bus, Shuttle, Bahn) · optional' : 'Organised travel (bus, shuttle, train) · optional'} anzahl={transferTimes.length} startOffen={transferTimes.length > 0}>
@@ -619,7 +619,7 @@ export const LocationProgramStep: React.FC<LocationProgramStepProps> = (p) => {
               </div>
 
               {/* ===== Agenda Editor ===== */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 <div className="dex-ui-section-title">{isDe ? 'Was passiert wann?' : 'What happens when?'}</div>
                 {/* v32.38: eingeklappt, solange leer — im Programmpunkte-Modus
                     immer offen, dort ist die Liste die Check-in-Liste. */}

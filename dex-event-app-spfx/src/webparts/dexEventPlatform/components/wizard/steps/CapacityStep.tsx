@@ -329,7 +329,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                         Startwert), nur gegen Klick auf die aktive Kachel geschützt. */}
                     {/* v31.2 (Review): Abschnitts-Überschrift wie auf der Klammer,
                         damit Plätze, Fristen und Sichtbarkeit gleichrangig lesen. */}
-                    <div className="dex-ui-section">
+                    <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                       <div className="dex-ui-section-title">
                         <Users size={14} />
                         {isDe ? 'Plätze — wie viele dürfen kommen?' : 'Seats — how many may come?'}
@@ -419,7 +419,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
 
                     {/* Deadlines: zwei DatePicker nebeneinander, gleicher Look
                         wie im Hauptevent. */}
-                    <div className="dex-ui-section">
+                    <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                       <div className="dex-ui-section-title">
                         <Icon iconName="Clock" style={{ fontSize: 14 }} />
                         {isDe ? 'Fristen — bis wann?' : 'Deadlines — until when?'}
@@ -572,7 +572,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                     </div>{/* v31.2: Ende Abschnitt Fristen */}
 
                     {/* v15.6: Sichtbarkeits-Sektion analog Hauptevent. */}
-                    <div className="dex-ui-section" style={{ marginTop: 22 }}>
+                    <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'} style={{ marginTop: 22 }}>
                       <div className="dex-ui-section-title">
                         <Icon iconName="Hide3" style={{ fontSize: 14 }} />
                         {isDe ? 'Sichtbarkeit — wer sieht diesen Termin?' : 'Visibility — who sees this date?'}
@@ -715,7 +715,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                   Überschrift wie die Sichtbarkeit — drei gleichrangige Fragen,
                   drei gleich aussehende Abschnitte. Der visHeader mit Badge
                   bleibt in der Karte, weil Support auf die Nummer verweist. */}
-              <div className="dex-ui-section">
+              <div className={subEventsOnlyMode ? 'dex-ui-section dex-ui-section--optional' : 'dex-ui-section dex-ui-section--pflicht'} data-art={subEventsOnlyMode ? 'Optional' : (isDe ? 'Pflicht' : 'Required')}>
                 <div className="dex-ui-section-title">
                   <Users size={14} />
                   {isDe ? 'Plätze — wie viele dürfen kommen?' : 'Seats — how many may come?'}
@@ -1322,7 +1322,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                   none) — im Klammer-Modus liess sich der Abschnitt deshalb nicht
                   einmal aufklappen, obwohl die Klammer seit v28.20 eine EIGENE,
                   wirksame Anmeldefrist haben kann. */}
-              <div className="dex-ui-section">
+              <div className={subEventsOnlyMode ? 'dex-ui-section dex-ui-section--optional' : 'dex-ui-section dex-ui-section--pflicht'} data-art={subEventsOnlyMode ? 'Optional' : (isDe ? 'Pflicht' : 'Required')}>
                 <div className="dex-ui-section-title">
                   <Icon iconName="Clock" style={{ fontSize: 14 }} />
                   {isDe ? 'Fristen — bis wann?' : 'Deadlines — until when?'}
@@ -1948,7 +1948,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
               {/* v9.24: Sichtbarkeits-Steuerungen aus Step 0 hierher verschoben.
                   Die Frage 'wer darf das Event sehen' passt logisch zu Kapazität/Fristen
                   als 'Wer-Wann-Wieviel' und entlastet Step 0 (Grundlagen). */}
-              <div className="dex-ui-section" style={{ marginTop: 22 }}>
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'} style={{ marginTop: 22 }}>
                 <div className="dex-ui-section-title">
                   <Icon iconName="Hide3" style={{ fontSize: 14 }} />
                   {isDe ? 'Sichtbarkeit — wer sieht das Event?' : 'Visibility — who sees the event?'}

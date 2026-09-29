@@ -185,7 +185,7 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                   „Was ist ein Sub-Event?" steckt in einem Aufklapper, der
                   standardmäßig zu ist — sie stand bisher als Kasten immer
                   offen und schob die eigentlichen Einstellungen nach unten. */}
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 {/* v30.4: Checkbox statt Toggle-Slider — der Schalter war das
                     einzige Slider-Element der Seite; alle anderen Optionen
                     sind Checkboxen, und zwei Bedienformen für dieselbe Art
@@ -306,7 +306,7 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
                   ? 'Soll sich jeder einmal fürs ganze Event anmelden — und du erfasst je Programmpunkt nur, wer da war?'
                   : 'Should everyone register once for the whole event — while you only record who attended each agenda item?'}
               </p>
-              <div className="dex-ui-section">
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 <label className={cx('dex-ui-toggle-row', agendaCheckIn && 'is-active')}>
                   <input
                     type="checkbox"
