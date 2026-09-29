@@ -29,7 +29,7 @@ import { DateOptionsPicker } from '../DateOptionsPicker';
 export interface FieldsStepProps {
   visible: boolean;
   activeFieldsTabIdx: number;
-  addCustomField: () => void;
+  addCustomField: (at?: number) => void;
   addStartblock: () => void;
   addSubEventCustomField: (subEventId: string) => void;
   askSalutation: boolean;
@@ -175,6 +175,36 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
       {calOn(f) ? <Check size={12} /> : <Calendar size={12} strokeWidth={2} />}
       {isDe ? 'Als Kalender' : 'As calendar'}
     </label>
+  );
+  // v32.13: Beispiel-Frage passend zur Feldart — vorher stand bei jeder Art
+  // „Welche T-Shirt-Größe?", auch bei Freitext und Datum (Screenshot 29.09.2026).
+  const fragePlatzhalter = (typ: CustomFieldInput['type']): string => {
+    const bsp: Record<string, [string, string]> = {
+      text: ['Gibt es Allergien, die wir kennen sollten?', 'Any allergies we should know about?'],
+      select: ['Welche T-Shirt-Größe brauchst du?', 'Which T-shirt size do you need?'],
+      number: ['Wie viele Personen bringst du mit?', 'How many people are you bringing?'],
+      checkbox: ['Bringst du eine Begleitung mit?', 'Are you bringing a guest?'],
+      date: ['Wann reist du an?', 'When do you arrive?'],
+      daterange: ['Von wann bis wann brauchst du ein Hotel?', 'From when to when do you need a hotel?'],
+      user: ['Wer soll über deine Anmeldung informiert werden?', 'Who should be notified about your registration?'],
+      roommate: ['Mit wem möchtest du dir ein Zimmer teilen?', 'Who would you like to share a room with?'],
+      document: ['Lade bitte deine Bahnbuchung hoch.', 'Please upload your train booking.'],
+    };
+    const e = bsp[typ] || bsp.text;
+    return isDe ? `Frage eingeben – z. B. „${e[0]}"` : `Enter the question – e.g. “${e[1]}”`;
+  };
+  // v32.14: „+" zwischen und unter den Fragen (Nutzer-Ansage 29.09.2026) —
+  // bisher hing jede neue Frage am Ende, und eine Folgefrage direkt unter
+  // ihre Bedingung zu setzen hieß: anlegen, dann nach oben schieben.
+  const einfuegeZeile = (at: number, unten: boolean): React.ReactNode => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: unten ? '0 0 4px' : '-6px 0 6px' }}>
+      <span style={{ flex: 1, height: 1, background: 'var(--dex-gray-200)' }} />
+      <button type="button" className="dex-ui-textbtn" onClick={() => addCustomField(at)} style={{ fontSize: '0.78rem' }}
+        title={unten ? (isDe ? 'Neue Frage am Ende anlegen' : 'Add a question at the end') : (isDe ? 'Neue Frage an dieser Stelle einfügen' : 'Insert a question here')}>
+        <Plus size={12} /> {unten ? (isDe ? 'Weitere Frage' : 'Another question') : (isDe ? 'Frage hier einfügen' : 'Insert question here')}
+      </button>
+      <span style={{ flex: 1, height: 1, background: 'var(--dex-gray-200)' }} />
+    </div>
   );
   const ROW_GRID: React.CSSProperties = {
     display: 'grid', gridTemplateColumns: '24px 26px 200px minmax(160px, 1fr) 244px 90px 32px',
@@ -735,7 +765,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   {/* v31.2: Der Schritt heißt „Fragen im Anmeldeformular" — die Knöpfe
                       sprechen dieselbe Sprache („Frage", nicht „Feld"). Lokal über isDe,
                       der i18n-Schlüssel create.addfield bleibt unangetastet. */}
-                  <button className="btn btn-primary dex-ui-btn-sm" data-tour="wizard-add-question" onClick={addCustomField}>
+                  <button className="btn btn-primary dex-ui-btn-sm" data-tour="wizard-add-question" onClick={() => addCustomField()}>
                     <Plus size={14} /> {isDe ? 'Frage hinzufügen' : 'Add question'}
                   </button>
                   <button
@@ -868,13 +898,27 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                 {/* v32.3: Die Profil-Daten als EIN grauer Block mit schmalen
                     Zeilen statt fünf einzelner Karten — sie sind eine Sache
                     (kommt aus dem Profil), keine fünf Fragen. */}
-                <div className="dex-ui-card" style={{ padding: '4px 16px', marginBottom: 12, background: 'var(--dex-gray-50, #fafafa)' }}
+                <div className="dex-ui-card" style={{ padding: '4px 16px', marginBottom: 12, background: 'var(--dex-gray-50, #fafafa)', position: 'relative' }}
                   title={isDe ? 'Wird automatisch aus dem Microsoft-Profil übernommen — nicht änderbar, verschiebbar oder löschbar.' : 'Taken automatically from the Microsoft profile — cannot be changed, moved or deleted.'}>
+                  {/* v32.13: EIN Kasten „Aus dem Profil" über alle Profil-Zeilen in
+                      der Feldart-Spalte (Nutzer-Ansage 29.09.2026) — statt des
+                      Hinweises nur in Zeile 1. Lage aus ROW_GRID: Kartenrand
+                      16 + Griff 24 + Abstand 10 + Nummer 26 + Abstand 10. */}
+                  <div aria-hidden="true" style={{
+                    position: 'absolute', left: 86, width: 200, top: 8, bottom: 8,
+                    background: 'var(--dex-gray-100, #f0f0f0)', border: '2px solid #fff', borderRadius: 10,
+                    boxShadow: '0 0 0 1px var(--dex-gray-200, #e5e5e5)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                    color: 'var(--dex-gray-600)', textAlign: 'center', pointerEvents: 'none',
+                  }}>
+                    <span style={{ fontSize: '0.84rem', fontWeight: 600 }}>{isDe ? 'Aus dem Profil' : 'From profile'}</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'nicht änderbar' : 'not editable'}</span>
+                  </div>
                   {AUTO_ROWS.map((r, i) => (
                     <div key={r.key} style={{ ...ROW_GRID, padding: '7px 0', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-200, #e5e5e5)' }}>
                       <span />
                       <span style={autoBadge}>{i + 1}</span>
-                      <span className="dex-ui-muted" style={{ fontSize: '0.78rem' }}>{i === 0 ? (isDe ? 'Aus dem Profil' : 'From profile') : ''}</span>
+                      <span />
                       <span style={{ minWidth: 0, fontSize: '0.88rem', color: 'var(--dex-gray-600)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <strong style={{ fontWeight: 600 }}>{r.label}</strong>
                         <span className="dex-ui-muted" style={{ marginLeft: 8, fontSize: '0.8rem' }}>{isDe ? 'z. B. ' : 'e.g. '}{r.example}</span>
@@ -889,6 +933,8 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   const isExpanded = !!fieldExpandOverride[field.id];
                   const isPeople = field.type === 'user' || field.type === 'roommate';
                   return (
+                  <React.Fragment key={field.id}>
+                  {idx > 0 && einfuegeZeile(idx, false)}
                   <div
                     key={field.id}
                     className="dex-ui-card"
@@ -995,7 +1041,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         data-tour={idx === customFields.length - 1 ? 'wizard-question-label' : undefined}
                         value={field.label}
                         rows={1}
-                        placeholder={isDe ? 'Frage eingeben – z. B. „Welche T-Shirt-Größe?"' : 'Enter the question – e.g. “Which T-shirt size?”'}
+                        placeholder={fragePlatzhalter(field.type)}
                         onChange={e => updateCustomField(field.id, { label: e.target.value })}
                         onClick={e => e.stopPropagation()}
                         ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; } }}
@@ -1141,6 +1187,24 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         die Optionen unter der Beschreibung. */}
                     {isExpanded && (
                     <div className="dex-ui-stack" style={{ marginLeft: 36, marginTop: 12 }}>
+                    {/* v32.15: Englische Frage direkt unter der Frage und beschriftet —
+                        vorher stand sie unter der Beschreibung, ohne Titel, und
+                        las sich wie ein Teil davon (Nutzer-Ansage 29.09.2026). */}
+                    {bilingualFields && (
+                      <div className="dex-ui-field">
+                        <label className="dex-ui-label">{isDe ? 'Frage auf Englisch' : 'Question in English'}<span className="dex-ui-label-optional">{isDe ? '(leer = deutscher Text)' : '(empty = German text)'}</span></label>
+                        <div className="dex-ui-inline" style={{ flexWrap: 'nowrap' }}>
+                          {enBadge}
+                          <input
+                            className="dex-ui-input dex-ui-input--sm"
+                            value={field.labelEn || ''}
+                            placeholder={isDe ? 'z. B. „Have you used DEX before?"' : 'e.g. “Have you used DEX before?”'}
+                            onChange={e => updateCustomField(field.id, { labelEn: e.target.value })}
+                            style={{ flex: 1, width: 'auto' }}
+                          />
+                        </div>
+                      </div>
+                    )}
                     {/* v7.20: Beschreibung pro Feld. v18.18: Darstellung
                         wählbar — „i"-Box neben dem Label ODER Erklär-Text
                         unter dem Label. */}
@@ -1167,6 +1231,23 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         onChange={text => updateCustomField(field.id, { helpText: text })}
                         isDe={isDe}
                       />
+                      {/* v17.20: EN-Variante der Beschreibung. */}
+                      {bilingualFields && (
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8 }}>
+                          <span style={{ paddingTop: 6 }}>{enBadge}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {/* v32.16: gleicher Editor wie Deutsch — die englische
+                                Beschreibung läuft durch denselben Umwandler
+                                (pickFieldHelp → renderFieldDescHtml). */}
+                            <FieldDescEditor
+                              value={field.helpTextEn || ''}
+                              onChange={text => updateCustomField(field.id, { helpTextEn: text })}
+                              isDe={isDe}
+                              placeholder={isDe ? 'Beschreibung auf Englisch (optional)' : 'Description in English (optional)'}
+                            />
+                          </div>
+                        </div>
+                      )}
                       {field.helpText && field.helpText.trim() && (
                         <div className="dex-ui-inline" style={{ marginTop: 8 }}>
                           <span className="dex-ui-muted" style={{ fontWeight: 600 }}>{isDe ? 'Wo erscheint er?' : 'Where does it show?'}</span>
@@ -1192,40 +1273,9 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                           </label>
                         </div>
                       )}
-                      {/* v17.20: EN-Variante der Beschreibung. */}
-                      {bilingualFields && (
-                        <div className="dex-ui-inline" style={{ flexWrap: 'nowrap', marginTop: 6 }}>
-                          {enBadge}
-                          <input
-                            className="dex-ui-input dex-ui-input--sm"
-                            value={field.helpTextEn || ''}
-                            placeholder={isDe
-                              ? 'Englische Beschreibung (optional)'
-                              : 'English description (optional)'}
-                            onChange={e => updateCustomField(field.id, { helpTextEn: e.target.value })}
-                            style={{ flex: 1, width: 'auto' }}
-                          />
-                        </div>
-                      )}
                       </div>
                       )}
                     </div>
-                    {/* v17.20: EN-Feld-Name — sichtbar wenn der Bilingual-
-                        Toggle aktiviert wurde. */}
-                    {bilingualFields && (
-                      <div className="dex-ui-inline" style={{ flexWrap: 'nowrap' }}>
-                        {enBadge}
-                        <input
-                          className="dex-ui-input dex-ui-input--sm"
-                          value={field.labelEn || ''}
-                          placeholder={isDe
-                            ? 'Englischer Fragetext (optional — leer = fällt auf den deutschen Text zurück)'
-                            : 'English question text (optional — empty = falls back to the German text)'}
-                          onChange={e => updateCustomField(field.id, { labelEn: e.target.value })}
-                          style={{ flex: 1, width: 'auto' }}
-                        />
-                      </div>
-                    )}
                     {/* v11.94: Bei Checkbox-Feldern kann der Organizer den
                         Text neben der Checkbox individuell setzen — Default
                         ist „Ja, bestätigen" / „Yes, confirm". */}
@@ -1767,8 +1817,10 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     </div>
                     )}
                   </div>
+                  </React.Fragment>
                   );
                 })}
+                {customFields.length > 0 && einfuegeZeile(customFields.length, true)}
               </div>
 
               {/* v22.38/v31.2: Die generellen Formular-Optionen (Zweisprachigkeit,

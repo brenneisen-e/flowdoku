@@ -10,7 +10,8 @@ import WizardHint from '../../WizardHint';
 import { StepBadge } from '../../wizard/StepBadge';
 import { InfoTooltip } from '../../InfoTooltip';
 import DatePicker from 'react-datepicker';
-import { Check, Pencil, Plus, X } from '../../Icons';
+import { Check, ChevronDown, Pencil, Plus, X } from '../../Icons';
+import { DEX_ORB_PNG } from '../../../data/brandLogos';
 import { Icon } from '@fluentui/react/lib/Icon';
 // v31.2: gemeinsame UI-Klassen (Toggle-Zeilen, Kacheln, Aufklapper) — Hover
 // kommt aus dem Stylesheet, nicht aus Inline-Styles.
@@ -105,6 +106,10 @@ export interface BasicsStepProps {
   /** v32.1.0: Mitmach-Tutorial — Vorlagen, Demo-Vorlage und Entwurfs-Kachel
    *  ausblenden (sie würden Organizer und Teams fremder Events übernehmen). */
   tutorialMode?: boolean;
+  /** v32.18: Admin-Haken „Einführungsevent“. */
+  dexIntro: boolean;
+  setDexIntro: React.Dispatch<React.SetStateAction<boolean>>;
+  adminLike: boolean;
   shrinkLogoB64: (b64: string) => Promise<string>;
   startDate: string;
   subEvents: SubEventDraft[];
@@ -117,7 +122,7 @@ export interface BasicsStepProps {
 }
 export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
   const { visible } = p;
-  const { activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular, currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt, editEvent, emailLogoFromPhoto, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64, imageBanner, imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigFile, imagePreview, imageUploadError, isDe, isEditMode, isFictive, location, logoCropTarget, noDescription, outlookLogoFromPhoto, outlookLogoPreview, patchScopeSub, pendingDraft, previewBeforeActive, renderStepIntro, scAllDay, scDescription, scEnd, scImagePreview, scopeSub, scShowAsFree, scStart, scTitle, setActiveFrom, setDescription, setEmailLogoFromPhoto, setEmailLogoPreview, setEventImageUrl, setHtmlEditorMode, setHtmlEditorOpen, setImageBanner, setImageDisplay, setImageDisplayOpen, setImageEditOpen, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setImageUploadError, setIsFictive, setLogoCropTarget, setNoDescription, setOutlookLogoFromPhoto, setOutlookLogoPreview, setPendingDraft, setPreviewBeforeActive, setScAllDay, setScEnd, setScShowAsFree, setScStart, setScTitle, setShowDemoVariantModal, setShowTemplatePicker, setSubEvents, setSubImageCropIdx, showTemplatePicker, shrinkLogoB64, startDate, subEvents, subEventsOnlyMode, t, templateLoadingId, title, wizardImgAspect, tutorialMode } = p;
+  const { activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular, currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt, editEvent, emailLogoFromPhoto, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64, imageBanner, imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigFile, imagePreview, imageUploadError, isDe, isEditMode, isFictive, location, logoCropTarget, noDescription, outlookLogoFromPhoto, outlookLogoPreview, patchScopeSub, pendingDraft, previewBeforeActive, renderStepIntro, scAllDay, scDescription, scEnd, scImagePreview, scopeSub, scShowAsFree, scStart, scTitle, setActiveFrom, setDescription, setEmailLogoFromPhoto, setEmailLogoPreview, setEventImageUrl, setHtmlEditorMode, setHtmlEditorOpen, setImageBanner, setImageDisplay, setImageDisplayOpen, setImageEditOpen, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setImageUploadError, setIsFictive, setLogoCropTarget, setNoDescription, setOutlookLogoFromPhoto, setOutlookLogoPreview, setPendingDraft, setPreviewBeforeActive, setScAllDay, setScEnd, setScShowAsFree, setScStart, setScTitle, setShowDemoVariantModal, setShowTemplatePicker, setSubEvents, setSubImageCropIdx, showTemplatePicker, shrinkLogoB64, startDate, subEvents, subEventsOnlyMode, t, templateLoadingId, title, wizardImgAspect, tutorialMode, dexIntro, setDexIntro, adminLike } = p;
   // v31.2 (Leitfaden 2a′): Eine Kachel mit Hauptaktion ist selbst klickbar —
   // Enter/Leertaste lösen dieselbe Aktion aus wie der Klick. Nebenknöpfe in
   // der Kachel stoppen die Weitergabe (Klick UND Taste), damit „Verwerfen"
@@ -134,6 +139,8 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
   // eigenes Kopfbild liegt, das NICHT aus dem Foto stammt, ist der Haken
   // vorne aus — ein bewusst gesetztes Bild wird nicht ungefragt ersetzt.
   const [photoForEmail, setPhotoForEmail] = React.useState(true);
+  // v32.18: aufgeklappte Namens-Gruppe in der Vorlagen-Auswahl.
+  const [offeneVorlagenGruppe, setOffeneVorlagenGruppe] = React.useState<string | null>(null);
   const [photoForOutlook, setPhotoForOutlook] = React.useState(true);
   React.useEffect(() => {
     if (!imageEditOpen) return;
@@ -174,6 +181,16 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   >
                     {isDe ? 'Demo-Vorlage' : 'Demo template'}
                   </button>
+                )}
+                {/* v32.18: Einführungs-Event zu DEX (Nutzer-Ansage 29.09.2026:
+                    statt Erkennung am Titel ein Haken neben der Demo-Vorlage,
+                    nur für Admins). Wirkt auf Logo-Animation und Startseiten-Hinweis. */}
+                {adminLike && !tutorialMode && (
+                  <label className={cx('dex-ui-chip', dexIntro && 'is-active')} style={{ flexShrink: 0, marginBottom: 4, cursor: 'pointer' }}
+                    title={isDe ? 'Animiertes DEX-Logo auf Anmeldeseite und in Meine Events, Hinweis auf der Startseite' : 'Animated DEX logo on the registration page and in My Events, notice on the start page'}>
+                    <input type="checkbox" checked={dexIntro} onChange={e => setDexIntro(e.target.checked)} style={{ margin: 0, accentColor: 'var(--dex-green, #86BC25)' }} />
+                    {isDe ? 'Einführungsevent' : 'Intro event'}
+                  </label>
                 )}
               </h2>
               <p className="dex-step-head-lead">
@@ -272,33 +289,100 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                             {isDe ? 'Abbrechen' : 'Cancel'}
                           </button>
                         </div>
-                        <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6 }}>
-                          {tmpl.map(e => (
+                        {(() => {
+                          // v32.18: Nach Namen gruppiert, Gruppen aufklappbar
+                          // (Nutzer-Ansage 29.09.2026) — drei Mal „DEX: Einführung …“
+                          // nebeneinander ließ sich nur am Datum unterscheiden.
+                          // Der Schlüssel ist der Titel ohne Jahreszahlen,
+                          // Daten, Monate und Nummern.
+                          const gruppenSchluessel = (t: string): string => (t || '').toLowerCase()
+                            .replace(/\d{1,2}[./]\d{1,2}([./]\d{2,4})?/g, ' ')
+                            .replace(/\b(januar|februar|märz|maerz|april|mai|juni|juli|august|september|oktober|november|dezember|january|february|march|may|june|july|october|december|q[1-4]|h[12])\b/g, ' ')
+                            .replace(/[^a-z0-9äöüß]+/g, ' ')
+                            .replace(/\b\d+\b/g, ' ')
+                            .replace(/\s+/g, ' ').trim();
+                          const gruppen: Array<{ key: string; items: typeof tmpl }> = [];
+                          tmpl.forEach(e => {
+                            const k = gruppenSchluessel(e.title || '') || String(e.id);
+                            const g = gruppen.find(x => x.key === k);
+                            if (g) g.items.push(e); else gruppen.push({ key: k, items: [e] });
+                          });
+                          const datum = (iso?: string): string => iso ? new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+                          const bild = (e: typeof tmpl[number]): React.CSSProperties => (e.imageUrl
+                            ? { background: `url(${e.imageUrl}) center/cover no-repeat` }
+                            : { background: `#fff url(${e.mailImageBase64 || DEX_ORB_PNG}) center/contain no-repeat`, backgroundOrigin: 'content-box', padding: 10, boxSizing: 'border-box' });
+                          const karte = (e: typeof tmpl[number]): React.ReactElement => (
                             <button
                               key={e.id}
                               type="button"
                               className="dex-ui-card dex-ui-card--hover"
                               disabled={!!templateLoadingId}
                               onClick={() => { void applyEventTemplate(e); }}
+                              title={e.title}
                               style={{
                                 flex: '0 0 auto', width: 150, textAlign: 'left', cursor: templateLoadingId ? 'wait' : 'pointer',
                                 borderRadius: 12, padding: 0, overflow: 'hidden', fontFamily: 'inherit',
                               }}
                             >
-                              <div style={{ width: '100%', height: 90, background: e.imageUrl ? `url(${e.imageUrl}) center/cover no-repeat` : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))' }} />
+                              <div style={{ width: '100%', height: 90, ...bild(e) }} />
                               <div style={{ padding: '8px 10px' }}>
                                 <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--dex-gray-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {templateLoadingId === e.id ? (isDe ? 'Wird geladen…' : 'Loading…') : e.title}
                                 </div>
                                 {e.startDate && (
-                                  <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                                    {new Date(e.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                                  </div>
+                                  <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>{datum(e.startDate)}</div>
                                 )}
                               </div>
                             </button>
-                          ))}
-                        </div>
+                          );
+                          const offen = gruppen.find(g => g.key === offeneVorlagenGruppe && g.items.length > 1);
+                          return (
+                            <>
+                              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', paddingBottom: 6 }}>
+                                {gruppen.map(g => {
+                                  if (g.items.length === 1) return karte(g.items[0]);
+                                  const e = g.items[0];
+                                  const istOffen = offen === g;
+                                  return (
+                                    <button
+                                      key={`g-${g.key}`}
+                                      type="button"
+                                      className={cx('dex-ui-card dex-ui-card--hover', istOffen && 'is-active')}
+                                      aria-expanded={istOffen}
+                                      onClick={() => setOffeneVorlagenGruppe(istOffen ? null : g.key)}
+                                      title={isDe ? `${g.items.length} Events mit ähnlichem Namen — aufklappen` : `${g.items.length} events with a similar name — expand`}
+                                      style={{
+                                        flex: '0 0 auto', width: 150, textAlign: 'left', cursor: 'pointer',
+                                        borderRadius: 12, padding: 0, overflow: 'hidden', fontFamily: 'inherit', position: 'relative',
+                                        ...(istOffen ? { borderColor: 'var(--dex-green, #86BC25)', boxShadow: '0 0 0 3px rgba(134,188,37,0.15)' } : {}),
+                                      }}
+                                    >
+                                      <div style={{ width: '100%', height: 90, ...bild(e) }} />
+                                      <span className="dex-ui-pill dex-ui-pill--green" style={{ position: 'absolute', top: 6, right: 6 }}>{g.items.length}</span>
+                                      <div style={{ padding: '8px 10px' }}>
+                                        <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--dex-gray-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.title}</div>
+                                        <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                          {isDe ? `${g.items.length} Events` : `${g.items.length} events`}
+                                          <span style={{ display: 'inline-flex', transform: istOffen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}><ChevronDown size={12} /></span>
+                                        </div>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {offen && (
+                                <div className="dex-ui-fade-in" style={{ marginTop: 8, padding: 12, borderRadius: 12, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)' }}>
+                                  <div className="dex-ui-muted" style={{ fontSize: '0.78rem', marginBottom: 8 }}>
+                                    {isDe ? `Welches der ${offen.items.length} Events soll es sein?` : `Which of the ${offen.items.length} events?`}
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                                    {offen.items.map(karte)}
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>

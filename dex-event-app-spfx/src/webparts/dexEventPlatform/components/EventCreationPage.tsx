@@ -588,7 +588,7 @@ export default function EventCreationPage(): React.ReactElement {
   const {
     agendaCheckIn, agendaTermPlural, agendaTermSingular, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular,
     allDay, audience, autoDeregisterOnDecline, bundledComm, commShared, childGender, childTermPlural,
-    childTermSingular, customFields, customTermMode, description, disableCancellationEmail, disableEmails,
+    childTermSingular, customFields, customTermMode, description, descriptionEn, setDescriptionEn, dexIntro, setDexIntro, disableCancellationEmail, disableEmails,
     disableOutlook, disableRegistrationEmail, emailLanguage, emailLogoFromPhoto, endDate, eventImageUrl,
     excludedUsers, filterMode, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imageBanner,
     imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigAspect, imageOrigFile,
@@ -1513,7 +1513,7 @@ export default function EventCreationPage(): React.ReactElement {
       childEventsOf, childGender, childTermPlural, childTermSingular, computeFormSnapshot, confirmDialog,
       confirmDialogEnabled, confirmDialogMode, confirmDialogText, contactEmail, contactInfo, contactName,
       contactOrganizerEmail, coOrganizerEmails, coOrganizerNames, createdEventIdRef, createEvent, currentUser,
-      customFields, deadlineToEndOfDayIso, description, documents, DRAFT_KEY,
+      customFields, deadlineToEndOfDayIso, description, descriptionEn, dexIntro, documents, DRAFT_KEY,
       durchstarterCapacity, durchstarterRequiresProof, durchstarterStartblock, editEvent, effTeamsLink,
       endDate, eventImageUrl, eventType, excludedUsers, filterMode, funstarterCapacity,
       funstarterStartblock, getGroupMembers, getLastEventUpdateError, headerImageLayoutConfig, headerLayoutFor, hiddenOrganizerEmails,
@@ -1840,7 +1840,7 @@ export default function EventCreationPage(): React.ReactElement {
   const initialFormSnapshotRef = React.useRef<string>('');
   const computeFormSnapshot = React.useCallback((): string => {
     return JSON.stringify({
-      title, description, location,
+      title, description, descriptionEn, dexIntro, location,
       addrStreet, addrHouseNo, addrZip, addrCity,
       organizer, organizerEmails: organizerEmails.join(';'),
       startDate, endDate, registrationDeadline, lastDeregisterDate,
@@ -1875,7 +1875,7 @@ export default function EventCreationPage(): React.ReactElement {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    title, description, location, addrStreet, addrHouseNo, addrZip, addrCity,
+    title, description, descriptionEn, dexIntro, location, addrStreet, addrHouseNo, addrZip, addrCity,
     organizer, organizerEmails, startDate, endDate, registrationDeadline, lastDeregisterDate,
     maxParticipants, waitlistEnabled, audience, locationFilter, filterMode,
     contactName, contactEmail, contactInfo, eventImageUrl,
@@ -2034,7 +2034,7 @@ export default function EventCreationPage(): React.ReactElement {
   // entscheidet oder das eigene Tippen ihn überschreibt (draftSavedAt).
   const [pendingDraft, setPendingDraft] = React.useState<{ savedAt: number; data: Record<string, unknown>; id?: string } | null>(null);
   const buildDraftPayload = (): Record<string, unknown> => ({
-    title, description, location, addrStreet, addrHouseNo, addrZip, addrCity,
+    title, description, descriptionEn, location, addrStreet, addrHouseNo, addrZip, addrCity,
     organizer, organizerEmails, contactName, contactEmail, contactInfo,
     startDate, endDate, registrationDeadline, lastDeregisterDate, klammerDeadline, activeFrom,
     maxParticipants, waitlistEnabled, audience, locationFilter, filterMode, excludedUsers,
@@ -2064,7 +2064,7 @@ export default function EventCreationPage(): React.ReactElement {
       canBilling, setActiveFrom, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip,
       setAgenda, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular, setAskSalutation, setAskTeamName, setAudience, setBillingFields, setBillingRelevant,
       setBillingSendMode, setCancelRuleAfter, setCancelRuleAmount, setCancelRuleEnabled, setCancelRuleUnit, setContactEmail,
-      setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDisableEmails,
+      setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDescriptionEn, setDisableEmails,
       setDisableOutlook, setEmailTemplateOverrides, setEndDate, setExcludedUsers, setFilterMode, setKlammerDeadline,
       setLastDeregisterDate, setLocation, setLocationFilter, setMaxParticipants, setNoCancelAfterDeadline, setOnlineMeetingMode,
       setOpenRuleDays, setOpenRuleEnabled, setOpenRuleFixedDate, setOpenRuleMode, setOrganizer, setOrganizerEmails,
@@ -3257,6 +3257,7 @@ export default function EventCreationPage(): React.ReactElement {
   // oben waere ein TDZ-Fehler auf die spaeter deklarierten Handler.
   const basicsStepProps = {
     tutorialMode: coachMode,
+    dexIntro, setDexIntro, adminLike, // v32.18
     activeFrom, activeScopeIdx, applyDraftPayload, applyEventTemplate, childEventsOf, childTermSingular,
     currentUser, dayKeyOfDate, description, DRAFT_KEY, draftSavedAt,
     editEvent, emailLogoFromPhoto, emailLogoPreview, errorBorderStyle, events, fieldHasError, fileToBase64,
@@ -3368,6 +3369,7 @@ export default function EventCreationPage(): React.ReactElement {
   const wizardTermsModalProps = {
     canBilling, goBack, internalCheckbox, isDe, setBillingPromptOpen, setInternalCheckbox,
     setTcAccepted, setTcCheckbox, setTcExpanded, showTermsModal, tcCheckbox, tcExpanded,
+    onStartTutorial: (tutorial.canCoach && !coachMode) ? tutorial.startCoach : undefined,
   };
   const wizardModalsProps = {
     allowAttendeeUpload, askTeamName, attendeeUploadHint, attendeeUploadLabel, contactInfo, contactName,
@@ -3377,7 +3379,7 @@ export default function EventCreationPage(): React.ReactElement {
     addSelectedSuggestedFields, agenda, applySubTransfer, askSalutation, attemptSubmit, audience,
     berlinLocalToUtcIso, bilingualFields, buildDraftPayload, bulkOrganizerOpen, bulkQrScannerOpen,
     bulkTestTeamOpen, cancelOutlookSave, childTermPlural, childTermSingular, closeVisCopy, confirmOutlookSave,
-    contactEmail, customFields, DEMO_VARIANTS, description, disableEmails,
+    contactEmail, customFields, DEMO_VARIANTS, description, descriptionEn, setDescriptionEn, disableEmails,
     disableOutlook, documents, DRAFT_KEY, dragOverSectionId, dragSectionId,
     durchstarterCapacity, emailLanguage, emailLogoPreview, emailTemplateOverrides, emailTemplates, endDate,
     eventImageUrl, excludedUsers, filterMode, funstarterCapacity, headerImageLayout, htmlEditorMode,

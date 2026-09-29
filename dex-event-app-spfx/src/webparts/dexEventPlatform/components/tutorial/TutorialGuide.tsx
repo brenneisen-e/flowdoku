@@ -256,7 +256,11 @@ export function TutorialProvider(props: { children: React.ReactNode }): React.Re
           stationIdx={stationIdx}
           setStationIdx={setStationIdx}
           base={base}
-          onClose={stopCoach}
+          // v32.18: Beenden über X führt aus dem Assistenten heraus. Er war im
+          // Tutorial-Modus eingehängt; ohne Tutorial hängt DexEventPlatform
+          // einen FRISCHEN Assistenten ein (key-Wechsel), und der fragte die
+          // Nutzungsbedingungen erneut ab (Nutzer-Befund 29.09.2026).
+          onClose={() => { const imAssistent = currentPage === 'create-event'; stopCoach(); if (imAssistent) window.setTimeout(() => navigate('landing'), 0); }}
           onGoWizardStep={(n: number) => { try { window.dispatchEvent(new CustomEvent('dex-tutorial-wizard-step', { detail: n })); } catch { /* */ } }}
           onGoToWizard={() => navigate('create-event')}
           onDeleteTest={() => { void deleteTest(); }}

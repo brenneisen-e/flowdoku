@@ -38,6 +38,7 @@ export interface ApplyDraftPayloadCtx {
   setCurrentStep: React.Dispatch<React.SetStateAction<number>>;
   setCustomFields: React.Dispatch<React.SetStateAction<CustomFieldInput[]>>;
   setDescription: React.Dispatch<React.SetStateAction<string>>;
+  setDescriptionEn: React.Dispatch<React.SetStateAction<string>>;
   setDisableEmails: React.Dispatch<React.SetStateAction<boolean>>;
   setDisableOutlook: React.Dispatch<React.SetStateAction<boolean>>;
   setEmailTemplateOverrides: React.Dispatch<React.SetStateAction<Record<string, EmailOverrideEntry>>>;
@@ -86,7 +87,7 @@ export function applyDraftPayloadImpl(ctx: ApplyDraftPayloadCtx, d: Record<strin
     const str = (v: unknown): string => (typeof v === 'string' ? v : '');
     const bool = (v: unknown, dflt: boolean): boolean => (typeof v === 'boolean' ? v : dflt);
     const num = (v: unknown, dflt: number): number => (typeof v === 'number' && isFinite(v) ? v : dflt);
-    setTitle(str(d.title)); setDescription(str(d.description)); setLocation(str(d.location));
+    setTitle(str(d.title)); setDescription(str(d.description)); ctx.setDescriptionEn(str(d.descriptionEn)); setLocation(str(d.location));
     setAddrStreet(str(d.addrStreet)); setAddrHouseNo(str(d.addrHouseNo)); setAddrZip(str(d.addrZip)); setAddrCity(str(d.addrCity));
     setOrganizer(str(d.organizer));
     if (Array.isArray(d.organizerEmails)) setOrganizerEmails(d.organizerEmails as string[]);

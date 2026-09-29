@@ -111,6 +111,10 @@ export function renderFieldDescHtml(raw: string): string {
     (_m, pre, url) => `${pre}<a href="${url}" target="_blank" rel="noopener noreferrer" style="${linkStyle}">${url}</a>`);
   // **fett**
   html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // v32.16: *kursiv* und ++unterstrichen++ (Knöpfe im FieldDescEditor).
+  // Nach **fett**, damit dessen Sternchen schon verbraucht sind.
+  html = html.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+  html = html.replace(/\+\+([^+\n]+)\+\+/g, '<u>$1</u>');
   // Zeilenumbrüche erhalten
   html = html.replace(/\n/g, '<br />');
   return html;

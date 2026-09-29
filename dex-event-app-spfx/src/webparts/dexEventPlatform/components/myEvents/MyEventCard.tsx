@@ -31,6 +31,8 @@ import { isEventOver, formatAllDayPeriod } from '../../utils/eventFormat';
 import { selfCancelLocked, selfCancelLockReason } from '../../utils/cancelPolicy';
 import { X, Pencil, QrCode, Mail, Info, AlertCircle, ChevronDown } from '../Icons';
 import { cx } from '../dexUi';
+import DexLogo from '../DexLogo';
+import { istDexEinfuehrung } from '../../utils/dexIntro';
 import { TeamsJoinButton } from '../TeamsJoinButton';
 import { eventTeamsLink, locationWithoutTeamsUrl } from '../../utils/teamsLink';
 import DocumentsViewer from './DocumentsViewer';
@@ -214,6 +216,9 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
              * falsch fuer alles, was danach kommt.
              */
             const istVorbei = isEventOver(event);
+            // v32.17: Einführungs-Event zu DEX — die animierte Kugel der
+            // Landing Page statt des Bildes; nach dem Event steht sie still.
+            const dexIntro = istDexEinfuehrung(event);
             const zugeklappt = istVorbei && zuKlappStand[event.id] !== true;
 
             return (
@@ -228,7 +233,20 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                 {/* v31.70: `flexWrap` — die Knopfspalte rechts (s.u.) rutscht auf
                     dem Handy unter Bild und Titel statt sie zu quetschen. */}
                 <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                  {event.imageUrl && (
+                  {dexIntro ? (
+                    <div
+                      className="my-event-card__thumb"
+                      style={{
+                        flexShrink: 0, width: 140, height: 100,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        ...(istVorbei ? { filter: 'grayscale(1)', opacity: 0.7 } : {}),
+                      }}
+                    >
+                      <div style={{ width: 100, height: 100, borderRadius: '50%', overflow: 'hidden' }}>
+                        <DexLogo title="DEX" motion="oscillate" size={100} paused={istVorbei} pointerSpin={!istVorbei} />
+                      </div>
+                    </div>
+                  ) : event.imageUrl && (
                     <div
                       className="my-event-card__thumb"
                       style={{
@@ -242,6 +260,8 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                         alignItems: 'center',
                         justifyContent: 'center',
                         overflow: 'hidden',
+                        // v32.11: vergangene Events grau (Nutzer-Ansage 29.09.2026).
+                        ...(istVorbei ? { filter: 'grayscale(1)', opacity: 0.7 } : {}),
                       }}
                     >
                       <CachedImg
@@ -261,7 +281,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {/* Titel + Status-Pille + Gruppe (alles reine Anzeige) */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{event.title}</h3>
+                      <h3 style={{ margin: 0, fontSize: '1.1rem', ...(istVorbei ? { color: 'var(--dex-gray-500)' } : {}) }}>{event.title}</h3>
                       {sessionsOnly ? (() => {
                         // v15.15: Im subEventsOnlyMode komplett ausblenden —
                         // Badge UND Hinweisbox sind dort redundant, weil
@@ -284,7 +304,15 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                             {badgeText}
                           </span>
                         );
-                      })() : (
+                      })() : istVorbei ? (
+                        // v32.11: Vorbei = graues „Abgeschlossen" statt des grünen
+                        // Anmeldestatus; wer eingecheckt wurde, liest „Teilgenommen".
+                        <span className="dex-ui-pill dex-ui-pill--gray" style={{ flexShrink: 0 }}>
+                          {registration.Status === 'Eingecheckt'
+                            ? (isDe ? 'Teilgenommen' : 'Attended')
+                            : (isDe ? 'Abgeschlossen' : 'Completed')}
+                        </span>
+                      ) : (
                         <span className={`badge ${getStatusBadgeClass(registration.Status)}`} style={{ flexShrink: 0 }}>
                           {registration.Status === 'Warteliste' && registration.TeilnehmerID && event.maxParticipants > 0
                             ? `${getStatusLabel(registration.Status, t)} #${registration.TeilnehmerID - event.maxParticipants}`
@@ -306,7 +334,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                             ? ((event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter')
                             : grp;
                         return (
-                          <span className="dex-ui-pill dex-ui-pill--green">
+                          <span className={istVorbei ? 'dex-ui-pill dex-ui-pill--gray' : 'dex-ui-pill dex-ui-pill--green'}>
                             <Icon iconName="Group" style={{ fontSize: 13 }} />
                             {(isDe ? 'Gruppe: ' : 'Group: ')}{grpLabel}
                           </span>
@@ -315,12 +343,12 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                     </div>
 
                     {/* Wann · Wo · Teilnahme-Link */}
-                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
+                    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 24px', fontSize: '0.88rem', color: istVorbei ? 'var(--dex-gray-500)' : 'var(--dex-gray-700)' }}>
                       {/* v27.8: Ort einzeilig als „Name, Stadt" (vorher zweizeilig
                           mit voller Adresse). */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Icon iconName="MapPin" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} />
-                        <span style={{ fontWeight: 700, color: 'var(--dex-gray-800)' }}>
+                        <span style={{ fontWeight: 700, color: istVorbei ? 'var(--dex-gray-500)' : 'var(--dex-gray-800)' }}>
                           {(() => {
                             // v29.39: Eine Teams-URL im Ort gehört nicht in die
                             // Ort-Zeile — sie steht daneben als Knopf.
@@ -981,7 +1009,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                     aus dem eigenen Tenant — gleiche Render-Logik wie auf der
                     RegistrationPage (HTML erlaubt, sonst \n→<br>).
                     v17.23: standardmäßig eingeklappt, per Button aufklappbar. */}
-                {event.description && notEditing && (() => {
+                {(event.description || event.descriptionEn) && notEditing && (() => {
                   // v31.70: standardmäßig OFFEN (Nutzer-Ansage 17.09.2026:
                   // „Beschreibung immer default ausklappen") — `false` in der
                   // Map heißt zugeklappt, fehlend heißt offen.
@@ -1008,7 +1036,8 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           }}
                           dangerouslySetInnerHTML={{
                             __html: (() => {
-                              const raw = event.description || '';
+                              // v32.18: englische Fassung, wenn die App auf Englisch steht.
+                              const raw = (!isDe && (event.descriptionEn || '').trim()) ? (event.descriptionEn || '') : (event.description || '');
                               const isHtml = /<[a-z][\s\S]*>/i.test(raw);
                               return isHtml
                                 ? raw

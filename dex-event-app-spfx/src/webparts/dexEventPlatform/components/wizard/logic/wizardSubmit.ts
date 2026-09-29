@@ -47,7 +47,9 @@ async function scannerRechteAufBaum(
   revokeEmails: string[],
   keepEmails: string[],
 ): Promise<{ sites: string[]; unresolved: string[]; failed: number }> {
-  const rows = await svc.getEvents();
+  // v32.18: schlank (ohne OutlookBody/EmailImageBase64) — hier zählen nur
+  // Id, ParentEventId und SubsiteUrl; die volle Liste waren rund 30 MB.
+  const rows = await svc.getEvents(undefined, true);
   const sites = rows
     .filter(r => String(r.Id) === rootId || String(r.ParentEventId || '') === rootId)
     .map(r => (r.SubsiteUrl || '').trim())
@@ -266,6 +268,10 @@ export interface WizardSubmitCtx {
   customFields: CustomFieldInput[];
   deadlineToEndOfDayIso: (dateStr: string) => string | null;
   description: string;
+  /** v32.18: englische Beschreibung (Piggyback _descriptionEn). */
+  descriptionEn: string;
+  /** v32.18: Einführungs-Event zu DEX (Piggyback _dexIntro). */
+  dexIntro: boolean;
   documents: { name: string; file?: File; url: string; size: number; }[];
   DRAFT_KEY: string;
   durchstarterCapacity: string;
@@ -825,6 +831,10 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
       // Beschreibung wollte oder sie schlicht vergessen hat; die Box
       // „Nächste Schritte" meldete sie deshalb ewig als fehlend.
       const noDescriptionConfig = (noDescription && !description.trim()) ? { _noDescription: true } : {};
+      // v32.18: Englische Beschreibung. Nur mit Inhalt schreiben — ein
+      // geleerter Reiter darf keinen Rest im Blob hinterlassen.
+      const descriptionEnConfig = (!noDescription && ctx.descriptionEn.trim()) ? { _descriptionEn: ctx.descriptionEn } : {};
+      const dexIntroConfig = ctx.dexIntro ? { _dexIntro: true } : {};
       // v28.91: Kalender-Modus nur setzen, wenn er aktiv ist — ein
       // abgewaehlter Schalter darf keinen Rest im Blob hinterlassen.
       const subEventCalendarConfig = (subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {};
@@ -939,7 +949,7 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
         teamNoCreateConfig, mainEventLabelConfig, assistantsCanSeeConfig,
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
-        hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig,
+        hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig, descriptionEnConfig, dexIntroConfig,
         subEventCalendarConfig, seriesRuleConfig, subEventSingleChoiceConfig, bundledCommConf, commSharedConf, noSelfCancelConfig, noCancelAfterDeadlineConfig, teamsLinkConfig, hotelCarryConfig,
         billingPiggyback(), // v29.66: F&A-Pilot
         subEventOpenRulePiggyback(), // v29.67
@@ -1926,7 +1936,13 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
       // Innerhalb des Top-Event-Slots (topStart..topEnd) werden die Stages
       // verteilt: subsite-creating, permissions, list-creating, list-done,
       // item-insert, done.
+      // v32.18: Zeitmessung je Phase auch beim ANLEGEN (Nutzer-Ansage
+      // 29.09.2026: „irgendwas dauert hier zu lange“). Gleiches Format wie
+      // der Bearbeiten-Pfad: [DEX][perf][create] <Phase>: <ms seit Start>.
+      const tCreate = performance.now();
+      const lapC = (phase: string): void => { dlog('perf', `[DEX][perf][create] ${phase}: ${Math.round(performance.now() - tCreate)} ms`); };
       const reportCreateStage = (stage: string): void => {
+        lapC(`Stufe ${stage}`);
         const slot = topEnd - topStart;
         switch (stage) {
           case 'start':
@@ -1974,6 +1990,7 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
       // v16.4: Audience-DLs beim Save in Member-E-Mails auflösen, damit der
       // Runtime-Sichtbarkeits-Check sie ohne weitere Graph-Calls treffen kann.
       const audienceResolved = await resolveAudienceMembersToCsv(audience, getGroupMembers);
+      lapC('Zielgruppe aufgelöst');
 
       const sanitizedOrgPairCreate = sanitizeOrganizerPairs();
       const eventId = await createEvent({
@@ -2158,6 +2175,9 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
             (ctx.tutorialTest && !isEditMode ? { _tutorialTest: { by: currentUser.email || '', at: new Date().toISOString() } } : {}),
             // v28.79: „Keine Beschreibung nutzen" auch beim Anlegen merken.
             ((noDescription && !description.trim()) ? { _noDescription: true } : {}),
+            // v32.18: Englische Beschreibung.
+            ((!noDescription && ctx.descriptionEn.trim()) ? { _descriptionEn: ctx.descriptionEn } : {}),
+            (ctx.dexIntro ? { _dexIntro: true } : {}), // v32.18
             // v28.91: Kalender-Modus der Sub-Events.
             ((subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {}),
             ((subEventSingleChoice && subEventsOptIn) ? { _subEventSingleChoice: true } : {}),
@@ -2244,6 +2264,7 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
         customFields: serializeCustomFields(customFields, bilingualFields),
         onProgress: reportCreateStage,
       });
+      lapC('Hauptevent angelegt (Subsite, Liste, Zeile)');
 
       if (eventId) {
         // v26.24: Co-Organizer-Freigabe (siehe Edit-Pfad) — für benannte
@@ -2278,6 +2299,7 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
         // ebenso viele Subsites an; wenn SharePoint danach drosselt, flog
         // getEvents() — und das Klammer-Bild wurde still nie hochgeladen.
         // Das Event-Item existiert hier bereits, mehr braucht der Upload nicht.
+        lapC('Freigaben, Zielgruppen-Hinweis');
         if (imageFile || documents.length > 0) {
           try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2334,6 +2356,7 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
         // aufgeteilt — pro Sub-Event ein eigener Stage-Slot. persistSubEventsForParent
         // erhält einen Sub-Progress-Callback über ein Window-Event-Bus-ähnliches
         // Setup ist hier nicht nötig, weil wir die Schleife per index zählen.
+        lapC('Bild und Dokumente');
         if (subEventDraftsCount > 0) {
           const subSlotSize = (90 - topEnd) / subEventDraftsCount;
           // Wir setzen pro Sub-Event-Start manuell den Progress und übergeben
@@ -2388,9 +2411,12 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
           setProgress(Math.round(topEnd));
           setProgressLabel('Haupt-Event angelegt — Aufräumarbeiten...');
         }
+        lapC('Sub-Events angelegt');
         try { await persistSubEventsForParent(String(eventId)); }
         catch (err) { console.warn('[DEX] Sub-Events beim Create persistieren fehlgeschlagen:', err); }
+        lapC('Sub-Events persistiert');
         await schattenSicherstellen(String(eventId), title);
+        lapC('Klammer-Zeile sichergestellt');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         try { delete (window as any).__dexSubEventProgress; } catch { /* */ }
         setProgress(92);
@@ -2406,7 +2432,11 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
           if (ctx) {
             const svc = new EventService(ctx);
             // Subsite-URL aus dem neu geladenen Event holen
-            const allEvents = await svc.getEvents();
+            // v32.18: schlank lesen — gebraucht werden nur Id, ParentEventId und
+            // SubsiteUrl. Die volle Liste waren rund 30 MB (Outlook-Texte und
+            // Mail-Bilder aller Events) und kostete beim Anlegen Sekunden.
+            const allEvents = await svc.getEvents(undefined, true);
+            lapC('Event-Liste gelesen (Subsite-URL)');
             const created = allEvents.find(e => String(e.Id) === String(eventId));
             const subsiteUrl = created?.SubsiteUrl || '';
             // v30.87: Check-in-Team schon beim Anlegen auf die Teilnehmerliste
@@ -2487,6 +2517,7 @@ export async function runWizardSubmit(ctxIn: WizardSubmitCtx): Promise<void> {
         //    Event nach — SP hatte dann genug Zeit zum Propagieren und der Read
         //    auf die neue Subsite läuft sauber durch (gleicher Pfad wie der
         //    Aktualisieren-Button im Header — der hat nie Probleme).
+        lapC('Mails, Check-in-Team, letzte Schritte — fertig');
         setProgress(100);
         setProgressLabel('Event erfolgreich erstellt!');
         try {

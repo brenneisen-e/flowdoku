@@ -58,6 +58,8 @@ export interface WizardModalsProps {
   customFields: CustomFieldInput[];
   DEMO_VARIANTS: Record<"standard" | "groups" | "subevent" | "subeventTeam", () => void>;
   description: string;
+  descriptionEn: string;
+  setDescriptionEn: React.Dispatch<React.SetStateAction<string>>;
   disableEmails: boolean;
   disableOutlook: boolean;
   documents: { name: string; file?: File; url: string; size: number; }[];
@@ -219,13 +221,19 @@ export interface WizardModalsProps {
 }
 
 export const WizardModals: React.FC<WizardModalsProps> = (p) => {
-  const { activeCommTabIdx, activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, addSelectedSuggestedFields, agenda, applySubTransfer, askSalutation, attemptSubmit, audience, berlinLocalToUtcIso, bilingualFields, buildDraftPayload, bulkOrganizerOpen, bulkQrScannerOpen, bulkTestTeamOpen, cancelOutlookSave, childTermPlural, childTermSingular, closeVisCopy, confirmOutlookSave, contactEmail, customFields, DEMO_VARIANTS, description, disableEmails, disableOutlook, documents, DRAFT_KEY, dragOverSectionId, dragSectionId, durchstarterCapacity, emailLanguage, emailLogoPreview, emailTemplateOverrides, emailTemplates, endDate, eventImageUrl, excludedUsers, filterMode, funstarterCapacity, headerImageLayout, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imagePreview, isDe, isEditMode, isFictive, isMobile, isoToLocal, lastDeregisterDate, location, locationFilter, maxParticipants, newSectionError, newSectionModalOpen, newSectionName, organizer, organizerEmails, outlookBody, outlookConfirmChecks, outlookConfirmDismissed, outlookConfirmInvite, outlookConfirmItems, outlookConfirmOpen, outlookEndOverride, outlookHeading, outlookLocationOverride, outlookLogoPreview, outlookStartOverride, outlookSubheading, outlookSubject, pendingSections, pendingSuccessDispatch, pendingSuccessDispatchRef, previewSections, qrScannerEmails, qrScannerNames, quiz, registrationDeadline, registrationLanguage, renderPreviewSection, requireSubEventSelection, resolveTopLevelCommState, scDescription, scopeSub, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setDragOverSectionId, setDragSectionId, setEmailTemplateOverrides, setHeaderImageLayout, setHtmlEditorOpen, setNewSectionError, setNewSectionModalOpen, setNewSectionName, setOrganizer, setOrganizerEmails, setOutlookBody, setOutlookConfirmChecks, setOutlookConfirmDismissed, setOutlookConfirmInvite, setOutlookEndOverride, setOutlookHeading, setOutlookLocationOverride, setOutlookStartOverride, setOutlookSubheading, setOutlookSubject, setPendingSections, setPendingSuccessDispatch, setPreviewSections, setQrScannerEmails, setQrScannerNames, setScDescription, setShowB2runSuggested, setShowConfigCheck, setShowDemoVariantModal, setShowPreview, setShowRegisterPreview, setShowSuggestedModal, setShowSummaryModal, setSubEvents, setSubTransfer, setSuggestedSelection, setTestTeamEmails, setTestTeamNames, setUnsavedConfirmOpen, showB2runSuggested, showConfigCheck, showDemoVariantModal, showPreview, showRegisterPreview, showSuggestedModal, showSummaryModal, splitLabelA, splitLabelB, splitSharedWaitlist, startDate, SUB_TRANSFER_GROUPS, subEvents, subEventsOnlyMode, subGroupDiffCount, subTransfer, SUGGESTED_FIELDS_CATALOG, suggestedSelection, t, teamRegistrationEnabled, teamSize, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, unsavedConfirmOpen, useSplitCapacities, visCopyModalOpen, waitlistEnabled, allowAttendeeUpload, askTeamName, attendeeUploadHint, attendeeUploadLabel, contactInfo, contactName, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, quizClusterSize, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitSectionTitle, teamJoinRequiresApproval, teamOpenSlotsVisible, teamPartialAllowed } = p;
+  const { activeCommTabIdx, activeFrom, addrCity, addrHouseNo, addrStreet, addrZip, addSelectedSuggestedFields, agenda, applySubTransfer, askSalutation, attemptSubmit, audience, berlinLocalToUtcIso, bilingualFields, buildDraftPayload, bulkOrganizerOpen, bulkQrScannerOpen, bulkTestTeamOpen, cancelOutlookSave, childTermPlural, childTermSingular, closeVisCopy, confirmOutlookSave, contactEmail, customFields, DEMO_VARIANTS, description, descriptionEn, setDescriptionEn, disableEmails, disableOutlook, documents, DRAFT_KEY, dragOverSectionId, dragSectionId, durchstarterCapacity, emailLanguage, emailLogoPreview, emailTemplateOverrides, emailTemplates, endDate, eventImageUrl, excludedUsers, filterMode, funstarterCapacity, headerImageLayout, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imagePreview, isDe, isEditMode, isFictive, isMobile, isoToLocal, lastDeregisterDate, location, locationFilter, maxParticipants, newSectionError, newSectionModalOpen, newSectionName, organizer, organizerEmails, outlookBody, outlookConfirmChecks, outlookConfirmDismissed, outlookConfirmInvite, outlookConfirmItems, outlookConfirmOpen, outlookEndOverride, outlookHeading, outlookLocationOverride, outlookLogoPreview, outlookStartOverride, outlookSubheading, outlookSubject, pendingSections, pendingSuccessDispatch, pendingSuccessDispatchRef, previewSections, qrScannerEmails, qrScannerNames, quiz, registrationDeadline, registrationLanguage, renderPreviewSection, requireSubEventSelection, resolveTopLevelCommState, scDescription, scopeSub, searchUsers, setBulkOrganizerOpen, setBulkQrScannerOpen, setBulkTestTeamOpen, setDragOverSectionId, setDragSectionId, setEmailTemplateOverrides, setHeaderImageLayout, setHtmlEditorOpen, setNewSectionError, setNewSectionModalOpen, setNewSectionName, setOrganizer, setOrganizerEmails, setOutlookBody, setOutlookConfirmChecks, setOutlookConfirmDismissed, setOutlookConfirmInvite, setOutlookEndOverride, setOutlookHeading, setOutlookLocationOverride, setOutlookStartOverride, setOutlookSubheading, setOutlookSubject, setPendingSections, setPendingSuccessDispatch, setPreviewSections, setQrScannerEmails, setQrScannerNames, setScDescription, setShowB2runSuggested, setShowConfigCheck, setShowDemoVariantModal, setShowPreview, setShowRegisterPreview, setShowSuggestedModal, setShowSummaryModal, setSubEvents, setSubTransfer, setSuggestedSelection, setTestTeamEmails, setTestTeamNames, setUnsavedConfirmOpen, showB2runSuggested, showConfigCheck, showDemoVariantModal, showPreview, showRegisterPreview, showSuggestedModal, showSummaryModal, splitLabelA, splitLabelB, splitSharedWaitlist, startDate, SUB_TRANSFER_GROUPS, subEvents, subEventsOnlyMode, subGroupDiffCount, subTransfer, SUGGESTED_FIELDS_CATALOG, suggestedSelection, t, teamRegistrationEnabled, teamSize, testTeamEmails, testTeamNames, title, transferTimes, unlimitedParticipants, unsavedConfirmOpen, useSplitCapacities, visCopyModalOpen, waitlistEnabled, allowAttendeeUpload, askTeamName, attendeeUploadHint, attendeeUploadLabel, contactInfo, contactName, notifyOrgCancelMode, notifyOrgRegisterFromDate, notifyOrgRegisterMode, quizClusterSize, splitDescA, splitDescB, splitDisplayOrderReversed, splitHelpText, splitSectionTitle, teamJoinRequiresApproval, teamOpenSlotsVisible, teamPartialAllowed } = p;
   // v31.58: Kurzer Speicher-Moment auf „Entwurf speichern" (Nutzer-Ansage
   // 15.09.2026: „wenn ich auf Entwurf speichern klicke, kurze Speicher-
   // Animation"). Der Entwurf ist in localStorage sofort da; die Animation
   // ist die Rückmeldung, dass geklickt wurde — ohne sie schloss sich der
   // Dialog so schnell, dass man nicht sicher war, ob der Klick zählte.
   const [draftSaveAnim, setDraftSaveAnim] = React.useState<'idle' | 'saving' | 'done'>('idle');
+  // v32.18: Sprach-Reiter im Beschreibungs-Editor (Nutzer-Ansage 29.09.2026:
+  // „oben ein Bookmark, um zwischen den Sprachen zu wechseln"). Jedes Öffnen
+  // beginnt auf Deutsch — die deutsche Fassung ist die Pflicht, die englische
+  // die Ergänzung.
+  const [descLang, setDescLang] = React.useState<'de' | 'en'>('de');
+  React.useEffect(() => { if (htmlEditorOpen) setDescLang('de'); }, [htmlEditorOpen]);
   const draftSaveTimer = React.useRef<number[]>([]);
   React.useEffect(() => () => { draftSaveTimer.current.forEach(id => window.clearTimeout(id)); }, []);
   // v31.2: Eine Prüf-und-Anlege-Logik für Enter-Taste UND Knopf im Dialog
@@ -356,10 +364,14 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
         // v28.89: Im Beschreibungs-Modus folgt der Editor der gewählten Ebene
         // (scDescription/setScDescription) — er wird ausschließlich aus
         // Schritt 1 geöffnet, wo der Scope-Reiter darüber steht.
+        // v32.18: Die englische Fassung gibt es nur für das Haupt-Event —
+        // die Reiter erscheinen deshalb nicht unter einem Sub-Event-Scope.
+        const descTabs = isDescription && !scopeSub;
+        const descEn = descTabs && descLang === 'en';
         const currentBody = isOutlook
           ? outlookBody
           : isDescription
-            ? scDescription
+            ? (descEn ? descriptionEn : scDescription)
             : (override?.bodyHtml || defaultTpl?.bodyHtml || '');
         // v18.19: Überschrift-Farbe + -Größe (Override > Template-Default).
         const currentHeadingColor = (override?.headingColor) || (defaultTpl?.headingColor) || '#86bc25';
@@ -468,13 +480,14 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
         // v19.2: Einladender Beispieltext für die Beschreibung — über den
         // „Standardtext laden"-Button im Beschreibungs-Editor übernehmbar (statt
         // wie früher als Inline-Box im Wizard).
-        const descriptionExampleHtml = isDe
+        const descriptionExampleHtml = (descEn ? false : isDe)
           ? 'Liebe Kolleginnen und Kollegen,<br><br>wir freuen uns sehr, euch herzlich einzuladen! Es erwartet euch ein abwechslungsreiches Programm mit viel Raum für Austausch und Begegnung.<br><br>Wir freuen uns auf einen schönen gemeinsamen Tag mit euch!'
           : 'Dear colleagues,<br><br>we are delighted to invite you! Look forward to a varied programme with plenty of room for exchange and networking.<br><br>We look forward to seeing you there!';
         return (
           <HtmlEditorModal
             open={htmlEditorOpen}
             onClose={() => setHtmlEditorOpen(false)}
+            syncKey={isDescription ? descLang : undefined}
             defaultBodyHtml={isOutlook ? outlookDefaultBody : (isDescription ? descriptionExampleHtml : undefined)}
             title={isOutlook
               ? (isDe ? 'Outlook-Termin: Text bearbeiten' : 'Outlook invite: edit text')
@@ -488,6 +501,28 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
             // v28.7: Die Starthilfe (Tipp-Text + Vorschlags-Chips) lebt jetzt
             // HIER im Editor statt als Dauer-Box im Wizard-Schritt.
             headerExtra={isDescription ? (
+              <>
+              {descTabs && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+                  <div className="dex-ui-tabs" role="tablist" aria-label={isDe ? 'Sprache der Beschreibung' : 'Description language'}>
+                    {([['de', 'Deutsch'], ['en', 'English']] as Array<['de' | 'en', string]>).map(([k, lbl]) => {
+                      const hat = (k === 'de' ? scDescription : descriptionEn).replace(/<[^>]+>/g, '').trim().length > 0;
+                      return (
+                        <button key={k} type="button" role="tab" aria-selected={descLang === k}
+                          className={cx('dex-ui-tab', descLang === k && 'is-active')}
+                          onClick={() => setDescLang(k)}>
+                          {lbl}{hat && <span style={{ marginLeft: 6, display: "inline-flex" }}><Check size={12} /></span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span className="dex-ui-muted" style={{ fontSize: '0.78rem' }}>
+                    {descEn
+                      ? (isDe ? 'Sehen alle, deren App auf Englisch steht. Leer = sie sehen die deutsche Fassung.' : 'Shown to everyone using the app in English. Empty = they see the German text.')
+                      : (isDe ? 'Die englische Fassung ist optional.' : 'The English version is optional.')}
+                  </span>
+                </div>
+              )}
               <div className="dex-ui-callout dex-ui-callout--info">
                 <span className="dex-ui-callout-icon"><Info size={16} /></span>
                 <span>
@@ -496,12 +531,13 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                     : <>The description is the <strong>inviting intro right at the top of the registration page</strong> — the first thing your attendees read. Tell them <strong>what the event is about, who it&rsquo;s for and what to know</strong>. <strong>You can skip date, location, organizer and contact person</strong> — the app shows those above as their own fields.</>}
                 </span>
               </div>
+              </>
             ) : undefined}
             bodyTemplates={isDescription ? DESCRIPTION_TEMPLATES.map(tpl => ({
               key: tpl.key,
               label: isDe ? tpl.labelDe : tpl.labelEn,
-              html: isDe ? tpl.de : tpl.en,
-              title: (isDe ? tpl.de : tpl.en).replace(/<[^>]+>/g, '').replace(/&rsquo;/g, '’'),
+              html: (descEn ? false : isDe) ? tpl.de : tpl.en,
+              title: ((descEn ? false : isDe) ? tpl.de : tpl.en).replace(/<[^>]+>/g, '').replace(/&rsquo;/g, '’'),
             })) : undefined}
             bodyTemplatesLabel={isDescription ? (isDe ? 'Vorschläge zum Übernehmen (danach frei anpassbar):' : 'Suggestions to use (fully editable afterwards):') : undefined}
             value={currentBody}
@@ -509,7 +545,7 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
               if (isOutlook) {
                 setOutlookBody(html);
               } else if (isDescription) {
-                setScDescription(html);
+                if (descEn) setDescriptionEn(html); else setScDescription(html);
               } else {
                 // v18.22: patchOverride bewahrt alle übrigen Override-Felder
                 // (Farbe/Größe/fett/kursiv von Über-/Unter-Überschrift).

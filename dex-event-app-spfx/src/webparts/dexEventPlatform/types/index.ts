@@ -280,6 +280,13 @@ export interface DeloitteEvent {
    *  Querformat-Fotos), false/undefined = kompakter Slot links neben den
    *  Infos (Standard). Piggyback `_imageBanner` in EmailTemplateOverrides. */
   imageBanner?: boolean;
+  /** v32.18: Englische Fassung der Beschreibung (HTML). Leer = die deutsche
+   *  gilt für alle. Piggyback `_descriptionEn` in EmailTemplateOverrides. */
+  descriptionEn?: string;
+  /** v32.18: Einführungs-Event zu DEX selbst (Admin-Haken in Schritt 1):
+   *  animiertes Logo auf Anmeldeseite und in Meine Events, Hinweis auf der
+   *  Startseite. Piggyback `_dexIntro` in EmailTemplateOverrides. */
+  dexIntro?: boolean;
   /** v28.91: Die Sub-Events dieses Events sind TERMINE (ein Tag je Sub-Event).
    *  Der Organizer legt sie im Assistenten über einen Kalender an, und die
    *  Anmeldeseite zeigt sie als Kalender statt als Liste. Rein eine Frage der

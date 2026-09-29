@@ -22,6 +22,8 @@ import EventCard from './EventCard';
 import { CachedBg } from './CachedImage';
 import { prewarmImages } from '../utils/imageCache';
 import { useIsMobile } from '../utils/useIsMobile';
+import { getCachedOrbBase64 } from '../services/EmailTemplates';
+import { DEX_ORB_PNG } from '../data/brandLogos';
 
 /**
  * Prüft ob ein User-Standort zu einem LocationFilter passt.
@@ -688,8 +690,10 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                 {/* v29.35: ohne Event-Bild das Mail-Logo zeigen (wie Kachel und
                     Anmeldeseite) — dann aber contain, sonst schneidet der
                     60×40-Ausschnitt ein Logo mittendurch. */}
+                {/* v32.18: ganz ohne Bild das DEX-Logo — wie auf der Anmeldeseite
+                    (Nutzer-Ansage 29.09.2026). */}
                 <CachedBg
-                  url={event.imageUrl || event.mailImageBase64}
+                  url={event.imageUrl || event.mailImageBase64 || getCachedOrbBase64() || DEX_ORB_PNG}
                   position={event.imageUrl ? undefined : 'center/contain no-repeat'}
                   style={{
                     width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
