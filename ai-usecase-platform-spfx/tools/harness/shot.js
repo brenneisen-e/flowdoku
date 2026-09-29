@@ -205,8 +205,17 @@ class Lauf {
       const inline = [...document.querySelectorAll('.dex-ui-row-title, .dex-ui-row-sub')].filter(el => sichtbar(el) && getComputedStyle(el).display === 'inline');
       // 2) Ein <button> im Browser-Standard (2px outset) ist ein Knopf, dem seine Klasse fehlt.
       const nackt = [...document.querySelectorAll('button')].filter(b => sichtbar(b) && getComputedStyle(b).borderTopStyle === 'outset');
+      // 3) `.dex-ui-field` auf einem <label> ist inline: `margin-bottom` gilt dort nicht, die Felder kleben aneinander.
+      const felder = [...document.querySelectorAll('.dex-ui-field')].filter(el => sichtbar(el) && getComputedStyle(el).display === 'inline');
+      // 4) Liegt der Fuß eines Dialogs (Speichern/Abbrechen) unter dem Fenster? Dann ist die Handlung erst nach dem Scrollen erreichbar.
+      const dialoge = [...document.querySelectorAll('[role="dialog"]')].map(d => {
+        const foot = d.querySelector('.dex-ui-modal-foot');
+        const titel = (d.querySelector('.dex-ui-modal-title') || {}).textContent || d.getAttribute('aria-label') || '?';
+        return foot && foot.getBoundingClientRect().bottom > window.innerHeight + 1 ? titel : null;
+      }).filter(Boolean);
       const page = document.querySelector('.page-container');
       return {
+        felderN: felder.length, felder: felder.slice(0, 2).map(e => (e.textContent || '').trim().slice(0, 40)), dialogFuss: dialoge,
         inline: inline.slice(0, 2).map(e => `${e.className}: „${(e.textContent || '').trim().slice(0, 40)}"`), inlineN: inline.length,
         nackt: nackt.slice(0, 2).map(b => `button.${b.className || '(ohne Klasse)'}: „${(b.textContent || '').trim().slice(0, 40)}"`), nacktN: nackt.length,
         breite: page ? Math.round(page.getBoundingClientRect().width) : 0,
@@ -221,6 +230,15 @@ class Lauf {
       this.optikGemeldet.add('nackt:' + optik.nackt[0]);
       this.befund(seite, `Ein Knopf erscheint im Browser-Standard-Aussehen (ohne Stil, ${optik.nacktN} Stück).`, optik.nackt.join(' | '));
     }
+    if (optik.felderN > 0 && !this.optikGemeldet.has('feld:' + optik.felder[0])) {
+      this.optikGemeldet.add('feld:' + optik.felder[0]);
+      this.befund(seite, `Formularfelder (.dex-ui-field) sind inline (${optik.felderN} Stück): Der Abstand nach unten (margin-bottom 16 px) greift nicht, die Felder kleben aneinander.`, optik.felder.map(f => `„${f}"`).join(' | '));
+    }
+    optik.dialogFuss.forEach(titel => {
+      if (this.optikGemeldet.has('fuss:' + titel)) return;
+      this.optikGemeldet.add('fuss:' + titel);
+      this.befund(seite, `Der Fuß des Dialogs „${titel}" (Speichern/Abbrechen) liegt unterhalb des Fensters — er scrollt mit dem Inhalt und ist erst nach dem Blättern erreichbar.`, `Fensterhöhe ${this.spec.device === 'mobile' ? 844 : 900} px`);
+    });
     this.rec.breiten[seite] = optik.breite;
 
     // Horizontaler Überlauf: ragt etwas rechts aus dem Fenster, ohne dass ein Vorfahr es beschneidet/scrollt?
@@ -299,7 +317,7 @@ class Lauf {
 
   async wartSeite() {
     await this.page.locator('.page-container h1').first().waitFor({ timeout: 20000 });
-    await this.page.waitForFunction(() => !/wird geladen|is loading/.test((document.querySelector('.page-container') || {}).innerText || ''), null, { timeout: 25000 });
+    await this.page.waitForFunction(() => !/wird geladen|werden geladen|is loading|Loading/.test((document.querySelector('.page-container') || {}).innerText || ''), null, { timeout: 25000 });
   }
 
   kachel(titel) {
@@ -1088,6 +1106,27 @@ function plane() {
   return laeufe;
 }
 
+/* -------------------------------------------------------------- Galerie ---- */
+
+/** Eine Seite zum Durchblättern: je Lauf die Befunde und alle Bilder mit ihrem Satz. Liegt neben den PNGs, damit die Links relativ bleiben. */
+function galerie(bericht) {
+  const h = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const teile = [];
+  bericht.laeufe.forEach(r => {
+    teile.push(`<section><h2>${h(r.id)} <small>${r.shots.length} Bilder · ${r.befunde.length} Befunde</small></h2>`);
+    if (r.befunde.length) teile.push('<ul class="b">' + r.befunde.map(b => `<li><b>${h(b.seite)}</b> — ${h(b.problem)}<br><code>${h(b.evidenz)}</code></li>`).join('') + '</ul>');
+    teile.push('<div class="g">' + r.shots.map(x => {
+      const f = path.basename(x.pfad);
+      return `<figure><a href="${h(f)}"><img loading="lazy" src="${h(f)}" alt=""></a><figcaption><code>${h(f.replace(/\.png$/, ''))}</code><br>${h(x.was)}</figcaption></figure>`;
+    }).join('') + '</div></section>');
+  });
+  return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AIUC Screenshot-Galerie</title><style>
+body{font:14px/1.45 system-ui,Arial,sans-serif;margin:0;padding:24px;background:#f5f5f5;color:#222}h1{margin:0 0 4px}h2{margin:28px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px}small{font-weight:400;color:#777}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}figure{margin:0;background:#fff;border:1px solid #e3e3e3;border-radius:8px;padding:8px}img{width:100%;height:210px;object-fit:cover;object-position:top;border-radius:4px;background:#eee}
+figcaption{font-size:12px;color:#555;margin-top:6px}code{font-size:11px;color:#444;word-break:break-all}ul.b{background:#fff8e1;border:1px solid #f0d98a;border-radius:8px;padding:10px 10px 10px 28px;margin:0 0 12px}
+</style></head><body><h1>AI Use Case Platform — Screenshot-Galerie</h1><p>Erzeugt ${h(bericht.erstellt)} von <code>node shot.js</code>. Klick auf ein Bild öffnet es in voller Größe.</p>${teile.join('')}</body></html>`;
+}
+
 /* ---------------------------------------------------------------- main ---- */
 
 (async () => {
@@ -1119,12 +1158,23 @@ function plane() {
 
   await browser.close();
   server.close();
+
+  // Dieselbe Beobachtung steht in vielen Läufen (Rolle × Gerät). Für den Menschen: nach Problem gruppiert, mit den Fundorten.
+  const gruppen = {};
+  bericht.laeufe.forEach(r => r.befunde.forEach(b => {
+    const k = b.problem.replace(/\(\d+ Stück\)/, '(n Stück)');
+    (gruppen[k] = gruppen[k] || { problem: k, evidenz: b.evidenz, orte: [] }).orte.push(b.seite);
+  }));
+  bericht.gruppiert = Object.keys(gruppen).map(k => gruppen[k]);
   fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify(bericht, null, 2));
+  fs.writeFileSync(path.join(SHOTS, 'index.html'), galerie(bericht));
 
   const alle = bericht.laeufe;
   const bilder = alle.reduce((n, r) => n + r.shots.length, 0);
   const pe = alle.reduce((n, r) => n + r.konsole.pageerrors.length, 0);
   const bf = alle.reduce((n, r) => n + r.befunde.length, 0);
   console.log(`\n${alle.length} Läufe · ${bilder} Bilder · ${bf} Befunde · ${pe === 0 ? 'ALLE LÄUFE OHNE PAGEERROR' : 'PAGEERRORS: ' + pe}`);
-  console.log('Bericht: out/report.json · Bilder: out/shots/');
+  console.log(`Befunde nach Problem gruppiert: ${bericht.gruppiert.length}`);
+  bericht.gruppiert.forEach(g => console.log(`  ${String(g.orte.length).padStart(3)} × ${g.problem.slice(0, 150)}`));
+  console.log('Bericht: out/report.json · Bilder: out/shots/ · Galerie: out/shots/index.html');
 })().catch(e => { console.error(e); process.exit(1); });
