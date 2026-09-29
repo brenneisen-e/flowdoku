@@ -468,7 +468,14 @@
          aber nicht: ein Querrechteck. Jetzt feste Breite + 1:1, Inhalt
          mittig; dafür bleibt unten weniger Luft. Wächst der Inhalt über
          das Quadrat hinaus, wird die Karte höher (min-height auto). */
-      max-width: 640px; aspect-ratio: 1 / 1; justify-content: center;
+      /* v32.20: Mindesthöhe statt aspect-ratio. Mit aspect-ratio hielt
+         Chrome die Karte als Flex-Kind fest auf 640 × 640, auch wenn der
+         Inhalt höher war: Mit Check-in-Kasten und Anmelde-Hinweis ragte die
+         Kugel oben über die Kante, der Start-Knopf rutschte unter die Karte
+         (Nutzer-Befund 29.09.2026, großer Schirm). Jetzt ist das Quadrat
+         die Mindestgröße, und die Karte wächst mit dem Inhalt. */
+      max-width: 640px; min-height: 640px; justify-content: center;
+      flex-shrink: 0;
       /* v24.68: Karte oben ausrichten statt voll vertikal zentrieren — sonst
          entsteht auf hohen/breiten Screens ein großer Abstand zwischen Header
          und Box. margin-bottom: auto absorbiert den Restplatz (Karte bleibt
@@ -811,7 +818,7 @@
       /* Landing Page - Mobile: kleinerer Orb, weniger Padding, Scrolling erlauben */
       .landing { overflow: auto; }
       .landing__hero { padding: 16px 12px; gap: 16px; }
-      .landing__card { padding: 20px 16px; gap: 16px; border-radius: 16px; aspect-ratio: auto; }
+      .landing__card { padding: 20px 16px; gap: 16px; border-radius: 16px; aspect-ratio: auto; min-height: 0; }
       /* v26.37: Auf dem Handy NICHT animieren. Der rotierende Conic-Gradient-Orb
          wird vom mobilen Compositor auf eine eigene GPU-Ebene gehoben, die beim
          Verlassen der Landing Page (z.B. Klick auf „Start") nicht sofort verworfen
