@@ -11,12 +11,38 @@
  */
 
 import * as React from 'react';
+import { DEEPLINK_PARAM } from '../constants';
 
 // v1.1: `landing` ist die erste Seite — der Startbildschirm mit dem Orb.
 // `start` ist die Kachelwand dahinter.
-export type Page = 'landing' | 'start' | 'detail' | 'verwaltung' | 'rollen';
+// v1.3: `protokoll` — das Änderungsprotokoll (Organizer). Die `useCaseId`
+// engt es auf einen Use Case ein.
+export type Page = 'landing' | 'start' | 'usecases' | 'detail' | 'studio' | 'rollen' | 'protokoll';
 
 interface NavEntry { page: Page; useCaseId?: number }
+
+/**
+ * v1.3: Die Use-Case-Id aus der Adresse der Host-Seite — oder `undefined`.
+ *
+ * Nur eine ganze, positive Zahl zählt. Alles andere (`uc=abc`, `uc=-1`,
+ * `uc=7x`) ist kein Deep-Link und fällt auf die Startseite zurück: Eine
+ * halb lesbare Id auf eine Detailseite zu schicken hieße, „nicht gefunden"
+ * zu behaupten, obwohl der Link nur kaputt getippt war.
+ *
+ * Bewusst ein Regex und kein `URLSearchParams`: Die Adresse gehört der
+ * SharePoint-Seite, und wir wollen genau EINEN Parameter daraus, ohne uns auf
+ * die Verfügbarkeit einer weiteren Browser-API zu verlassen.
+ */
+function ucIdAusAdresse(): number | undefined {
+  try {
+    const m = new RegExp('[?&]' + DEEPLINK_PARAM + '=(\\d{1,9})(?:&|#|$)').exec(window.location.search || '');
+    if (!m) return undefined;
+    const id = parseInt(m[1], 10);
+    return id > 0 ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 interface NavigationContextType {
   currentPage: Page;
@@ -29,7 +55,13 @@ interface NavigationContextType {
 const NavigationContext = React.createContext<NavigationContextType | undefined>(undefined);
 
 export function NavigationProvider(props: { children: React.ReactNode }): React.ReactElement {
-  const [entry, setEntry] = React.useState<NavEntry>({ page: 'landing' });
+  // Die Adresse wird EINMAL beim Start gelesen (lazy Initialisierer), nicht
+  // bei jedem Render: Nach dem ersten Seitenwechsel gehört die Navigation
+  // der App, und ein Deep-Link darf sie nicht zurückholen.
+  const [entry, setEntry] = React.useState<NavEntry>(() => {
+    const id = ucIdAusAdresse();
+    return id ? { page: 'detail', useCaseId: id } : { page: 'landing' };
+  });
   const [stack, setStack] = React.useState<NavEntry[]>([]);
 
   const navigate = React.useCallback((page: Page, useCaseId?: number): void => {

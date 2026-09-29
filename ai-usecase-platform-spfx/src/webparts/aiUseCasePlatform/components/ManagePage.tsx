@@ -1,5 +1,5 @@
 /**
- * Use Cases pflegen — die Kurator-Seite.
+ * Use Case Studio — hier legen Use Case Organizer Use Cases an und pflegen sie.
  *
  * Der Pflegepfad ist genauso wichtig wie die Kachelwand: Die Demos entstehen
  * erst auf dem Hackathon, die Plattform muss sie danach aufnehmen koennen.
@@ -8,18 +8,25 @@
  * Reihenfolge im Formular nach dem UI-Leitfaden: Pflicht → Optional → Fein.
  * Beschriftungen sind Fragen, Ja/Nein sind Schalter, Alternativen sind
  * Kacheln.
+ *
+ * v1.3: Das Kachelbild wird hochgeladen und zugeschnitten (vorher: eine
+ * URL-Eingabe), die Betreuer sind eintragbar (vorher wurden sie angezeigt, aber
+ * es gab kein Feld dafür), und das Speichern läuft über `saveUseCase` — die
+ * Reihenfolge „Bild zuerst, altes Bild zuletzt" steht dort und nicht hier.
  */
 
 import * as React from 'react';
 import Modal from './Modal';
+import ImageCropModal from './ImageCropModal';
 import { cx, ensureDexUiStyles } from './dexUi';
-import { Plus, Pencil, Trash2, Check } from './Icons';
+import { Plus, Pencil, Trash2, Check, ImageIcon, X } from './Icons';
 import { useUseCases } from '../context/UseCaseContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
 import { useDialog } from '../context/DialogContext';
-import { UseCase, UseCaseStatus, Bewertung, AufrufArt } from '../types';
+import { useHilfe } from '../context/HilfeContext';
+import { UseCase, UseCaseStatus, Bewertung, AufrufArt, BildAenderung } from '../types';
 import { START_USE_CASES } from '../data/startUseCases';
 
 /** Die leeren Ressourcen als eigene Konstante: So braucht weder der
@@ -36,18 +43,38 @@ const LEER: Partial<UseCase> = {
   bildUrl: '', reihenfolge: 100, betreuerEmails: [], betreuerNamen: [], schlagworte: [],
 };
 
+/** Eine Zeile des Betreuer-Editors. */
+interface BetreuerZeile { name: string; email: string }
+
+/** Größte Bilddatei, die der Zuschnitt annimmt — danach ist es ein 1280-px-JPEG. */
+const MAX_BILD_MB = 15;
+
+const EMAIL_FORMAT = /^[^\s@;]+@[^\s@;]+\.[^\s@;]+$/;
+
 export default function ManagePage(props: { editId?: number }): React.ReactElement {
   ensureDexUiStyles();
-  const { useCases, ladeStatus, create, update, remove } = useUseCases();
+  const { useCases, ladeStatus, saveUseCase, remove } = useUseCases();
   const { t, isDe } = useLanguage();
   const { navigate } = useNavigation();
-  const { isKurator } = useRoles();
+  const { isOrganizer } = useRoles();
   const { confirmDialog, showAlert } = useDialog();
+  const { openKontakt } = useHilfe();
 
   const [entwurf, setEntwurf] = React.useState<Partial<UseCase> | null>(null);
   const [editId, setEditId] = React.useState<number | null>(null);
   const [speichert, setSpeichert] = React.useState(false);
   const [feinOffen, setFeinOffen] = React.useState(false);
+
+  // Kachelbild: Was zum Speichern ansteht, getrennt vom Entwurf. Der Entwurf
+  // geht als Zeile nach SharePoint; ein File gehört dort nicht hinein.
+  const [bildDatei, setBildDatei] = React.useState<File | null>(null);
+  const [bildVorschau, setBildVorschau] = React.useState('');
+  const [bildEntfernt, setBildEntfernt] = React.useState(false);
+  const [ursprungBild, setUrsprungBild] = React.useState('');
+  const [cropQuelle, setCropQuelle] = React.useState('');
+  const dateiRef = React.useRef<HTMLInputElement | null>(null);
+
+  const [betreuer, setBetreuer] = React.useState<BetreuerZeile[]>([]);
 
   // Deep-Link aus der Detailseite: „Bearbeiten" oeffnet den Dialog direkt.
   const aufgerufenRef = React.useRef(false);
@@ -58,17 +85,22 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.editId, ladeStatus, useCases]);
 
-  if (!isKurator) {
+  if (!isOrganizer) {
     return (
       <div className="dex-ui-empty">
         <div className="dex-ui-empty-title">{t('Dafür fehlt dir die Berechtigung', 'You are not allowed to do this')}</div>
         <div className="dex-ui-empty-desc">
-          {t('Use Cases pflegen dürfen Kuratoren und Admins. Wenn du das brauchst, melde dich bei einem Admin der Plattform.',
-            'Curators and admins may manage use cases. If you need this, contact a platform admin.')}
+          {t('Use Cases anlegen und pflegen dürfen Use Case Organizer und Admins. Wenn du das brauchst, kannst du die Rolle anfragen.',
+            'Use Case Organizers and admins may create and maintain use cases. If you need this, you can request the role.')}
         </div>
-        <button type="button" className="dex-ui-empty-action" onClick={() => navigate('start')}>
-          {t('Zur Übersicht', 'Back to overview')}
-        </button>
+        <div className="dex-ui-inline dex-ui-empty-action" style={{ justifyContent: 'center', flexWrap: 'wrap', gap: 10 }}>
+          <button type="button" className="btn btn-primary" onClick={() => openKontakt('organizer')}>
+            {t('Organizer werden', 'Become an organizer')}
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={() => navigate('start')}>
+            {t('Zur Übersicht', 'Back to overview')}
+          </button>
+        </div>
       </div>
     );
   }
@@ -77,16 +109,62 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
     if (uc) {
       setEditId(uc.id);
       setEntwurf({ ...uc, ressourcen: { ...uc.ressourcen } });
+      setBildVorschau(uc.bildUrl || '');
+      setUrsprungBild(uc.bildUrl || '');
+      // Namen und Adressen sind parallele Listen; fehlt ein Name, gilt die Adresse.
+      setBetreuer(uc.betreuerEmails.map((email, i) => ({ email, name: uc.betreuerNamen[i] && uc.betreuerNamen[i] !== email ? uc.betreuerNamen[i] : '' })));
     } else {
       setEditId(null);
       setEntwurf({ ...LEER, ressourcen: { ...LEER_RESSOURCEN }, reihenfolge: (useCases.length + 1) * 10 });
+      setBildVorschau('');
+      setUrsprungBild('');
+      setBetreuer([]);
     }
+    setBildDatei(null);
+    setBildEntfernt(false);
+    setCropQuelle('');
     setFeinOffen(false);
+  }
+
+  function schliesse(): void {
+    setEntwurf(null);
+    setEditId(null);
+    setBildDatei(null);
+    setCropQuelle('');
   }
 
   const patch = (p: Partial<UseCase>): void => setEntwurf(prev => (prev ? { ...prev, ...p } : prev));
   const patchRes = (p: Partial<UseCase['ressourcen']>): void =>
     setEntwurf(prev => (prev ? { ...prev, ressourcen: { ...LEER_RESSOURCEN, ...prev.ressourcen, ...p } } : prev));
+
+  /** Eine Bilddatei gewählt → erst prüfen, dann zum Zuschnitt. */
+  function waehleDatei(e: React.ChangeEvent<HTMLInputElement>): void {
+    const f = e.target.files && e.target.files[0];
+    // Leeren, damit dieselbe Datei später noch einmal gewählt werden kann.
+    e.target.value = '';
+    if (!f) return;
+    if (!/^image\/(png|jpe?g|webp)$/i.test(f.type)) {
+      showAlert(t('Nimm bitte ein JPEG, PNG oder WebP.', 'Please use a JPEG, PNG or WebP.'), { variant: 'error' });
+      return;
+    }
+    if (f.size > MAX_BILD_MB * 1024 * 1024) {
+      showAlert(t(`Die Datei ist größer als ${MAX_BILD_MB} MB.`, `The file is larger than ${MAX_BILD_MB} MB.`), { variant: 'error' });
+      return;
+    }
+    const r = new FileReader();
+    r.onload = () => setCropQuelle(String(r.result || ''));
+    r.onerror = () => showAlert(t('Die Datei ließ sich nicht lesen.', 'The file could not be read.'), { variant: 'error' });
+    r.readAsDataURL(f);
+  }
+
+  function entferneBild(): void {
+    setBildDatei(null);
+    setBildVorschau('');
+    // Ein noch nicht gespeichertes Bild wegzunehmen ändert nichts am Stand;
+    // nur ein gespeichertes muss beim Speichern wirklich entfernt werden.
+    setBildEntfernt(!!ursprungBild);
+    patch({ bildUrl: '' });
+  }
 
   async function speichern(): Promise<void> {
     if (!entwurf) return;
@@ -99,12 +177,48 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
         '"Live" means callable. The deployment link is missing — add it or set the status to "In progress".'), { variant: 'error' });
       return;
     }
+
+    // Betreuer: Namen und Adressen sind PARALLELE Listen. `mapUseCase` filtert
+    // leere Einträge je Liste einzeln — hätte eine Person einen Namen, aber
+    // keine Adresse, verschöbe sich die Zuordnung aller folgenden. Deshalb
+    // braucht jede Zeile eine Adresse; der Name ist freiwillig (dann gilt die
+    // Adresse). Ein Semikolon würde die Liste zerschneiden — es wird ersetzt.
+    const zeilen = betreuer.filter(b => b.email.trim() || b.name.trim());
+    for (const z of zeilen) {
+      if (!EMAIL_FORMAT.test(z.email.trim())) {
+        showAlert(t(`Für den Betreuer „${z.name || z.email || '?'}" fehlt eine gültige E-Mail-Adresse.`, `The maintainer "${z.name || z.email || '?'}" needs a valid email address.`), { variant: 'error' });
+        return;
+      }
+    }
+    const betreuerEmails = zeilen.map(z => z.email.trim());
+    const betreuerNamen = zeilen.map(z => (z.name.trim() || z.email.trim()).replace(/;/g, ','));
+
+    const bild: BildAenderung = bildDatei
+      ? { art: 'neu', datei: bildDatei }
+      : bildEntfernt ? { art: 'entfernen' } : { art: 'unveraendert' };
+
     setSpeichert(true);
     try {
-      const ok = editId ? await update(editId, entwurf) : !!(await create(entwurf));
-      if (!ok) { showAlert(t('Das Speichern hat nicht geklappt. Versuch es noch einmal.', 'Saving did not work. Please try again.'), { variant: 'error' }); return; }
-      setEntwurf(null);
-      setEditId(null);
+      const res = await saveUseCase(editId, { ...entwurf, betreuerEmails, betreuerNamen }, bild);
+      if (!res.ok) {
+        // Der Grund gehört in die Meldung: „Speichern hat nicht geklappt" lässt
+        // raten, ob es an den Rechten, am Bild oder an der Verbindung lag.
+        showAlert(
+          res.grund === 'bild'
+            ? t('Das Bild ist nicht angekommen — es wurde nichts geändert. Versuch es noch einmal oder wähl ein kleineres Bild.', 'The image did not arrive — nothing was changed. Try again or choose a smaller image.')
+            : res.grund === 'rechte'
+              ? t('Dafür fehlt dir die Berechtigung.', 'You are not allowed to do this.')
+              : t('Das Speichern hat nicht geklappt. Versuch es noch einmal.', 'Saving did not work. Please try again.'),
+          { variant: 'error' },
+        );
+        return;
+      }
+      schliesse();
+      if (res.bildFehler) {
+        // Gespeichert, aber ohne Bild — ehrlich sagen, nicht „erledigt".
+        showAlert(t('Der Use Case ist gespeichert, aber das Bild ist nicht angekommen. Öffne ihn noch einmal und wähl das Bild erneut.',
+          'The use case is saved, but the image did not arrive. Open it again and choose the image again.'), { variant: 'error' });
+      }
     } finally {
       setSpeichert(false);
     }
@@ -112,8 +226,8 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
 
   async function loeschen(uc: UseCase): Promise<void> {
     const ja = await confirmDialog(
-      t(`„${uc.titel}" löschen? Die Kachel verschwindet für alle, und die hinterlegten Links sind weg.`,
-        `Delete "${uc.titel}"? The tile disappears for everyone and the stored links are gone.`),
+      t(`„${uc.titel}" löschen? Die Kachel verschwindet für alle. Ein Admin der Site kann sie 93 Tage lang aus dem Papierkorb zurückholen.`,
+        `Delete "${uc.titel}"? The tile disappears for everyone. A site admin can restore it from the recycle bin for 93 days.`),
       { confirmLabel: t('Löschen', 'Delete'), danger: true },
     );
     if (!ja) return;
@@ -136,7 +250,8 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
     try {
       for (const uc of START_USE_CASES) {
         // eslint-disable-next-line no-await-in-loop
-        if (await create(uc)) angelegt++;
+        const r = await saveUseCase(null, uc, { art: 'unveraendert' });
+        if (r.ok) angelegt++;
       }
     } finally {
       setSpeichert(false);
@@ -156,7 +271,7 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
     { w: 'Geplant', de: 'Geplant', en: 'Planned', hilfe: t('Sichtbar, aber ohne Demo.', 'Visible, but no demo.') },
     { w: 'InArbeit', de: 'In Arbeit', en: 'In progress', hilfe: t('Wird gerade gebaut.', 'Being built.') },
     { w: 'Live', de: 'Live', en: 'Live', hilfe: t('Aufrufbar. Braucht einen Deployment-Link.', 'Callable. Needs a deployment link.') },
-    { w: 'Archiviert', de: 'Archiviert', en: 'Archived', hilfe: t('Nur noch für Kuratoren sichtbar.', 'Visible to curators only.') },
+    { w: 'Archiviert', de: 'Archiviert', en: 'Archived', hilfe: t('Nur noch für Organizer sichtbar.', 'Visible to organizers only.') },
   ];
   const BEWERTUNGEN: Bewertung[] = ['Hoch', 'Mittel', 'Niedrig', 'unbewertet'];
 
@@ -164,12 +279,15 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
     <div>
       <div className="dex-ui-page-head">
         <div>
-          <h1 className="dex-ui-page-head-title">{t('Use Cases pflegen', 'Manage use cases')}</h1>
+          <h1 className="dex-ui-page-head-title">Use Case Studio</h1>
           <p className="dex-ui-page-head-meta">
             {useCases.length} {t('Einträge', 'entries')} · {useCases.filter(u => u.status === 'Live').length} {t('aufrufbar', 'callable')}
           </p>
         </div>
         <div className="dex-ui-page-head-actions">
+          <button type="button" className="dex-ui-textbtn" onClick={() => navigate('protokoll')}>
+            {t('Protokoll', 'Log')}
+          </button>
           <button type="button" className="btn btn-primary" onClick={() => oeffne()}>
             <Plus size={15} /> {t('Neuer Use Case', 'New use case')}
           </button>
@@ -186,13 +304,12 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
           <button type="button" className="dex-ui-empty-action" onClick={() => oeffne()}>
             {t('Ersten Use Case anlegen', 'Create the first use case')}
           </button>
-          {/* Der Startbestand aus dem Konzept-Deck. Nur solange die Liste
-              leer ist — danach waere der Knopf ein Weg, versehentlich
-              Dubletten anzulegen. */}
+          {/* Der Startbestand. Nur solange die Liste leer ist — danach waere
+              der Knopf ein Weg, versehentlich Dubletten anzulegen. */}
           <button type="button" className="dex-ui-textbtn" style={{ marginTop: 10 }} disabled={speichert} onClick={() => { void startbestand(); }}>
             {speichert
               ? t('Wird angelegt …', 'Creating …')
-              : t('Die fünf Use Cases aus dem Konzept anlegen', 'Create the five use cases from the concept')}
+              : t('Die Start-Use-Cases anlegen', 'Create the starter use cases')}
           </button>
         </div>
       ) : (
@@ -227,13 +344,21 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
       {entwurf && (
         <Modal
           open
-          onClose={() => setEntwurf(null)}
+          onClose={schliesse}
+          // Solange der Zuschnitt offen ist, bleibt dieser Dialog stehen: Beide
+          // hören auf Escape, und ein Druck darauf würde sonst BEIDE schließen
+          // und den Entwurf verwerfen.
+          dismissable={!speichert && !cropQuelle}
+          // Kein Schließen per Klick daneben: Wer einen Text markiert und die
+          // Maus einen Millimeter neben der Karte loslässt, verliert sonst
+          // alles Getippte (DEX v30.51).
+          backdropClose={false}
           maxWidth={640}
           ariaLabel={editId ? t('Use Case bearbeiten', 'Edit use case') : t('Neuer Use Case', 'New use case')}
           title={editId ? t('Use Case bearbeiten', 'Edit use case') : t('Neuer Use Case', 'New use case')}
           subtitle={t('Titel und Kurzbeschreibung stehen auf der Kachel.', 'Title and short description appear on the tile.')}
           footer={<>
-            <button type="button" className="btn btn-secondary" onClick={() => setEntwurf(null)}>{t('Abbrechen', 'Cancel')}</button>
+            <button type="button" className="btn btn-secondary" disabled={speichert} onClick={schliesse}>{t('Abbrechen', 'Cancel')}</button>
             <button type="button" className="btn btn-primary" disabled={speichert} onClick={() => { void speichern(); }}>
               {speichert ? t('Speichert …', 'Saving …') : t('Speichern', 'Save')}
             </button>
@@ -276,6 +401,46 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
                 ))}
               </div>
             </div>
+
+            {/* Das Kachelbild. Optional, aber sichtbar: Es ist das, was die
+                Kachel von zwanzig anderen unterscheidet. */}
+            <div className="dex-ui-field">
+              <span className="dex-ui-label">{t('Bild für die Kachel', 'Tile image')} <span className="dex-ui-label-optional">{t('optional', 'optional')}</span></span>
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    display: 'block', width: 176, aspectRatio: '16 / 9', flexShrink: 0, borderRadius: 10,
+                    border: '1px solid var(--dex-gray-200, #e8e8e8)', position: 'relative', overflow: 'hidden',
+                    background: bildVorschau
+                      ? `center/cover no-repeat url("${bildVorschau.replace(/"/g, '%22')}")`
+                      : 'linear-gradient(135deg, rgba(134,188,37,0.16), rgba(134,188,37,0.05))',
+                  }}
+                >
+                  {!bildVorschau && (
+                    <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--dex-green-dark, #6b9a1e)' }}>
+                      <ImageIcon size={26} />
+                    </span>
+                  )}
+                </span>
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                  <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={() => dateiRef.current && dateiRef.current.click()}>
+                    <ImageIcon size={15} /> {bildVorschau ? t('Bild ändern', 'Change image') : t('Bild wählen', 'Choose image')}
+                  </button>
+                  {bildVorschau && (
+                    <button type="button" className="dex-ui-textbtn dex-ui-textbtn--danger" onClick={entferneBild}>
+                      <X size={13} /> {t('Bild entfernen', 'Remove image')}
+                    </button>
+                  )}
+                </span>
+                <input ref={dateiRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={waehleDatei} style={{ display: 'none' }} />
+              </div>
+              <span className="dex-ui-help">
+                {bildDatei
+                  ? t('Das neue Bild wird beim Speichern hochgeladen.', 'The new image is uploaded when you save.')
+                  : t('Wird auf das Format der Kachel (16:9) zugeschnitten. Ohne Bild zeigt die Kachel das Kürzel des Titels.', 'Cropped to the tile format (16:9). Without an image the tile shows the title initials.')}
+              </span>
+            </div>
           </div>
 
           {/* OPTIONAL — die Links */}
@@ -303,11 +468,53 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
           <div>
             <button type="button" className={cx('dex-ui-disclosure', feinOffen && 'is-open')} onClick={() => setFeinOffen(o => !o)} aria-expanded={feinOffen}>
               <span className="dex-ui-disclosure-chevron">›</span>
-              {t('Bewertung, Aufruf und Reihenfolge', 'Assessment, launch and order')}
+              {t('Betreuer, Bewertung, Aufruf und Reihenfolge', 'Maintainers, assessment, launch and order')}
               <span className="dex-ui-disclosure-count">{t('optional', 'optional')}</span>
             </button>
             {feinOffen && (
               <div className="dex-ui-disclosure-body">
+                {/* Wer betreut die Demo? Anzeige und Ansprechpartner — KEINE
+                    Rechte. Ob ein Team seinen Eintrag selbst pflegen darf, ist
+                    eine eigene Entscheidung (Zeilen-Sicherheit auf der Liste). */}
+                <div className="dex-ui-field">
+                  <span className="dex-ui-label">{t('Wer betreut die Demo?', 'Who maintains the demo?')} <span className="dex-ui-label-optional">{t('optional', 'optional')}</span></span>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {betreuer.map((b, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input
+                          type="text"
+                          className="dex-ui-input"
+                          style={{ flex: '1 1 0', minWidth: 0 }}
+                          value={b.name}
+                          placeholder={t('Name (optional)', 'Name (optional)')}
+                          aria-label={t('Name des Betreuers', 'Maintainer name')}
+                          onChange={e => setBetreuer(prev => prev.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                        />
+                        <input
+                          type="email"
+                          className="dex-ui-input"
+                          style={{ flex: '1.4 1 0', minWidth: 0 }}
+                          value={b.email}
+                          placeholder="vorname.nachname@deloitte.de"
+                          aria-label={t('E-Mail-Adresse des Betreuers', 'Maintainer email address')}
+                          onChange={e => setBetreuer(prev => prev.map((x, j) => (j === i ? { ...x, email: e.target.value } : x)))}
+                        />
+                        <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" onClick={() => setBetreuer(prev => prev.filter((_, j) => j !== i))} title={t('Entfernen', 'Remove')} aria-label={t('Betreuer entfernen', 'Remove maintainer')}>
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    ))}
+                    <span>
+                      <button type="button" className="dex-ui-textbtn" onClick={() => setBetreuer(prev => [...prev, { name: '', email: '' }])}>
+                        <Plus size={14} /> {t('Betreuer hinzufügen', 'Add maintainer')}
+                      </button>
+                    </span>
+                  </div>
+                  <span className="dex-ui-help">
+                    {t('Sie stehen auf der Detailseite als Ansprechpartner. Dadurch bekommen sie keine zusätzlichen Rechte.', 'They appear on the detail page as contacts. This does not give them any extra rights.')}
+                  </span>
+                </div>
+
                 {([
                   { k: 'salesRelevanz' as const, label: t('Sales-Relevanz', 'Sales relevance') },
                   { k: 'machbarkeit' as const, label: t('Machbarkeit', 'Feasibility') },
@@ -342,12 +549,6 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
                 </div>
 
                 <label className="dex-ui-field">
-                  <span className="dex-ui-label">{t('Bild für die Kachel (URL)', 'Tile image (URL)')} <span className="dex-ui-label-optional">{t('optional', 'optional')}</span></span>
-                  <input id="uc-bild" type="url" className="dex-ui-input" value={entwurf.bildUrl || ''} onChange={e => patch({ bildUrl: e.target.value })} placeholder="https://…" />
-                  <span className="dex-ui-help">{t('Ohne Bild zeigt die Kachel das Kürzel des Titels.', 'Without an image the tile shows the title initials.')}</span>
-                </label>
-
-                <label className="dex-ui-field">
                   <span className="dex-ui-label">{t('Reihenfolge', 'Order')}</span>
                   <input id="uc-reihenfolge" type="number" className="dex-ui-input" value={entwurf.reihenfolge ?? 100} onChange={e => patch({ reihenfolge: parseInt(e.target.value, 10) || 0 })} />
                   <span className="dex-ui-help">{t('Kleiner steht weiter vorne.', 'Lower numbers come first.')}</span>
@@ -363,6 +564,18 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
           </div>
         </Modal>
       )}
+
+      <ImageCropModal
+        open={!!cropQuelle}
+        src={cropQuelle}
+        onClose={() => setCropQuelle('')}
+        onApply={(datei, vorschau) => {
+          setBildDatei(datei);
+          setBildVorschau(vorschau);
+          setBildEntfernt(false);
+          setCropQuelle('');
+        }}
+      />
     </div>
   );
 }

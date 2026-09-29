@@ -2,35 +2,46 @@
  * Die Anwendung.
  *
  * Aufbau wie `DexEventPlatform.tsx`: Die Provider schachteln von aussen nach
- * innen (Sprache → Dialoge → Rollen → Navigation → Daten), und AppContent
- * rendert INNERHALB davon — nur so kennt es Sprache und Rolle.
+ * innen (Sprache → Dialoge → Nutzer → Rollen → Navigation → Daten → Suche →
+ * Hilfe), und AppContent rendert INNERHALB davon — nur so kennt es Sprache,
+ * Person und Rolle.
  *
  * Die Seiten werden per `React.lazy` nachgeladen. Der Platzhalter dabei ist
  * bewusst kein „…": In DEX standen drei Punkte fuer den groessten Chunk, und
  * auf langsamer Leitung war das von „haengt" nicht zu unterscheiden
  * (v31.9.5). Hier steht ein Ring, der Name des Bereichs und der Hinweis,
  * dass das einmalig passiert.
+ *
+ * v1.3: Die Kopfzeile ist eine eigene Komponente (`Header`, Vorbild DEX), und
+ * zwischen Landing Page und Kachelwand liegt die Start-Übersicht
+ * (`StartPage`). Seiten-IDs: landing → start → usecases → detail; dazu
+ * studio, rollen, protokoll.
  */
 
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import styles from './AiUseCasePlatform.module.scss';
-import { ensureDexUiStyles, cx } from './dexUi';
+import { ensureDexUiStyles } from './dexUi';
+import Header from './Header';
 import StartPage from './StartPage';
+import UseCasesPage from './UseCasesPage';
 import LandingPage from './LandingPage';
-import { Settings, Users } from './Icons';
 import { LanguageProvider, useLanguage } from '../context/LanguageContext';
 import { DialogProvider } from '../context/DialogContext';
+import { UserProvider } from '../context/UserContext';
 import { RoleProvider, useRoles } from '../context/RoleContext';
 import { NavigationProvider, useNavigation } from '../context/NavigationContext';
 import { UseCaseProvider } from '../context/UseCaseContext';
+import { SucheProvider } from '../context/SucheContext';
+import { HilfeProvider } from '../context/HilfeContext';
 import { APP_NAME } from '../constants';
 import { APP_VERSION } from '../version';
-import { DELOITTE_LOGO_HEADER } from '../data/brandLogos';
+import { rolleLabel } from '../utils/rollen';
 
 const UseCaseDetailPage = React.lazy(() => import('./UseCaseDetailPage'));
 const ManagePage = React.lazy(() => import('./ManagePage'));
 const RolePage = React.lazy(() => import('./RolePage'));
+const LogPage = React.lazy(() => import('./LogPage'));
 
 export interface IAiUseCasePlatformProps {
   context: WebPartContext;
@@ -104,16 +115,18 @@ function useShellHeight(): React.RefObject<HTMLDivElement> {
 
 function AppContent(): React.ReactElement {
   ensureDexUiStyles();
-  const { t, isDe, setLocale } = useLanguage();
-  const { currentPage, currentUseCaseId, navigate } = useNavigation();
-  const { isAdmin, isKurator, isRolesLoading, rolesReadStatus, currentUserRole, previewAsUser, setPreviewAsUser } = useRoles();
+  const { t, isDe } = useLanguage();
+  const { currentPage, currentUseCaseId } = useNavigation();
+  const { isRolesLoading, rolesReadStatus, currentUserRole } = useRoles();
   const layoutRef = useShellHeight();
 
   const seitenName =
     currentPage === 'detail' ? t('Use Case', 'Use case')
-      : currentPage === 'verwaltung' ? t('Verwaltung', 'Management')
-        : currentPage === 'rollen' ? t('Rollen', 'Roles')
-          : APP_NAME;
+      : currentPage === 'usecases' ? 'Use Cases'
+        : currentPage === 'studio' ? 'Use Case Studio'
+          : currentPage === 'rollen' ? t('Rollenverwaltung', 'Role management')
+            : currentPage === 'protokoll' ? t('Protokoll', 'Log')
+              : APP_NAME;
   const istLanding = currentPage === 'landing';
 
   // v1.2: Der Seitenwechsel muss den Scroller zuruecksetzen, der WIRKLICH
@@ -126,108 +139,34 @@ function AppContent(): React.ReactElement {
     if (el) el.scrollTop = 0;
   }, [currentPage, currentUseCaseId, layoutRef]);
 
-  const banner = (
-    <>
-      {/* Der Fall, den DEX teuer gelernt hat: Die Person steht in der
-          Rollenliste, darf sie aber nicht lesen — dann ist ihre Rolle
-          wirkungslos, und das muss dastehen statt still zu wirken. */}
-      {!isRolesLoading && rolesReadStatus === 'forbidden' && (
-        <div className="dex-ui-callout dex-ui-callout--warn" role="status" style={{ margin: '12px 24px 0' }}>
-          <span>
-            {t('Deine Rolle konnte nicht geprüft werden — dir fehlt das Leserecht auf der Rollenliste. Falls du eigentlich Kurator oder Admin bist: Ein Admin muss dir das Leserecht nachsetzen.',
-              'Your role could not be checked — you lack read access to the roles list. If you are meant to be a curator or admin, an admin has to grant it.')}
-          </span>
-        </div>
-      )}
-      {previewAsUser && (
-        <div className="dex-ui-callout dex-ui-callout--info" role="status" style={{ margin: '12px 24px 0' }}>
-          <span>
-            {t('Du siehst die Plattform gerade als normaler Nutzer.', 'You are viewing the platform as a regular user.')}{' '}
-            <button type="button" className="dex-ui-textbtn" onClick={() => setPreviewAsUser(false)}>
-              {t('Vorschau beenden', 'End preview')}
-            </button>
-          </span>
-        </div>
-      )}
-    </>
-  );
-
   const seite = (
     <React.Suspense fallback={<LazyFallback name={seitenName} />}>
       {currentPage === 'landing' && <LandingPage />}
       {currentPage === 'start' && <StartPage />}
+      {currentPage === 'usecases' && <UseCasesPage />}
       {currentPage === 'detail' && <UseCaseDetailPage useCaseId={currentUseCaseId} />}
-      {currentPage === 'verwaltung' && <ManagePage editId={currentUseCaseId} />}
+      {currentPage === 'studio' && <ManagePage editId={currentUseCaseId} />}
       {currentPage === 'rollen' && <RolePage />}
+      {currentPage === 'protokoll' && <LogPage useCaseId={currentUseCaseId} />}
     </React.Suspense>
   );
 
   return (
     <div className={styles.dexApp} lang={isDe ? 'de-DE' : 'en-GB'}>
       <div className="app-layout" ref={layoutRef}>
-        <header className="header">
-          {/* Links. Auf der Landing Page das Logo, sonst der Zurueck-Knopf mit
-              dem Seitennamen — genau die Verzweigung, die DEX an `isLanding`
-              haengt. Zwei Dinge an derselben Stelle, nie beide. */}
-          <div className="header-left">
-            {istLanding ? (
-              <button
-                type="button"
-                className="header-logo dex-ui-btn-reset"
-                onClick={() => navigate('landing')}
-                aria-label={t('Zum Startbildschirm', 'Back to the start screen')}
-                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-              >
-                <img src={DELOITTE_LOGO_HEADER} alt="Deloitte" style={{ height: 30, width: 'auto', display: 'block' }} />
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="back-btn"
-                  onClick={() => navigate(currentPage === 'start' ? 'landing' : 'start')}
-                  aria-label={t('Zurück', 'Back')}
-                  // Von rund auf Pille: Ein Pfeil ohne Wort ist auf dem Handy
-                  // nicht als „zurueck" lesbar. Der Inline-Stil ueberschreibt
-                  // `border-radius:50%` und die feste Breite aus dem SCSS.
-                  style={{ width: 'auto', borderRadius: 999, padding: '0 16px 0 10px', gap: 6, fontSize: '0.85rem' }}
-                >
-                  <span aria-hidden="true">‹</span>
-                  {t('Zurück', 'Back')}
-                </button>
-                <span
-                  className="header-title"
-                  // Ohne Kuerzung bricht der Titel bei 1280 px auf drei Zeilen
-                  // und ragt aus dem 64-px-Kasten — in DEX gemessen
-                  // (scrollHeight 68 bei clientHeight 63).
-                  style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 'min(42vw, 420px)' }}
-                >{seitenName}</span>
-              </>
-            )}
+        <Header />
+
+        {/* Der Fall, den DEX teuer gelernt hat: Die Person steht in der
+            Rollenliste, darf sie aber nicht lesen — dann ist ihre Rolle
+            wirkungslos, und das muss dastehen statt still zu wirken. */}
+        {!isRolesLoading && rolesReadStatus === 'forbidden' && (
+          <div className="dex-ui-callout dex-ui-callout--warn" role="status" style={{ margin: '12px 24px 0' }}>
+            <span>
+              {t('Deine Rolle konnte nicht geprüft werden — dir fehlt das Leserecht auf der Rollenliste. Falls du eigentlich Use Case Organizer oder Admin bist: Ein Admin muss dir das Leserecht nachsetzen.',
+                'Your role could not be checked — you lack read access to the roles list. If you are meant to be a Use Case Organizer or admin, an admin has to grant it.')}
+            </span>
           </div>
-
-          <div className="header-right">
-            {/* Sprache. Eine Quelle fuer die ganze App — nicht die
-                Browsersprache, die in DEX zweimal auseinandergelaufen ist. */}
-            <div className="dex-ui-tabs" role="group" aria-label={t('Sprache', 'Language')}>
-              <button type="button" className={cx('dex-ui-tab', isDe && 'is-active')} onClick={() => setLocale('de')}>DE</button>
-              <button type="button" className={cx('dex-ui-tab', !isDe && 'is-active')} onClick={() => setLocale('en')}>EN</button>
-            </div>
-
-            {isKurator && (
-              <button type="button" className="header-icon-btn" onClick={() => navigate('verwaltung')} title={t('Use Cases pflegen', 'Manage use cases')} aria-label={t('Use Cases pflegen', 'Manage use cases')}>
-                <Settings size={18} />
-              </button>
-            )}
-            {isAdmin && (
-              <button type="button" className="header-icon-btn" onClick={() => navigate('rollen')} title={t('Rollen verwalten', 'Manage roles')} aria-label={t('Rollen verwalten', 'Manage roles')}>
-                <Users size={18} />
-              </button>
-            )}
-          </div>
-        </header>
-
-        {banner}
+        )}
 
         {/* `display:flex` und `flex-direction:column` stehen INLINE, nicht im
             SCSS — und sie sind nicht kosmetisch: `.page-container` hat
@@ -246,19 +185,13 @@ function AppContent(): React.ReactElement {
         </main>
 
         {/* Dritter Flex-Sohn, ausserhalb des Scrollers: `flex-shrink: 0`,
-            sonst quetscht ihn `.main-content` bei langen Seiten weg. */}
+            sonst quetscht ihn `.main-content` bei langen Seiten weg.
+            Die Vorschau „als Nutzer ansehen" liegt seit v1.3 im Menue der
+            Kopfzeile (wie in DEX), nicht mehr hier — ein Weg, nicht zwei. */}
         <footer style={{ padding: '8px 16px', textAlign: 'center', flexShrink: 0, borderTop: '1px solid var(--dex-gray-200)', background: 'var(--dex-white)' }}>
           <span className="dex-ui-muted" style={{ fontSize: '0.72rem' }}>
             {APP_NAME} v{APP_VERSION}
-            {!isRolesLoading && ` · ${t('Deine Rolle', 'Your role')}: ${currentUserRole}`}
-            {isKurator && !previewAsUser && (
-              <>
-                {' · '}
-                <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" onClick={() => setPreviewAsUser(true)}>
-                  {t('Als Nutzer ansehen', 'View as user')}
-                </button>
-              </>
-            )}
+            {!isRolesLoading && ` · ${t('Deine Rolle', 'Your role')}: ${rolleLabel(currentUserRole)}`}
           </span>
         </footer>
       </div>
@@ -269,20 +202,27 @@ function AppContent(): React.ReactElement {
 export default function AiUseCasePlatform(props: IAiUseCasePlatformProps): React.ReactElement {
   // v1.1: Der SPFx-Context als Fenster-Merker — dasselbe Muster wie
   // `__dexSpfxContext` in DEX. Komponenten, die tief im Baum sitzen und den
-  // Context nur einmal brauchen (die Begruessung der Landing Page), holen ihn
-  // sich hier, statt ihn durch fuenf Ebenen durchzureichen.
+  // Context nur einmal brauchen, holen ihn sich hier, statt ihn durch fuenf
+  // Ebenen durchzureichen. (Seit v1.3 liest die Begruessung den Namen ueber
+  // `UserContext`; der Merker bleibt fuer kuenftige Stellen.)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).__aiucSpfxContext = props.context;
   return (
     <LanguageProvider>
       <DialogProvider>
-        <RoleProvider context={props.context}>
-          <NavigationProvider>
-            <UseCaseProvider context={props.context}>
-              <AppContent />
-            </UseCaseProvider>
-          </NavigationProvider>
-        </RoleProvider>
+        <UserProvider context={props.context}>
+          <RoleProvider context={props.context}>
+            <NavigationProvider>
+              <UseCaseProvider context={props.context}>
+                <SucheProvider>
+                  <HilfeProvider>
+                    <AppContent />
+                  </HilfeProvider>
+                </SucheProvider>
+              </UseCaseProvider>
+            </NavigationProvider>
+          </RoleProvider>
+        </UserProvider>
       </DialogProvider>
     </LanguageProvider>
   );

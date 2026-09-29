@@ -11,9 +11,10 @@
 
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
-import { UseCase } from '../types';
+import { UseCase, BildAenderung, SpeicherErgebnis } from '../types';
 import { useRoles } from './RoleContext';
 import { START_USE_CASES } from '../data/startUseCases';
+import { geaendertText } from '../utils/aenderungen';
 
 export type LadeStatus = 'laedt' | 'ok' | 'fehler';
 
@@ -30,6 +31,18 @@ interface UseCaseContextType {
   create: (uc: Partial<UseCase>) => Promise<number | null>;
   update: (id: number, uc: Partial<UseCase>) => Promise<boolean>;
   remove: (id: number) => Promise<boolean>;
+  /**
+   * v1.3: Einen Use Case samt Kachelbild speichern (`id === null` = neu).
+   *
+   * Die Reihenfolge steht HIER und nirgends sonst, weil sie das Bild schützt:
+   * erst das neue Bild hochladen, dann die Zeile speichern, und das alte Bild
+   * erst NACH erfolgreichem Speichern entfernen. Bricht irgendein Schritt ab,
+   * bleibt der alte Stand vollständig erhalten — „erst anlegen, dann löschen"
+   * (DEX v30.67). Beim Anlegen gibt es die Zeile erst, wenn sie ein Bild
+   * aufnehmen kann; scheitert der Upload, ist der Use Case trotzdem da und
+   * `bildFehler` sagt es.
+   */
+  saveUseCase: (id: number | null, uc: Partial<UseCase>, bild: BildAenderung) => Promise<SpeicherErgebnis>;
   /** Alle vorkommenden Bereiche, alphabetisch — fuer den Filter. */
   bereiche: string[];
   /**
@@ -49,7 +62,7 @@ interface UseCaseContextType {
 const UseCaseContext = React.createContext<UseCaseContextType | undefined>(undefined);
 
 export function UseCaseProvider(props: { context: WebPartContext; children: React.ReactNode }): React.ReactElement {
-  const { service, isKurator } = useRoles();
+  const { service, isOrganizer } = useRoles();
   const [useCases, setUseCases] = React.useState<UseCase[]>([]);
   const [ladeStatus, setLadeStatus] = React.useState<LadeStatus>('laedt');
   const [letzterStatus, setLetzterStatus] = React.useState(0);
@@ -120,27 +133,92 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
   }, []);
 
   const create = React.useCallback(async (uc: Partial<UseCase>): Promise<number | null> => {
-    if (!isKurator) return null;
+    if (!isOrganizer) return null;
     const id = await service.createUseCase(uc);
     if (id) {
       await service.log(id, 'angelegt', uc.titel || '');
       await reload();
     }
     return id;
-  }, [service, reload, isKurator]);
+  }, [service, reload, isOrganizer]);
 
   const update = React.useCallback(async (id: number, uc: Partial<UseCase>): Promise<boolean> => {
-    if (!isKurator) return false;
+    if (!isOrganizer) return false;
+    const alt = useCases.filter(u => u.id === id)[0];
     const ok = await service.updateUseCase(id, uc);
     if (ok) {
-      await service.log(id, 'geaendert', Object.keys(uc).join(', '));
+      // Was sich WIRKLICH geändert hat (v1.3) — vorher stand hier bei jedem
+      // Speichern die Liste aller Schlüssel. Keine Änderung, keine Zeile.
+      const text = geaendertText(alt, uc);
+      if (text) await service.log(id, 'geaendert', text);
       await reload();
     }
     return ok;
-  }, [service, reload, isKurator]);
+  }, [service, reload, isOrganizer, useCases]);
+
+  const saveUseCase = React.useCallback(async (
+    id: number | null,
+    uc: Partial<UseCase>,
+    bild: BildAenderung,
+  ): Promise<SpeicherErgebnis> => {
+    if (!isOrganizer) return { ok: false, id, bildFehler: false, grund: 'rechte' };
+
+    // --- Neu anlegen ---------------------------------------------------
+    if (id === null) {
+      // Ohne Bild-URL anlegen: Das Bild braucht die Zeile (der Anhang hängt an
+      // ihr) und kommt danach.
+      const neueId = await service.createUseCase({ ...uc, bildUrl: '' });
+      if (!neueId) return { ok: false, id: null, bildFehler: false, grund: 'speichern' };
+      await service.log(neueId, 'angelegt', uc.titel || '');
+      let bildFehler = false;
+      if (bild.art === 'neu') {
+        const hoch = await service.uploadBild(neueId, bild.datei);
+        if (hoch && await service.updateUseCase(neueId, { bildUrl: hoch.url })) {
+          await service.log(neueId, 'geaendert', 'Bild');
+        } else {
+          bildFehler = true;
+          // Ein Anhang ohne Verweis darauf ist Ballast — wegräumen.
+          if (hoch) await service.entferneBilder(neueId, { nur: hoch.name });
+        }
+      }
+      await reload();
+      return { ok: true, id: neueId, bildFehler };
+    }
+
+    // --- Ändern --------------------------------------------------------
+    const alt = useCases.filter(u => u.id === id)[0];
+
+    // 1. Das neue Bild ZUERST. Scheitert es, ist noch nichts verändert.
+    let neuesBild: { url: string; name: string } | null = null;
+    if (bild.art === 'neu') {
+      neuesBild = await service.uploadBild(id, bild.datei);
+      if (!neuesBild) return { ok: false, id, bildFehler: true, grund: 'bild' };
+    }
+
+    // 2. Die Zeile speichern — mit der neuen Adresse (oder leer beim Entfernen).
+    const daten: Partial<UseCase> = { ...uc };
+    if (neuesBild) daten.bildUrl = neuesBild.url;
+    else if (bild.art === 'entfernen') daten.bildUrl = '';
+    const ok = await service.updateUseCase(id, daten);
+    if (!ok) {
+      // Rückbau: das gerade hochgeladene Bild gehört jetzt niemandem.
+      if (neuesBild) await service.entferneBilder(id, { nur: neuesBild.name });
+      return { ok: false, id, bildFehler: false, grund: 'speichern' };
+    }
+
+    const text = geaendertText(alt, daten);
+    if (text) await service.log(id, 'geaendert', text);
+
+    // 3. Erst jetzt das alte Bild — der unumkehrbare Schritt kommt zuletzt.
+    if (bild.art !== 'unveraendert') {
+      await service.entferneBilder(id, neuesBild ? { behalte: neuesBild.name } : {});
+    }
+    await reload();
+    return { ok: true, id, bildFehler: false };
+  }, [service, reload, isOrganizer, useCases]);
 
   const remove = React.useCallback(async (id: number): Promise<boolean> => {
-    if (!isKurator) return false;
+    if (!isOrganizer) return false;
     // Protokoll VOR dem Loeschen — danach ist der Titel weg, und das
     // Protokoll waere die Nebenbuchhaltung, die nichts mehr belegt.
     // (Dieselbe Reihenfolge wie in DEX: pruefbare Nebenbuchhaltung zuerst,
@@ -149,8 +227,12 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
     await service.log(id, 'geloescht', uc ? uc.titel : `Id ${id}`);
     const ok = await service.deleteUseCase(id);
     if (ok) await reload();
+    // Das Protokoll steht VOR dem Löschen und behauptet „gelöscht". Schlägt
+    // das Löschen fehl, muss die Gegenbuchung dastehen — sonst sagt das
+    // Protokoll etwas, das nicht stimmt.
+    else await service.log(id, 'loeschen-fehlgeschlagen', uc ? uc.titel : `Id ${id}`);
     return ok;
-  }, [service, reload, useCases, isKurator]);
+  }, [service, reload, useCases, isOrganizer]);
 
   const seedStartUseCases = React.useCallback(async (): Promise<number> => {
     let angelegt = 0;
@@ -174,8 +256,8 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
 
   const value = React.useMemo<UseCaseContextType>(() => ({
     useCases, ladeStatus, letzterStatus, letzterFehler, fehlendeSpalten: service.fehlendeSpalten,
-    reload, create, update, remove, bereiche, seedStartUseCases,
-  }), [useCases, ladeStatus, letzterStatus, letzterFehler, reload, create, update, remove, bereiche, seedStartUseCases, service]);
+    reload, create, update, remove, saveUseCase, bereiche, seedStartUseCases,
+  }), [useCases, ladeStatus, letzterStatus, letzterFehler, reload, create, update, remove, saveUseCase, bereiche, seedStartUseCases, service]);
 
   return React.createElement(UseCaseContext.Provider, { value }, props.children);
 }

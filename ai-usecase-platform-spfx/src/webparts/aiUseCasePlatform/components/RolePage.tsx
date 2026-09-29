@@ -16,8 +16,9 @@ import { useLanguage } from '../context/LanguageContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useDialog } from '../context/DialogContext';
 import { UserRole } from '../types';
+import { ROLLEN_ALLE, rolleLabel } from '../utils/rollen';
 
-const ROLLEN: UserRole[] = ['Admin', 'Kurator', 'User'];
+const ROLLEN: UserRole[] = ROLLEN_ALLE;
 
 export default function RolePage(): React.ReactElement {
   ensureDexUiStyles();
@@ -28,7 +29,7 @@ export default function RolePage(): React.ReactElement {
 
   const [email, setEmail] = React.useState('');
   const [name, setName] = React.useState('');
-  const [rolle, setRolle] = React.useState<UserRole>('Kurator');
+  const [rolle, setRolle] = React.useState<UserRole>('Organizer');
   const [laeuft, setLaeuft] = React.useState(false);
 
   if (!isAdmin) {
@@ -131,7 +132,7 @@ export default function RolePage(): React.ReactElement {
           <label className="dex-ui-field">
             <span className="dex-ui-label">{t('Rolle', 'Role')}</span>
             <select id="rolle-wahl" className="dex-ui-select" value={rolle} onChange={e => setRolle(e.target.value as UserRole)}>
-              {ROLLEN.map(r => <option key={r} value={r}>{r}</option>)}
+              {ROLLEN.map(r => <option key={r} value={r}>{rolleLabel(r)}</option>)}
             </select>
           </label>
         </div>
@@ -157,7 +158,7 @@ export default function RolePage(): React.ReactElement {
                 <span className="dex-ui-row-main">
                   <span className="dex-ui-row-title dex-ui-row-title--wrap">
                     {r.userName || r.userEmail}
-                    <span className={cx('dex-ui-pill', 'dex-ui-pill--sm', r.role === 'Admin' ? 'dex-ui-pill--orange' : r.role === 'Kurator' ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}>{r.role}</span>
+                    <span className={cx('dex-ui-pill', 'dex-ui-pill--sm', r.role === 'Admin' ? 'dex-ui-pill--orange' : r.role === 'Organizer' ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}>{rolleLabel(r.role, true)}</span>
                   </span>
                   <span className="dex-ui-row-sub">{r.userEmail}{r.assignedBy ? ` · ${t('vergeben von', 'assigned by')} ${r.assignedBy}` : ''}</span>
                 </span>
@@ -178,7 +179,7 @@ export default function RolePage(): React.ReactElement {
                       );
                     }}
                   >
-                    {ROLLEN.map(x => <option key={x} value={x}>{x}</option>)}
+                    {ROLLEN.map(x => <option key={x} value={x}>{rolleLabel(x)}</option>)}
                   </select>
                   <button type="button" className="dex-ui-iconbtn dex-ui-iconbtn--danger" disabled={laeuft} onClick={() => { void entfernen(r.id, r.userEmail); }} title={t('Entfernen', 'Remove')} aria-label={t('Entfernen', 'Remove')}>
                     <Trash2 size={15} />
