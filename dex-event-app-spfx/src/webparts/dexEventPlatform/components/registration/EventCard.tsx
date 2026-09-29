@@ -7,7 +7,7 @@ import { DEX_ORB_PNG } from '../../data/brandLogos';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { formatAllDayPeriod } from '../../utils/eventFormat';
 import { formatDateRange } from './regHelpers';
-import { Calendar, Mail, Pin, Users } from '../Icons';
+import { Calendar, ExternalLink, Mail, Pin, Users } from '../Icons';
 import OrganizerList from '../OrganizerList';
 import { formatOrganizerList } from '../../context/EventContext';
 import { Locale } from '../../context/LanguageContext';
@@ -42,6 +42,9 @@ export interface EventCardProps {
 }
 export const EventCard: React.FC<EventCardProps> = (p) => {
   const { cachedImage, cachedZoomImage, circleSize, currentUser, event, heroImgUrl, imgAspectReady, imgCircleNotch, imgHovered, imgSlotH, imgSlotW, imgZoomed, isMobile, locale, setImgHovered, setImgZoomed, showOrbPlaceholder, usesMailImage, dexIntro } = p;
+  // v32.18: Englische Beschreibung, wenn die Seite auf Englisch steht und es
+  // eine gibt — sonst die deutsche für alle.
+  const beschreibung = (locale === 'en' && (event.descriptionEn || '').trim()) ? (event.descriptionEn || '') : (event.description || '');
   return (
         <div
           className="registration-event"
@@ -299,6 +302,14 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
                   // v26.82: Pin-Icon nur bei echter Mehrzeiler-Adresse oben
                   // ausrichten; bei einer Zeile (inkl. „Name, Stadt") zentrieren.
                   const multiLine = hasAddr && !nameCityInline;
+                  // v32.18: Google-Maps-Link zum Anklicken (Nutzer-Ansage
+                  // 29.09.2026: immer integrieren). Suche über Ort + Adresse,
+                  // damit auch ein Name ohne Straße („Le Méridien, Köln") trifft.
+                  // Rein virtuelle Orte (Teams/Online, Link) bekommen keinen.
+                  const ortName = (event.location || '').trim();
+                  const nurVirtuell = !hasAddr && (/^https?:\/\//i.test(ortName) || /\b(online|teams|virtuell|virtual|webex|zoom)\b/i.test(ortName));
+                  const mapsQuery = [ortName, addr ? [addr.street, addr.houseNo].filter(Boolean).join(' ') : '', cityLine].filter(Boolean).join(', ');
+                  const mapsUrl = (!nurVirtuell && mapsQuery) ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}` : '';
                   return (
                   <span className="dex-ui-meta-item" style={multiLine ? { alignItems: 'flex-start' } : undefined}>
                     <Pin size={15} strokeWidth={1.8} />
@@ -323,6 +334,15 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
                               </span>
                             </>
                           )}
+                        </>
+                      )}
+                      {mapsUrl && (
+                        <>
+                          <br />
+                          <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="dex-ui-textlink"
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.82rem', marginTop: 2 }}>
+                            {locale === 'de' ? 'In Google Maps öffnen' : 'Open in Google Maps'} <ExternalLink size={12} />
+                          </a>
                         </>
                       )}
                     </span>
@@ -397,7 +417,7 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
             </div>
           </div>
           {/* v11.91: Beschreibung immer ausgeklappt — kein Toggle mehr. */}
-          {event.description && (
+          {beschreibung && (
             // v9.25: Beschreibung darf HTML enthalten (RichText-Editor im
             // EventCreation/Edit). Wir rendern als HTML statt Plain-Text,
             // damit Formatierung wie Listen, Links, Fett etc. funktioniert.
@@ -430,7 +450,7 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
                   // bietet die Variable fuer die MAIL-Texte an; in der
                   // Beschreibung ergibt sie keinen Sinn.
                   const raw = ((): string => {
-                    const src = event.description || '';
+                    const src = beschreibung;
                     if (src.indexOf('{{') < 0) return src;
                     const orgNames = (event.organizers || [])
                       .reduce<string[]>((acc, o) => [...acc, ...o.split(';')], [])

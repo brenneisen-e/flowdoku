@@ -14,7 +14,8 @@ import { useDialog } from '../context/DialogContext';
 import { DELOITTE_LOGO_HEADER } from '../data/brandLogos';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
-import { ChevronLeft, Check, Book, RefreshCw, Info, Users, Menu } from './Icons';
+import { ChevronLeft, Check, Book, RefreshCw, Info, Users, Menu, GraduationCap } from './Icons';
+import { setDemoEinfuehrung, useDemoEinfuehrung } from '../utils/demoIntro';
 import { Icon } from '@fluentui/react/lib/Icon';
 import ImpersonateModal from './ImpersonateModal';
 import LandingInfoModal from './LandingInfoModal';
@@ -35,6 +36,8 @@ export default function Header(): React.ReactElement {
   const [saveBusy, setSaveBusy] = React.useState<boolean>(isSaveInProgress());
   React.useEffect(() => subscribeSaveInProgress(setSaveBusy), []);
   const { currentPage, navigate, goBack, selectedEventId } = useNavigation();
+  // v32.18: Admin-Demo des Einführungs-Hinweises (utils/demoIntro).
+  const demoEinfuehrung = useDemoEinfuehrung();
   const { currentUser, photoUrl } = useCurrentUser();
   const { currentUserRole, originalIsAdmin, previewAsUser, setPreviewAsUser } = useRoles();
   // v30.43: Hover für den Ansicht-Wechselschalter. Inline-Styles können kein
@@ -434,7 +437,7 @@ export default function Header(): React.ReactElement {
                   { key: 'user' as const, active: previewAsUser, title: locale === 'de' ? 'User-Ansicht' : 'User view', sub: locale === 'de' ? 'So sehen Teilnehmer die App — reine Ansicht, anmelden geht darin nicht.' : 'How attendees see the app — view only, no registering.' },
                 ]).map(it => (
                   <button key={it.key} type="button" role="menuitemradio" aria-checked={it.active} className={cx('dex-ui-menuitem', it.active && 'is-active')}
-                    onClick={() => { setPreviewAsUser(it.key === 'user'); setDemoOpen(false); }}>
+                    onClick={() => { setPreviewAsUser(it.key === 'user'); if (it.key === 'org') setDemoEinfuehrung(false); setDemoOpen(false); }}>
                     <span style={{ width: 16, flexShrink: 0, color: 'var(--dex-green-dark, #4a7c1f)', paddingTop: 2 }}>{it.active && <Check size={14} />}</span>
                     <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                       <span style={{ fontSize: '0.86rem', fontWeight: it.active ? 700 : 600, color: 'var(--dex-gray-800)' }}>{it.title}</span>
@@ -442,6 +445,22 @@ export default function Header(): React.ReactElement {
                     </span>
                   </button>
                 ))}
+                {/* v32.18: Startseite so, wie sie Leute sehen, denen DEX die
+                    Einführungsveranstaltung anbietet (User-Ansicht + Hinweis). */}
+                {originalIsAdmin && (
+                  <button type="button" role="menuitemcheckbox" aria-checked={demoEinfuehrung} className={cx('dex-ui-menuitem', demoEinfuehrung && 'is-active')}
+                    onClick={() => {
+                      setDemoOpen(false);
+                      if (demoEinfuehrung) { setDemoEinfuehrung(false); setPreviewAsUser(false); return; }
+                      setPreviewAsUser(true); setDemoEinfuehrung(true); navigate('landing');
+                    }}>
+                    <span style={{ width: 16, flexShrink: 0, color: demoEinfuehrung ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)', paddingTop: 2 }}>{demoEinfuehrung ? <Check size={14} /> : <GraduationCap size={16} />}</span>
+                    <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <span style={{ fontSize: '0.86rem', fontWeight: demoEinfuehrung ? 700 : 600, color: 'var(--dex-gray-800)' }}>{locale === 'de' ? 'Einführungsveranstaltung anzeigen' : 'Show intro session notice'}</span>
+                      <span style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500)', lineHeight: 1.4 }}>{locale === 'de' ? 'Startseite mit dem Hinweis auf die DEX-Einführung, wie ihn neue Nutzer sehen.' : 'The start page with the DEX intro notice, as new users see it.'}</span>
+                    </span>
+                  </button>
+                )}
                 {originalIsAdmin && (
                   <button type="button" role="menuitem" className="dex-ui-menuitem"
                     onClick={() => { setDemoOpen(false); setShowImpersonate(true); }}>

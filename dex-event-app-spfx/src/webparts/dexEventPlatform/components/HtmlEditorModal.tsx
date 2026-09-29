@@ -140,6 +140,10 @@ export interface HtmlEditorModalProps {
   /** v11.40: Optionaler React-Knoten oberhalb von Subject/Überschrift im
    *  Editor — z.B. für eine Ziel-Auswahl im Einladungsmail-Modal. */
   headerExtra?: React.ReactNode;
+  /** v32.18: Wechselt dieser Schlüssel bei offenem Editor (z. B. Sprach-
+   *  Reiter DE/EN), wird `value` neu in den Editor geladen — sonst synct er
+   *  nur beim Öffnen. */
+  syncKey?: string;
   /** v28.7: Vorlagen-Chips über dem Body-Editor (z.B. Beschreibungs-
    *  Vorschläge aus dem Wizard). Klick ersetzt den Editor-Inhalt — mit
    *  Rückfrage, wenn schon Text drinsteht. */
@@ -278,7 +282,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     logoBase64 = '', imageBase64 = '',
     extraAction,
     backAction,
-    headerExtra,
+    headerExtra, syncKey,
     bodyTemplates, bodyTemplatesLabel,
     previewToLine, previewSubjectLine,
   } = props;
@@ -346,7 +350,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, syncKey]);
 
   // v29.42: Auswahl über `selectionchange` am Dokument mitschreiben statt nur
   // über mouseup/keyup IM Editor.

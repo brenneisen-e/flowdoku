@@ -13,7 +13,7 @@
 import * as React from 'react';
 import Modal from '../Modal';
 import { cx } from '../dexUi';
-import { Check, ChevronDown, FileText } from '../Icons';
+import { Check, ChevronDown, FileText, GraduationCap } from '../Icons';
 
 // v31.2: Ein Link steht dreimal im Text — einmal deklarieren, damit ein Tippfehler
 // nicht drei Stellen auseinanderlaufen lässt.
@@ -44,10 +44,13 @@ export interface WizardTermsModalProps {
   showTermsModal: boolean;
   tcCheckbox: boolean;
   tcExpanded: boolean;
+  /** v32.18: Kachel „Tutorial starten“ — fehlt, wenn das Tutorial schon läuft
+   *  oder die Person es nicht nutzen darf. */
+  onStartTutorial?: () => void;
 }
 
 export const WizardTermsModal: React.FC<WizardTermsModalProps> = (p) => {
-  const { canBilling, goBack, internalCheckbox, isDe, setBillingPromptOpen, setInternalCheckbox, setTcAccepted, setTcCheckbox, setTcExpanded, showTermsModal, tcCheckbox, tcExpanded } = p;
+  const { canBilling, goBack, internalCheckbox, isDe, setBillingPromptOpen, setInternalCheckbox, setTcAccepted, setTcCheckbox, setTcExpanded, showTermsModal, tcCheckbox, tcExpanded, onStartTutorial } = p;
   const bothChecked = tcCheckbox && internalCheckbox;
 
   // v31.2: Genau ein Primär-Knopf (Akzeptieren), Abbrechen sekundär. Das
@@ -98,8 +101,25 @@ export const WizardTermsModal: React.FC<WizardTermsModalProps> = (p) => {
       {/* Eingeklappte Kurzfassung — die volle Fassung kann der Nutzer
           über den Toggle ausklappen. Die Checkbox-Bestätigung ist
           trotzdem Pflicht (siehe weiter unten). */}
+      {/* v32.18: Wer zum ersten Mal ein Event anlegt, landet hier — der
+          Einstieg ins Mitmach-Tutorial gehört deshalb genau an diese Stelle
+          (Nutzer-Ansage 29.09.2026). Die Bedingungen fragt das Tutorial
+          danach selbst ab; wer sie dort bestätigt, wird nicht zweimal gefragt. */}
+      {onStartTutorial && (
+        <button type="button" className="dex-ui-choice" onClick={onStartTutorial} style={{ width: '100%', textAlign: 'left' }}>
+          <span className="dex-ui-choice-icon"><GraduationCap size={18} /></span>
+          <span className="dex-ui-choice-body">
+            <span className="dex-ui-choice-title" style={{ display: 'block' }}>{isDe ? 'Zum ersten Mal hier? Tutorial starten' : 'First time here? Start the tutorial'}</span>
+            <span className="dex-ui-choice-desc" style={{ display: 'block' }}>
+              {isDe
+                ? 'Wir legen zusammen ein Test-Event an — Schritt für Schritt, mit Mails nur an dich.'
+                : 'We will create a test event together — step by step, with emails only to you.'}
+            </span>
+          </span>
+        </button>
+      )}
       {/* v31.2: marginTop 0 — die Modal-Karte hält die Abstände schon über ihr gap. */}
-      <div className="dex-ui-section" style={{ marginTop: 0 }}>
+      <div className="dex-ui-section" style={{ marginTop: onStartTutorial ? undefined : 0 }}>
         <h4 className="dex-ui-section-title">{isDe ? 'Das Wichtigste in Kürze' : 'The essentials'}</h4>
         <div className="dex-ui-callout dex-ui-callout--neutral" style={{ fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
           <span>

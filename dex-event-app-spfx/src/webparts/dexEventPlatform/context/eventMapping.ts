@@ -184,6 +184,20 @@ export async function mapSPEventToDeloitteEvent(e: SPEvent, subsiteMap: { curren
         return parseSeriesRule(ov && ov._seriesRule);
       } catch { return undefined; }
     })(),
+    // v32.18: Einführungs-Event zu DEX (Piggyback _dexIntro).
+    dexIntro: ((): boolean => {
+      try {
+        const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+        return !!(ov && ov._dexIntro);
+      } catch { return false; }
+    })(),
+    // v32.18: Englische Beschreibung (Piggyback _descriptionEn).
+    descriptionEn: ((): string => {
+      try {
+        const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+        return (ov && typeof ov._descriptionEn === 'string') ? ov._descriptionEn : '';
+      } catch { return ''; }
+    })(),
     // v28.5: Event-Bild als Banner über den Infos (Piggyback _imageBanner).
     imageBanner: ((): boolean => {
       try {

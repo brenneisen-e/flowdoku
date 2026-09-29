@@ -26,6 +26,7 @@ import { AlertCircle, ChevronDown, GraduationCap } from './Icons';
 import { INACTIVE_SUMMARY_CACHE_KEY } from '../utils/accountCheckCache';
 import { cx, ensureDexUiStyles } from './dexUi';
 import { AUTO_MAINTENANCE_DONE_EVENT, AUTO_MAINTENANCE_STATE_EVENT, AutoMaintenanceState, autoMaintenanceZustand } from './AdminAutoMaintenance';
+import { useDemoEinfuehrung } from '../utils/demoIntro';
 
 export default function LandingPage(): React.ReactElement {
   // v31.4 (Review): Der Hinweiskasten „Code nicht ladbar" unten nutzt
@@ -67,7 +68,10 @@ export default function LandingPage(): React.ReactElement {
   // v30.68: Auch für Admins aus (Nutzer-Ansage 02.09.2026) — sie sind
   // Organizer mit mehr Rechten; die User-Ansicht prüft man über die
   // Rollen-Vorschau, nicht über einen Kasten, der einen selbst wirbt.
-  const showOrganizerCta = !canCreateEvents;
+  // v32.18: Die Admin-Demo zeigt die Werbekarte samt Einführungs-Hinweis
+  // auch dann, wenn die eigene Rolle sie sonst ausblendet.
+  const demoEinfuehrung = useDemoEinfuehrung();
+  const showOrganizerCta = !canCreateEvents || demoEinfuehrung;
   const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getSentInactiveNotices, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, deleteEvent, getLastEventDeleteError, countExternalRegistrations, refreshEvents, getAllRegistrations } = useEvents();
   // v26.40: Modal-Hinweis nach automatischer Abmeldung von Ex-Deloitte-Personen.
   const [autoDeregModal, setAutoDeregModal] = React.useState<Array<{ title: string; people: Array<{ email: string; name: string }> }> | null>(null);
@@ -1119,22 +1123,26 @@ export default function LandingPage(): React.ReactElement {
                     mit stopPropagation, damit nicht die Anfrage aufgeht. */}
                 {(() => {
                   if (!myRegBoxesLoaded) return null;
-                  const isIntroTitle = (t: string): boolean => /dex/i.test(t) && /einf(ü|u)hrung|introduction|onboarding/i.test(t);
-                  const intro = (events || [])
-                    .filter(e => e.status === 'Active' && !e.parentEventId && !e.isFictive && !!e.startDate
-                      && new Date(e.startDate).getTime() > nowTick && isIntroTitle(e.title || ''))
-                    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())[0];
-                  if (!intro) return null;
-                  if (myRegBoxes.some(b => b.eventId === intro.id) || checkInBoxes.some(b => b.eventId === intro.id)) return null;
-                  const dateLabel = new Date(intro.startDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-                  const goRegister = (): void => navigate('registration', intro.id);
+                  const introKandidaten = (events || [])
+                    .filter(e => !e.parentEventId && !e.isFictive && !!e.startDate
+                      && new Date(e.startDate).getTime() > nowTick && !!e.dexIntro) // v32.18: Admin-Haken statt Titel
+                    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+                  // v32.18: In der Admin-Demo zählt auch ein Entwurf, und die
+                  // eigene Anmeldung blendet den Hinweis nicht aus.
+                  const intro = introKandidaten.filter(e => e.status === 'Active')[0] || (demoEinfuehrung ? introKandidaten[0] : undefined);
+                  if (!intro && !demoEinfuehrung) return null;
+                  if (intro && !demoEinfuehrung && (myRegBoxes.some(b => b.eventId === intro.id) || checkInBoxes.some(b => b.eventId === intro.id))) return null;
+                  const dateLabel = intro
+                    ? new Date(intro.startDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                    : (isDe ? 'TT.MM.JJJJ' : 'DD/MM/YYYY');
+                  const goRegister = (): void => { if (intro) navigate('registration', intro.id); };
                   return (
                     <span
                       role="button"
                       tabIndex={0}
                       onClick={e => { e.stopPropagation(); goRegister(); }}
                       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); goRegister(); } }}
-                      title={intro.title}
+                      title={intro ? intro.title : (isDe ? 'Demo — es gibt gerade keine kommende Einführung.' : 'Demo — no upcoming intro session right now.')}
                       // v31.9: Die Pille war weiß auf grüner Fläche — auf der
                       // weißen Karte wäre sie unsichtbar. Sie ist schaltbar
                       // (führt zur Anmeldung), also ein Chip, keine Pille.

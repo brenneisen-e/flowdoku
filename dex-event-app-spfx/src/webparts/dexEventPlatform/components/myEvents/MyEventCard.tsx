@@ -1009,7 +1009,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                     aus dem eigenen Tenant — gleiche Render-Logik wie auf der
                     RegistrationPage (HTML erlaubt, sonst \n→<br>).
                     v17.23: standardmäßig eingeklappt, per Button aufklappbar. */}
-                {event.description && notEditing && (() => {
+                {(event.description || event.descriptionEn) && notEditing && (() => {
                   // v31.70: standardmäßig OFFEN (Nutzer-Ansage 17.09.2026:
                   // „Beschreibung immer default ausklappen") — `false` in der
                   // Map heißt zugeklappt, fehlend heißt offen.
@@ -1036,7 +1036,8 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           }}
                           dangerouslySetInnerHTML={{
                             __html: (() => {
-                              const raw = event.description || '';
+                              // v32.18: englische Fassung, wenn die App auf Englisch steht.
+                              const raw = (!isDe && (event.descriptionEn || '').trim()) ? (event.descriptionEn || '') : (event.description || '');
                               const isHtml = /<[a-z][\s\S]*>/i.test(raw);
                               return isHtml
                                 ? raw

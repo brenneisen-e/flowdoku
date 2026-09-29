@@ -98,6 +98,10 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
           _hotels, _hotelStays, _hotelVisible, _hotelRules,
           // v28.79: „Keine Beschreibung nutzen"-Flag (s. noDescriptionConfig).
           _noDescription,
+          // v32.18: Englische Beschreibung — eigener State (descriptionEn).
+          _descriptionEn,
+          // v32.18: Einführungs-Event — eigener State (dexIntro).
+          _dexIntro,
           // v28.91: Kalender-Modus der Sub-Events (s. subEventCalendarConfig).
           _subEventCalendar, _subEventSingleChoice,
           // v31.99: Serien-Regel — eigener State (s. seriesRule).
@@ -153,7 +157,7 @@ export function useWizardVisibilityState(ctx: UseWizardVisibilityStateCtx) {
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
-        void _imageOrigUrl; void _klammerDeadline; void _noDescription;
+        void _imageOrigUrl; void _klammerDeadline; void _noDescription; void _descriptionEn; void _dexIntro;
         void _subEventCalendar; void _subEventSingleChoice; void _seriesRule;
         void _noSelfCancel; void _noCancelAfterDeadline; void _teamsLink;
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;

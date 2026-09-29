@@ -45,6 +45,10 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
     editEvent ? editEvent.filterMode : 'OR'
   );
   const [description, setDescription] = React.useState(editEvent ? editEvent.description : '');
+  // v32.18: Englische Beschreibung — im Editor über den Reiter „EN".
+  const [descriptionEn, setDescriptionEn] = React.useState<string>(editEvent?.descriptionEn || '');
+  // v32.18: Einführungs-Event zu DEX — nur Admins sehen den Haken.
+  const [dexIntro, setDexIntro] = React.useState<boolean>(!!editEvent?.dexIntro);
   // v28.7: „Keine Beschreibung nutzen" — reiner UI-Schalter im Wizard
   // (Default: Beschreibung nutzen). Anhaken leert die Beschreibung und
   // blendet den Editor-Zugang aus; gespeichert wird schlicht ''.
@@ -514,7 +518,7 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
   return {
     agendaCheckIn, agendaTermPlural, agendaTermSingular, setAgendaCheckIn, setAgendaTermPlural, setAgendaTermSingular,
     allDay, audience, autoDeregisterOnDecline, bundledComm, commShared, childGender, childTermPlural,
-    childTermSingular, customFields, customTermMode, description, disableCancellationEmail, disableEmails,
+    childTermSingular, customFields, customTermMode, description, descriptionEn, setDescriptionEn, dexIntro, setDexIntro, disableCancellationEmail, disableEmails,
     disableOutlook, disableRegistrationEmail, emailLanguage, emailLogoFromPhoto, endDate, eventImageUrl,
     excludedUsers, filterMode, htmlEditorMode, htmlEditorOpen, htmlEditorTemplateType, imageBanner,
     imageDisplay, imageDisplayOpen, imageEditOpen, imageFile, imageOrigAspect, imageOrigFile,
