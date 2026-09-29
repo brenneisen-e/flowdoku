@@ -128,6 +128,8 @@ export function splitReleaseNote(text: string): ReleaseNoteParts {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '32.23.0', date: '2026-09-29', bereich: 'Anmeldung', type: 'Bugfix', text: 'Die Felder im Anmeldeformular stehen jetzt immer auf einer Höhe, egal wie lang Frage oder Beschreibung im Nachbarfeld sind. Bisher schätzte die App die Zeilenzahl der Beschreibung aus der Textlänge; lag die Schätzung daneben, saßen die Eingaben versetzt. Auch Ja/Nein-Fragen reihen sich jetzt sauber ein.' },
+  { version: '32.23.0', date: '2026-09-29', bereich: 'Allgemein', type: 'Bugfix', text: 'Startseite: Die Karte ist auf großen Bildschirmen wieder quadratisch. Die Kugel war dort so groß, dass der Inhalt nicht mehr ins Quadrat passte und die Karte hochkant wurde.' },
   { version: '32.22.0', date: '2026-09-29', bereich: 'Organizer Center', type: 'Feature', text: 'Events ohne Foto zeigen jetzt auch in der Event-Übersicht des Organizer Centers das Mail-Logo bzw. das DEX-Logo statt eines grauen Kastens.' },
   { version: '32.22.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Feature', text: 'Der Knopf „Tutorial“ steht jetzt im Kopf von Schritt 1 neben „Demo-Vorlage“ statt über der Schritt-Leiste.' },
   { version: '32.22.0', date: '2026-09-29', bereich: 'Allgemein', type: 'Bugfix', text: 'Die Kachel „DEX für dein Event nutzen“ auf der Startseite zeigt das aktuelle DEX-Logo statt des alten Farbrings.' },

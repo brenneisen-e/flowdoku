@@ -1672,7 +1672,7 @@ export default function RegistrationPage(): React.ReactElement {
       // 2-Spalten-Grid. Group-spezifische Felder werden bereits
       // oben innerhalb der Gruppen-Auswahl-Box gerendert und hier
       // ausgefiltert.
-      <div className="dex-reg-fields-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      <div className="dex-reg-fields-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 16, rowGap: 0 }}>
       {/* v29.27: Zuordnung klarmachen — die Sub-Event-Fragen stehen
           in den Karten, diese hier gehören zum Haupt-Event (bzw. bei
           einer Klammer zur Anmeldung insgesamt). */}
@@ -2398,7 +2398,12 @@ export default function RegistrationPage(): React.ReactElement {
     const rowPartner = (typeof rowIndex === 'number' && rowList)
       ? rowList[rowIndex % 2 === 0 ? rowIndex + 1 : rowIndex - 1]
       : undefined;
-    const helpMinHeight = `${(Math.max(descLinesOf(field), descLinesOf(rowPartner)) || 2) * 1.45}em`;
+    // v32.23: Im Hauptraster (rowList bekannt) richtet CSS-Subgrid Kopf und
+    // Eingabe jeder Zeile aus — keine geschätzte Mindesthöhe mehr (die
+    // Zeichen-je-Zeile-Schätzung lag bei kurzen Wörtern daneben, Nutzer-
+    // Befund 29.09.2026). Die Schätzung bleibt nur für die übrigen Orte.
+    const imSubgrid = typeof rowIndex === 'number' && !!rowList;
+    const helpMinHeight = imSubgrid ? undefined : `${(Math.max(descLinesOf(field), descLinesOf(rowPartner)) || 2) * 1.45}em`;
     const inlineHelpEl = (displayHelp && isInlineHelp)
       // v18.77: Inline-Hilfe reserviert mind. 2 Zeilen Höhe (minHeight). Dadurch
       // stehen die Eingaben benachbarter Felder auf gleicher Höhe, wenn sich die
@@ -2430,7 +2435,7 @@ export default function RegistrationPage(): React.ReactElement {
     } else {
       reserveHelpSpace = (event?.eventSpecificFields || []).some(fieldHasInlineDesc);
     }
-    const inlineHelpSlot = inlineHelpEl || (reserveHelpSpace
+    const inlineHelpSlot = inlineHelpEl || (reserveHelpSpace && !imSubgrid
       // v26.17: Der leere Platzhalter muss dieselben Font-Metriken (fontSize/
       // lineHeight) wie der echte Inline-Hilfetext tragen, da sich 'minHeight'
       // in 'em' auf die EIGENE font-size bezieht. Ohne fontSize erbte der
@@ -2448,7 +2453,13 @@ export default function RegistrationPage(): React.ReactElement {
     const inputStyleGreen: React.CSSProperties = isErrEmpty ? errorBorder : (isFieldFilled ? greenFilledStyle : {});
     return (
   <div className="form-group" key={field.id}>
-    {field.type !== 'checkbox' && (
+    {/* v32.23: Kopf (Frage + Beschreibung) und Körper (Eingabe und alles
+        darunter) als zwei Kinder — im Hauptraster liegen sie per Subgrid in
+        zwei gemeinsamen Zeilen mit dem Nachbarfeld. */}
+    <div className="dex-reg-field-head">
+    {/* v32.23: auch die Checkbox-Frage steht im Kopf — vorher im Körper,
+        dadurch lag ihre Karte eine Zeile tiefer als die Nachbar-Eingabe. */}
+    {(
       <>
       <label className="form-label">
         {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
@@ -2462,6 +2473,8 @@ export default function RegistrationPage(): React.ReactElement {
       {inlineHelpSlot}
       </>
     )}
+    </div>
+    <div className="dex-reg-field-body">
     {!(field.optionCategories && field.optionCategories.some(c => (c || '').trim())) && calendarDatesFor(field, event?.startDate) ? (
       // v32.2.2: Antworten sind Daten → Kalender statt Dropdown (utils/optionDates).
       <OptionDateCalendar
@@ -2569,12 +2582,6 @@ export default function RegistrationPage(): React.ReactElement {
       // gemeinsame `dex-ui-toggle-row` (UI-Leitfaden 2b) — dieselbe Form, die
       // `SubEventFieldsModal` für genau diesen Feldtyp schon nutzt.
       <>
-        <label className="form-label">
-          {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
-          {displayLabel}
-          {displayHelp && !isInlineHelp && <InfoTooltip text={displayHelp.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()} />}
-        </label>
-        {inlineHelpSlot}
         <label
           className={cx('dex-ui-toggle-row', vals[field.id] === 'true' && 'is-active')}
           // Der rote Rand für eine fehlende Pflichtangabe: `dex-ui-` hat dafür
@@ -2728,6 +2735,7 @@ export default function RegistrationPage(): React.ReactElement {
     ) : (
       <input className="form-input" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} placeholder={displayLabel} style={inputStyleGreen} />
     )}
+    </div>
   </div>
     );
   };
