@@ -13,6 +13,7 @@ import { formatOrganizerList } from '../../context/EventContext';
 import { Locale } from '../../context/LanguageContext';
 import { DeloitteEvent } from '../../types';
 import { AgendaProgramBlock } from './AgendaProgramBlock';
+import DexLogo from '../DexLogo';
 
 /** Station 1 — Dein Event: Bild, Eckdaten, Organizer, Beschreibung. */
 export interface EventCardProps {
@@ -36,9 +37,11 @@ export interface EventCardProps {
   setImgZoomed: React.Dispatch<React.SetStateAction<boolean>>;
   showOrbPlaceholder: boolean;
   usesMailImage: boolean;
+  /** v32.17: Einführungs-Event zu DEX — animierte Kugel statt Bild. */
+  dexIntro: boolean;
 }
 export const EventCard: React.FC<EventCardProps> = (p) => {
-  const { cachedImage, cachedZoomImage, circleSize, currentUser, event, heroImgUrl, imgAspectReady, imgCircleNotch, imgHovered, imgSlotH, imgSlotW, imgZoomed, isMobile, locale, setImgHovered, setImgZoomed, showOrbPlaceholder, usesMailImage } = p;
+  const { cachedImage, cachedZoomImage, circleSize, currentUser, event, heroImgUrl, imgAspectReady, imgCircleNotch, imgHovered, imgSlotH, imgSlotW, imgZoomed, isMobile, locale, setImgHovered, setImgZoomed, showOrbPlaceholder, usesMailImage, dexIntro } = p;
   return (
         <div
           className="registration-event"
@@ -86,7 +89,7 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
             {showOrbPlaceholder && (
               <div
                 className="registration-event__image"
-                title={locale === 'de' ? 'Für dieses Event ist kein Bild hinterlegt.' : 'No image is set for this event.'}
+                title={dexIntro ? undefined : (locale === 'de' ? 'Für dieses Event ist kein Bild hinterlegt.' : 'No image is set for this event.')}
                 style={{
                   background: '#fff',
                   position: 'relative',
@@ -107,18 +110,23 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
                   // Container darüber und gehört dort behoben, nicht hier.
                   marginTop: -(circleSize / 2 + 16),
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: 14,
+                  padding: dexIntro ? 0 : 14,
                   boxSizing: 'border-box',
+                  overflow: 'hidden',
                 }}
               >
-                <img
-                  src={getCachedOrbBase64() || DEX_ORB_PNG}
-                  alt=""
-                  style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }}
-                />
+                {dexIntro ? (
+                  <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />
+                ) : (
+                  <img
+                    src={getCachedOrbBase64() || DEX_ORB_PNG}
+                    alt=""
+                    style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
+                )}
               </div>
             )}
-            {heroImgUrl && (event.imageBanner || imgAspectReady) && (
+            {heroImgUrl && !dexIntro && (event.imageBanner || imgAspectReady) && (
             <div
               className="registration-event__image"
               // v28.12: Hover zeigt das Lupen-Icon; die Großansicht öffnet

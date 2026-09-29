@@ -54,7 +54,13 @@ export const DEX_UI_CSS = `
 .dex-ui-saved-pulse { animation: dexUiPulse 0.7s ease-out 1; }
 @media (prefers-reduced-motion: reduce) { .dex-ui-spin, .dex-ui-saved-pulse { animation: none; } }
 .dex-ui-fade-in { animation: dexUiFadeIn 0.25s ease-out both; }
-.dex-ui-modal-card { animation: dexUiModalIn 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+/* v32.17: backwards statt both. Mit both hielt die Karte nach dem Einblenden
+   einen transform-Zustand und wurde damit zum Bezugsrahmen für position:fixed:
+   Dropdowns in Dialogen (Mehrfachauswahl, Personen-Suche) öffneten um den
+   Kartenabstand verschoben oder außerhalb des sichtbaren Bereichs (Vorschau
+   der Anmeldeseite, Nutzer-Befund 29.09.2026). backwards wirkt nur vor dem
+   Start; danach hat die Karte keinen transform mehr. */
+.dex-ui-modal-card { animation: dexUiModalIn 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
 .dex-ui-pulse { animation: dexUiPulse 1.8s ease-out infinite; }
 @media (prefers-reduced-motion: reduce) {
   .dex-ui-fade-in, .dex-ui-modal-card, .dex-ui-pulse { animation: none !important; }

@@ -57,6 +57,7 @@ import { DeadlineBanner, DemoBanner, LocationBanner, SubmitOverlay } from './reg
 import { createSubmitFlow } from './registration/submitFlow';
 import { waitlistBlockerEnabled } from '../services/events/waitlistShadow';
 import type { ReactDatePickerProps } from 'react-datepicker';
+import { istDexEinfuehrung } from '../utils/dexIntro';
 
 /**
  * v31.9: Datums-Custom-Felder ohne natives `<input type="date">`.
@@ -1093,11 +1094,15 @@ export default function RegistrationPage(): React.ReactElement {
   // Nebeneffekt: Die Bedingung haengt nicht mehr an imgAspect — der Kreis
   // steht sofort, statt erst nach der Bildvermessung das Layout zu wechseln.
   const imgCircleNotch = !!heroImgUrl && !event?.imageBanner && !event?.imageDisplay?.hero;
-  const circleSize = isMobile ? 140 : 170;
+  // v32.17: Beim Einführungs-Event zu DEX selbst steht statt des Bildes die
+  // animierte Kugel der Landing Page (per Maus drehbar) — etwas größer, weil
+  // sie dort das Bild ist und nicht der Platzhalter für ein fehlendes.
+  const dexIntro = istDexEinfuehrung(event);
+  const circleSize = dexIntro ? (isMobile ? 170 : 220) : (isMobile ? 140 : 170);
   // v28.91: Kein Event-Foto → das DEX-Bild steht als KREIS oben mittig,
   // genau dort, wo auch ein rundes Event-Logo sitzt (imgCircleNotch). Im
   // Seiten-Slot rechts wirkte es wie ein Foto des Events, das es nicht ist.
-  const showOrbPlaceholder = !heroImgUrl;
+  const showOrbPlaceholder = !heroImgUrl || dexIntro;
 
   // B2Run Split-Capacity: aktuelle Auslastung pro Typ laden
   // Split-UI nur wenn BEIDE Starter-Typen verfügbar sind (>0). Wenn der Admin eine
@@ -2785,7 +2790,7 @@ export default function RegistrationPage(): React.ReactElement {
   const eventCardProps = {
     cachedImage, cachedZoomImage, circleSize, currentUser, event, heroImgUrl,
     imgAspectReady, imgCircleNotch, imgHovered, imgSlotH, imgSlotW, imgZoomed,
-    isMobile, locale, setImgHovered, setImgZoomed, showOrbPlaceholder, usesMailImage,
+    isMobile, locale, setImgHovered, setImgZoomed, showOrbPlaceholder, usesMailImage, dexIntro,
   };
   const personalDataSectionProps = {
     canCreateEvents, canRegisterForOther, ccSelfDecidedRef, ccSelfRef, currentUser, email,

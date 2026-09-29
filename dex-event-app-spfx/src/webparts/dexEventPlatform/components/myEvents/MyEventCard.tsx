@@ -31,6 +31,8 @@ import { isEventOver, formatAllDayPeriod } from '../../utils/eventFormat';
 import { selfCancelLocked, selfCancelLockReason } from '../../utils/cancelPolicy';
 import { X, Pencil, QrCode, Mail, Info, AlertCircle, ChevronDown } from '../Icons';
 import { cx } from '../dexUi';
+import DexLogo from '../DexLogo';
+import { istDexEinfuehrung } from '../../utils/dexIntro';
 import { TeamsJoinButton } from '../TeamsJoinButton';
 import { eventTeamsLink, locationWithoutTeamsUrl } from '../../utils/teamsLink';
 import DocumentsViewer from './DocumentsViewer';
@@ -214,6 +216,9 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
              * falsch fuer alles, was danach kommt.
              */
             const istVorbei = isEventOver(event);
+            // v32.17: Einführungs-Event zu DEX — die animierte Kugel der
+            // Landing Page statt des Bildes; nach dem Event steht sie still.
+            const dexIntro = istDexEinfuehrung(event);
             const zugeklappt = istVorbei && zuKlappStand[event.id] !== true;
 
             return (
@@ -228,7 +233,20 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                 {/* v31.70: `flexWrap` — die Knopfspalte rechts (s.u.) rutscht auf
                     dem Handy unter Bild und Titel statt sie zu quetschen. */}
                 <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                  {event.imageUrl && (
+                  {dexIntro ? (
+                    <div
+                      className="my-event-card__thumb"
+                      style={{
+                        flexShrink: 0, width: 140, height: 100,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        ...(istVorbei ? { filter: 'grayscale(1)', opacity: 0.7 } : {}),
+                      }}
+                    >
+                      <div style={{ width: 100, height: 100, borderRadius: '50%', overflow: 'hidden' }}>
+                        <DexLogo title="DEX" motion="oscillate" size={100} paused={istVorbei} pointerSpin={!istVorbei} />
+                      </div>
+                    </div>
+                  ) : event.imageUrl && (
                     <div
                       className="my-event-card__thumb"
                       style={{

@@ -180,7 +180,13 @@ export default function Header(): React.ReactElement {
   // dynamisch unter der SP-Chrome-Leiste gemessen (Suite-Bar ist fixed).
   const headerPlaceholderRef = React.useRef<HTMLDivElement | null>(null);
   const [headerPin, setHeaderPin] = React.useState<null | { top: number; left: number; width: number; height: number }>(null);
+  // v32.17: In der Anmelde-Vorschau (Laptop-Rahmen im Dialog) scrollt nicht
+  // das Fenster, sondern der Bildschirm des Rahmens. Das Anheften an das
+  // Fenster legte den Kopf dort über den Dialog-Titel; stattdessen klebt er
+  // per sticky am Rahmen.
+  const [imRahmen, setImRahmen] = React.useState(false);
   React.useEffect(() => {
+    if (headerPlaceholderRef.current?.closest('.dex-preview-scope')) { setImRahmen(true); return undefined; }
     const chromeTop = (): number => {
       const candidates = ['[data-automation-id="contentScrollRegion"]', '.SPPageChromeAppDiv', '#spPageCanvasContent'];
       for (const sel of candidates) {
@@ -260,7 +266,7 @@ export default function Header(): React.ReactElement {
   );
 
   return (
-    <div ref={headerPlaceholderRef} style={headerPin ? { height: headerPin.height } : undefined}>
+    <div ref={headerPlaceholderRef} style={imRahmen ? { position: 'sticky', top: 0, zIndex: 20 } : headerPin ? { height: headerPin.height } : undefined}>
     <header
       className="header"
       style={headerPin ? {
