@@ -347,11 +347,14 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                           style={{ display: 'block', width: '100%', height: 'auto', maxHeight: 200, objectFit: 'contain' }}
                         />
                       </div>
+                      {/* v32.35: beim Einführungs-Event ist das DEX-Logo gewollt. */}
+                      {!selectedEvent.dexIntro && (
                       <p style={{ margin: '6px 2px 0', fontSize: '0.72rem', color: 'var(--dex-gray-500)', lineHeight: 1.4 }}>
                         {isDe
                           ? <>Standardfoto — ein eigenes Bild hinterlegst du über <strong>&bdquo;Event bearbeiten&ldquo;</strong>.</>
                           : <>Default image — set your own via <strong>&bdquo;Edit event&ldquo;</strong>.</>}
                       </p>
+                      )}
                     </div>
                   )}
                   {/* v30.38: Führt jetzt in denselben Einstieg wie im

@@ -268,6 +268,31 @@ export default function Header(): React.ReactElement {
     </div>
   );
 
+  const zurueckKnopf = (
+    <>
+      {/* v22.28: „Zurück"-Beschriftung neben dem Chevron — die runde
+          Icon-Box allein war als Zurück-Navigation nicht klar genug. */}
+      <button
+        className="back-btn"
+        // v31.59: Zurück heißt zurück — über den Stack, nicht hart auf die
+        // Startseite. Ohne Rückweg (Deep-Link, F5) greift `fallbackFor`.
+        onClick={() => { if (!saveBusy) goBack(); }}
+        disabled={saveBusy}
+        aria-label={locale === 'de' ? 'Zurück' : 'Back'}
+        title={saveBusy
+          ? (locale === 'de'
+            ? 'Es wird gerade gespeichert — bitte warte, bis der Vorgang durch ist. Ein Abbruch mittendrin hinterlässt ein halb angelegtes Event.'
+            : 'Saving is in progress — please wait. Leaving now would leave the event half-created.')
+          : undefined}
+        style={{
+          width: 'auto', borderRadius: 999, padding: '0 16px 0 10px', fontSize: '0.85rem', fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap',
+          ...(saveBusy ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
+        }}
+      >
+        <ChevronLeft size={20} /> {locale === 'de' ? 'Zurück' : 'Back'}
+      </button>
+    </>
+  );
   return (
     <div ref={headerPlaceholderRef} style={imRahmen ? { position: 'sticky', top: 0, zIndex: 20 } : headerPin ? { height: headerPin.height } : undefined}>
     <header
@@ -301,27 +326,11 @@ export default function Header(): React.ReactElement {
           </div>
         ) : (
           <>
-            {/* v22.28: „Zurück"-Beschriftung neben dem Chevron — die runde
-                Icon-Box allein war als Zurück-Navigation nicht klar genug. */}
-            <button
-              className="back-btn"
-              // v31.59: Zurück heißt zurück — über den Stack, nicht hart auf die
-              // Startseite. Ohne Rückweg (Deep-Link, F5) greift `fallbackFor`.
-              onClick={() => { if (!saveBusy) goBack(); }}
-              disabled={saveBusy}
-              aria-label={locale === 'de' ? 'Zurück' : 'Back'}
-              title={saveBusy
-                ? (locale === 'de'
-                  ? 'Es wird gerade gespeichert — bitte warte, bis der Vorgang durch ist. Ein Abbruch mittendrin hinterlässt ein halb angelegtes Event.'
-                  : 'Saving is in progress — please wait. Leaving now would leave the event half-created.')
-                : undefined}
-              style={{
-                width: 'auto', borderRadius: 999, padding: '0 16px 0 10px', fontSize: '0.85rem', fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap',
-                ...(saveBusy ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
-              }}
-            >
-              <ChevronLeft size={20} /> {locale === 'de' ? 'Zurück' : 'Back'}
-            </button>
+            {/* v32.35: Auf dem Rechner steht „Zurück" direkt links neben der
+                Suche, der Seitentitel ganz links (Nutzer-Ansage 29.09.2026).
+                Auf dem Handy bleibt beides zusammen links — dort gibt es keine
+                Mitte. */}
+            {isMobile && zurueckKnopf}
             {/* v32.3: eine Zeile, notfalls gekürzt — seit der Header eine Mitte
                 hat, ist links weniger Platz, und in der Vorschau (Rahmen) brach
                 „Aktuelle Events | Verfügbar an deinem Standort" wortweise um. */}
@@ -344,6 +353,7 @@ export default function Header(): React.ReactElement {
           sonst lägen beide übereinander. Auf dem Handy bleibt alles rechts. */}
       {isMobile ? (!isLanding && <GlobalSearch />) : (
         <div className="header-center" style={{ flex: isLanding ? '0 1 auto' : '0 1 780px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, minWidth: 0 }}>
+          {!isLanding && zurueckKnopf}
           {!isLanding && <GlobalSearch />}
           {/* v32.3: Die Pille „Neu hier? Starte das DEX Tutorial" ist weg — der
               Einstieg steckt jetzt im Zwischendialog von „Hast du Fragen?"

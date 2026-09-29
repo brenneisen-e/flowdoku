@@ -122,7 +122,10 @@ export const ActiveEventHintsBox: React.FC<ActiveEventHintsBoxProps> = (p) => {
           // 3) Event-Bild fehlt. v23.6: Bei einem Sub-Event NICHT meckern, wenn
           // die Klammer/das Hauptevent bereits ein Bild hat — Sub-Events nutzen
           // den Bild-/Hero-Kontext des Parents, ein eigenes Bild ist optional.
-          if (!ohneGrundangaben && !selectedEvent.imageUrl && !(parentEventForSelected && parentEventForSelected.imageUrl)) {
+          // v32.35: Nicht beim Einführungs-Event — dort IST das animierte DEX-Logo
+          // das Bild (Nutzer-Ansage 29.09.2026).
+          const istEinfuehrung = !!(selectedEvent.dexIntro || (parentEventForSelected && parentEventForSelected.dexIntro));
+          if (!ohneGrundangaben && !istEinfuehrung && !selectedEvent.imageUrl && !(parentEventForSelected && parentEventForSelected.imageUrl)) {
             hints.push({
               id: 'no-image',
               level: 'info',

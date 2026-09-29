@@ -23,6 +23,7 @@ import { useDialog } from '../context/DialogContext';
 import Modal from './Modal';
 import { useIsMobile } from '../utils/useIsMobile';
 import { AlertCircle, ChevronDown, GraduationCap } from './Icons';
+import { DEX_ORB_PNG } from '../data/brandLogos';
 import { INACTIVE_SUMMARY_CACHE_KEY } from '../utils/accountCheckCache';
 import { cx, ensureDexUiStyles } from './dexUi';
 import { AUTO_MAINTENANCE_DONE_EVENT, AUTO_MAINTENANCE_STATE_EVENT, AutoMaintenanceState, autoMaintenanceZustand } from './AdminAutoMaintenance';
@@ -1040,7 +1041,20 @@ export default function LandingPage(): React.ReactElement {
                       style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}
                       title={isDe ? 'Zu „Meine Events"' : 'Go to My Events'}
                     >
-                      <div style={{ width: 66, height: 66, flexShrink: 0, borderRadius: 8, background: box.imageUrl ? `url(${box.imageUrl}) center/cover no-repeat` : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))', border: '1px solid var(--dex-gray-200)' }} />
+                      {/* v32.36: Ohne Foto kein grün-blauer Verlauf mehr (Nutzer-Befund
+                          29.09.2026: „warum wird das Einführungsevent so komisch
+                          angezeigt?"). Einführungs-Event → Uni-Icon wie im Banner,
+                          sonst Mail-Logo, sonst das DEX-Logo — wie auf den Karten. */}
+                      {(() => {
+                        const ev = events.find(e => e.id === box.eventId);
+                        const kachel: React.CSSProperties = { width: 66, height: 66, flexShrink: 0, borderRadius: 8, border: '1px solid var(--dex-gray-200)' };
+                        if (ev && ev.dexIntro) {
+                          return <div style={{ ...kachel, background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><GraduationCap size={30} /></div>;
+                        }
+                        if (box.imageUrl) return <div style={{ ...kachel, background: `url(${box.imageUrl}) center/cover no-repeat` }} />;
+                        const ersatz = (ev && ev.mailImageBase64) || DEX_ORB_PNG;
+                        return <div style={{ ...kachel, background: `#fff url(${ersatz}) center/${ersatz === DEX_ORB_PNG ? '78%' : 'contain'} no-repeat` }} />;
+                      })()}
                       <span style={{ minWidth: 0, flex: 1 }}>
                         <span style={{ display: 'block', fontWeight: 700, fontSize: '0.92rem', color: 'var(--dex-gray-800)' }}>
                           {isDe

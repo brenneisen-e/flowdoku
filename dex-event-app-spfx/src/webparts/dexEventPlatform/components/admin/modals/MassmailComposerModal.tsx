@@ -82,7 +82,7 @@ export interface MassmailComposerModalProps {
 }
 
 export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) => {
-  const { applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject, eventServiceRef, isDe, massmailAudience, massmailCc, massmailCustomHeaderB64, setMassmailCustomHeaderB64, massmailDraftSaved, massmailEventPhotoB64, massmailHeaderImage, massmailHeaderOpts, massmailPasteRaw, massmailStatuses, massmailSubheading, massmailTesting, massmailTestMsg, registrations, resetMassmailDraft, saveMassmailDraft, searchUser, searchUsers, selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending, setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading, setShowEmailModal, showAlert, showEmailModal, massmailOffene, setMassmailAudience, massmailExtras, setMassmailExtras, setMassmailStatuses, myEmail } = p;
+  const { applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject, eventServiceRef, isDe, massmailAudience, massmailCc, massmailCustomHeaderB64, setMassmailCustomHeaderB64, massmailDraftSaved, massmailEventPhotoB64, massmailHeaderImage, massmailHeaderOpts, massmailPasteRaw, massmailStatuses, massmailSubheading, massmailTestMsg, registrations, resetMassmailDraft, saveMassmailDraft, searchUser, searchUsers, selectedEvent, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending, setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading, setShowEmailModal, showAlert, showEmailModal, massmailOffene, setMassmailAudience, massmailExtras, setMassmailExtras, setMassmailStatuses, myEmail } = p;
         // v31.2: Das zusätzliche CC ist selten nötig und steht deshalb in
         // einem Aufklapper — offen nur, wenn schon jemand eingetragen ist,
         // damit ein gesetzter Verteiler nie unsichtbar mitfährt.
@@ -333,6 +333,7 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                         statuses={massmailStatuses} setStatuses={setMassmailStatuses}
                         extras={massmailExtras} setExtras={setMassmailExtras} offene={massmailOffene}
                         disabled={emailSending}
+                        pasteRaw={massmailPasteRaw} setPasteRaw={setMassmailPasteRaw}
                       />
                     </div>
                   )}
@@ -472,10 +473,8 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                 title={isDe ? 'Der Text wird ohnehin automatisch gespeichert und beim nächsten Öffnen wiederhergestellt.' : 'The text is saved automatically anyway and restored next time.'}>
                 <Check size={14} /> {massmailDraftSaved ? (isDe ? 'Gespeichert' : 'Saved') : (isDe ? 'Entwurf speichern' : 'Save draft')}
               </button>
-              <button type="button" className="btn btn-outline" onClick={() => { sendMassmailTestToOrganizers().catch(() => { /* */ }); }} disabled={emailSending || massmailTesting}
-                title={isDe ? 'Schickt die Mail so, wie sie jetzt ist, mit [TEST] im Betreff — nur an die Organizer des Events.' : 'Sends the email as it is now, with [TEST] in the subject — to the event organizers only.'}>
-                <Send size={14} /> {massmailTesting ? (isDe ? 'Sendet…' : 'Sending…') : (isDe ? 'Testmail an Organizer' : 'Test email to organizers')}
-              </button>
+              {/* v32.36: „Testmail an Organizer" entfällt — dieselbe Probe geht
+                  über die Chips „An mich"/„Organizer" oben (Nutzer-Ansage 29.09.2026). */}
             </>}
             extraAction={{
               label: emailSending ? (isDe ? 'Wird eingetragen…' : 'Queuing…') : (isDe ? `An ${recipients.length} Empfänger senden` : `Send to ${recipients.length} recipients`),

@@ -20,8 +20,12 @@ import { DeloitteEvent } from '../../../types';
 import { SPRegistration } from '../../../services/EventService';
 import { MassmailAudience, AudiencePerson } from '../adminTypes';
 import { reminderRecipientsAus } from './MassmailPasteModal';
+import { parsePastedRecipients, splitName } from '../../../utils/pastedRecipients';
+import Modal from '../../Modal';
 
-export type MassmailExtra = 'offene' | 'ich' | 'orgs' | 'test';
+// v32.36: 'liste' = eigene eingefügte Adressliste (Massen-Upload), 'listeOffen'
+// = davon nur, wer noch keine Zeile in der Teilnehmerliste hat.
+export type MassmailExtra = 'offene' | 'ich' | 'orgs' | 'test' | 'liste' | 'listeOffen';
 
 export const MM_ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
 
@@ -102,6 +106,14 @@ export function massmailEmpfaenger(a: {
   };
   basis.forEach(add);
   if (extras.has('offene') && Array.isArray(offene)) offeneAlsEmpfaenger(offene).forEach(add);
+  if (extras.has('liste')) {
+    // Jede Zeile in der Teilnehmerliste zählt als Antwort (an-, abgemeldet,
+    // Warteliste) — dieselbe Regel wie reminderRecipientsAus.
+    const geantwortet = new Set(registrations.map(r => (r.ParticipantEmail || '').trim().toLowerCase()).filter(Boolean));
+    parsePastedRecipients(pasteRaw || '')
+      .filter(x => !extras.has('listeOffen') || !geantwortet.has(x.email))
+      .forEach(x => { const n = splitName(x.name); add({ ParticipantEmail: x.email, Vorname: n.vorname, Nachname: n.nachname }); });
+  }
   (['ich', 'orgs', 'test'] as const).forEach(k => {
     if (extras.has(k)) internAdressen(ev, myEmail, k).forEach(e => add({ ParticipantEmail: e }));
   });
@@ -126,6 +138,7 @@ export function massmailZielLabel(isDe: boolean, audience: MassmailAudience, sta
       : (isDe ? 'Aktive Teilnehmer' : 'Active participants'));
   }
   if (extras.has('offene')) teile.push(isDe ? 'Noch nicht geantwortet' : 'Not responded yet');
+  if (extras.has('liste')) teile.push(extras.has('listeOffen') ? (isDe ? 'Eigene Liste (ohne Reaktion)' : 'Own list (no response)') : (isDe ? 'Eigene Liste' : 'Own list'));
   if (extras.has('ich')) teile.push(isDe ? 'Ich' : 'Me');
   if (extras.has('orgs')) teile.push('Organizer');
   if (extras.has('test')) teile.push(isDe ? 'Test-Team' : 'Test team');
@@ -145,11 +158,37 @@ export interface MassmailZielChipsProps {
   setExtras: React.Dispatch<React.SetStateAction<Set<MassmailExtra>>>;
   offene: AudiencePerson[] | null | undefined;
   disabled?: boolean;
+  /** v32.36: eingefügte Adressliste (Massen-Upload); ohne Setter keine Zeile „Eigene Liste". */
+  pasteRaw?: string;
+  setPasteRaw?: (v: string) => void;
 }
 
 export const MassmailZielChips: React.FC<MassmailZielChipsProps> = (p) => {
-  const { isDe, ev, myEmail, registrations, audience, setAudience, statuses, setStatuses, extras, setExtras, offene, disabled } = p;
+  const { isDe, ev, myEmail, registrations, audience, setAudience, statuses, setStatuses, extras, setExtras, offene, disabled, pasteRaw, setPasteRaw } = p;
   const [einzeln, setEinzeln] = React.useState(false);
+  const [listeOffen, setListeOffen] = React.useState(false);
+  const [entwurf, setEntwurf] = React.useState('');
+  const [nurOhneReaktion, setNurOhneReaktion] = React.useState(true);
+  const listeN = parsePastedRecipients(pasteRaw || '').length;
+  const oeffneListe = (): void => {
+    setEntwurf(pasteRaw || '');
+    // Beim Reminder (Offene gewählt, aber unbekannt) ist der Abgleich die Absicht.
+    setNurOhneReaktion(extras.has('listeOffen') || extras.has('offene') || !extras.has('liste'));
+    setListeOffen(true);
+  };
+  const uebernehmeListe = (): void => {
+    if (!setPasteRaw) return;
+    setPasteRaw(entwurf);
+    setExtras(prev => {
+      const next = new Set(prev);
+      if (offene === null || (Array.isArray(offene) && offene.length === 0)) next.delete('offene');
+      next.add('liste');
+      if (nurOhneReaktion) next.add('listeOffen'); else next.delete('listeOffen');
+      return next;
+    });
+    if (audience === 'nachruecker' || audience === 'reminder') { setStatuses(new Set()); setAudience('custom'); }
+    setListeOffen(false);
+  };
   // Die Chips bedienen nur den 'custom'-Modus. Ein Alt-Modus (z. B. 'active'
   // aus einem Entwurf) wird beim ersten Klick in seine Status-Menge übersetzt,
   // damit „Warteliste dazu" nicht die Aktiven verliert.
@@ -194,7 +233,7 @@ export const MassmailZielChips: React.FC<MassmailZielChipsProps> = (p) => {
   );
   const offeneN = offene === undefined ? '…' : offene === null ? '–' : offene.length;
   const offeneTitel = offene === null
-    ? (isDe ? 'Für dieses Event kennt DEX keine Eingeladenen (Sichtbarkeit nur nach Standort) — nutze unten „Erinnerung mit deinem Verteiler“.' : 'DEX knows no invitees for this event (location-only visibility) — use “Reminder with your list” below.')
+    ? (isDe ? 'Für dieses Event kennt DEX keine Eingeladenen (Sichtbarkeit nur nach Standort) — füge deine Einladungsliste unter „Eigene Liste“ ein.' : 'DEX knows no invitees for this event (location-only visibility) — paste your invitation list under “Own list”.')
     : undefined;
   const nIch = internAdressen(ev, myEmail, 'ich').length;
   const nOrgs = internAdressen(ev, myEmail, 'orgs').length;
@@ -217,12 +256,51 @@ export const MassmailZielChips: React.FC<MassmailZielChipsProps> = (p) => {
       {einzeln && zeile(isDe ? 'Genauer' : 'In detail', <>
         {MM_ACTIVE.map(s => chip('st-' + s, s, zaehle([s]), stati.has(s), () => toggleStatus(s)))}
       </>)}
+      {/* v32.36: Gewählt, aber nicht rechenbar — sagen, was stattdessen geht. */}
+      {extras.has('offene') && offene === null && (
+        <div className="dex-ui-callout dex-ui-callout--warn" style={{ margin: '0 0 10px' }}>
+          <span>
+            {isDe
+              ? 'DEX kennt die Eingeladenen dieses Events nicht (Sichtbarkeit nur über Standorte). Füge deine Einladungsliste ein — DEX schreibt dann nur an, wer noch nicht reagiert hat.'
+              : 'DEX does not know the invitees of this event (location-only visibility). Paste your invitation list — DEX then only writes to people who have not responded.'}
+            {setPasteRaw && <>{' '}<button type="button" className="dex-ui-textbtn" onClick={oeffneListe}>{isDe ? 'Liste einfügen …' : 'Paste list …'}</button></>}
+          </span>
+        </div>
+      )}
       {zeile(isDe ? 'Intern' : 'Internal', <>
         {chip('ich', isDe ? 'An mich' : 'To me', nIch, extras.has('ich') && audience !== 'reminder' && audience !== 'nachruecker', () => toggleExtra('ich'), nIch === 0)}
         {chip('orgs', isDe ? 'Organizer' : 'Organizers', nOrgs, extras.has('orgs') && audience !== 'reminder' && audience !== 'nachruecker', () => toggleExtra('orgs'), nOrgs === 0)}
         {chip('test', isDe ? 'Test-Team' : 'Test team', nTest, extras.has('test') && audience !== 'reminder' && audience !== 'nachruecker', () => toggleExtra('test'), nTest === 0,
           nTest === 0 ? (isDe ? 'Für dieses Event ist kein Test-Team eingetragen.' : 'No test team on this event.') : undefined)}
       </>)}
+      {setPasteRaw && zeile(isDe ? 'Eigene Liste' : 'Own list', <>
+        {listeN > 0 && chip('liste', extras.has('listeOffen') ? (isDe ? 'Eigene Liste · ohne Reaktion' : 'Own list · no response') : (isDe ? 'Eigene Liste' : 'Own list'), listeN, extras.has('liste') && audience !== 'reminder' && audience !== 'nachruecker', () => toggleExtra('liste'))}
+        <button type="button" className="dex-ui-textbtn" onClick={oeffneListe} disabled={disabled}>
+          {listeN > 0 ? (isDe ? 'Liste ändern …' : 'Change list …') : (isDe ? 'Adressliste einfügen …' : 'Paste address list …')}
+        </button>
+      </>)}
+      {listeOffen && (
+        <Modal open={true} onClose={() => setListeOffen(false)} maxWidth={720}
+          title={isDe ? 'Eigene Liste einfügen' : 'Paste your own list'}
+          subtitle={isDe ? 'Aus Outlook kopiert oder beliebig formatiert — DEX erkennt Namen und Adressen.' : 'Copied from Outlook or any format — DEX picks out names and addresses.'}
+          footer={<>
+            <button type="button" className="btn btn-secondary" onClick={() => setListeOffen(false)}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+            <button type="button" className="btn btn-primary" onClick={uebernehmeListe} disabled={!entwurf.trim()}>
+              {isDe ? `Übernehmen (${parsePastedRecipients(entwurf).length})` : `Apply (${parsePastedRecipients(entwurf).length})`}
+            </button>
+          </>}>
+          <textarea className="form-control" rows={10} value={entwurf} onChange={e => setEntwurf(e.target.value)}
+            placeholder={isDe ? 'Max Mustermann <mmustermann@deloitte.de>; erika@deloitte.de …' : 'Jane Doe <jdoe@deloitte.com>; john@deloitte.com …'}
+            style={{ width: '100%', fontFamily: 'inherit', fontSize: '0.9rem', boxSizing: 'border-box' }} />
+          <label className="dex-ui-toggle-row" style={{ marginTop: 10 }}>
+            <input type="checkbox" checked={nurOhneReaktion} onChange={e => setNurOhneReaktion(e.target.checked)} />
+            <span className="dex-ui-toggle-row-body">
+              <span className="dex-ui-toggle-row-title">{isDe ? 'Nur an Personen, die noch nicht reagiert haben' : 'Only people who have not responded yet'}</span>
+              <span className="dex-ui-toggle-row-desc">{isDe ? 'Wer schon angemeldet, auf der Warteliste oder abgemeldet ist, fällt raus — typisch für den Reminder.' : 'Anyone already registered, waitlisted or cancelled is left out — typical for a reminder.'}</span>
+            </span>
+          </label>
+        </Modal>
+      )}
     </div>
   );
 };

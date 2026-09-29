@@ -2479,7 +2479,7 @@ export default function AdminPage(): React.ReactElement {
     isDe, selectedEvent, setCommsExpandedId, setShowCommsModal, showCommsModal,
   };
   const massmailPickModalProps = {
-    massmailAudience, massmailStatuses, registrations, setMassmailAudience,
+    massmailAudience, massmailPasteRaw, massmailStatuses, registrations, setMassmailAudience,
     setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal,
     massmailOffene, massmailExtras, setMassmailExtras, selectedEvent, myEmail: currentUser.email || '',
     onZurueckZurArt: () => setMailTypOpen(true),
