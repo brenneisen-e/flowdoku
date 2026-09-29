@@ -27,7 +27,6 @@ import { INACTIVE_SUMMARY_CACHE_KEY } from '../utils/accountCheckCache';
 import { cx, ensureDexUiStyles } from './dexUi';
 import { AUTO_MAINTENANCE_DONE_EVENT, AUTO_MAINTENANCE_STATE_EVENT, AutoMaintenanceState, autoMaintenanceZustand } from './AdminAutoMaintenance';
 import { useDemoEinfuehrung } from '../utils/demoIntro';
-import { DEX_ORB_PNG } from '../data/brandLogos';
 
 export default function LandingPage(): React.ReactElement {
   // v31.4 (Review): Der Hinweiskasten „Code nicht ladbar" unten nutzt
@@ -1098,15 +1097,16 @@ export default function LandingPage(): React.ReactElement {
               style={{
                 display: 'flex', alignItems: 'center', gap: 12,
                 cursor: 'pointer', textAlign: 'left',
-                fontFamily: 'inherit', width: '100%', maxWidth: 360,
+                fontFamily: 'inherit', width: '100%', maxWidth: 400,
               }}
               title={locale === 'de' ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event'}
             >
-              {/* v32.22: das aktuelle DEX-Logo (Höhenlinien-Kugel) statt des alten
-                  Farbrings aus v24.19 (Nutzer-Befund 29.09.2026). Statisches Bild,
-                  keine zweite Canvas-Animation neben der großen Kugel. */}
-              <img src={DEX_ORB_PNG} alt="" aria-hidden="true"
-                style={{ flexShrink: 0, width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
+              {/* v32.25: Doktorhut statt Logo (Nutzer-Ansage 29.09.2026) — die
+                  Kachel wirbt für Einführung und Organizer-Rolle; über ihr steht
+                  schon die große DEX-Kugel. Einfarbig wie alle Symbole. */}
+              <span className="dex-ui-choice-icon" aria-hidden="true" style={{ width: 38, height: 38, borderRadius: '50%' }}>
+                <GraduationCap size={20} />
+              </span>
               <span style={{ minWidth: 0 }}>
                 <span style={{ display: 'block', fontWeight: 800, fontSize: '0.98rem', lineHeight: 1.25, color: 'var(--dex-gray-800)' }}>
                   {locale === 'de' ? 'DEX für dein Event nutzen' : 'Use DEX for your event'}
@@ -1145,9 +1145,9 @@ export default function LandingPage(): React.ReactElement {
                       // weißen Karte wäre sie unsichtbar. Sie ist schaltbar
                       // (führt zur Anmeldung), also ein Chip, keine Pille.
                       className="dex-ui-chip"
-                      style={{ marginTop: 8 }}
+                      // v32.25: einzeilig, ohne Symbol (das steht jetzt links in der Kachel).
+                      style={{ marginTop: 8, whiteSpace: 'nowrap', fontSize: '0.74rem' }}
                     >
-                      <GraduationCap size={13} strokeWidth={2.5} />
                       {isDe ? `Für virtuelles Training anmelden · ${dateLabel}` : `Register for the virtual training · ${dateLabel}`}
                     </span>
                   );

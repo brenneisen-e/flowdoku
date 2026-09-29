@@ -1677,7 +1677,9 @@ export default function RegistrationPage(): React.ReactElement {
           in den Karten, diese hier gehören zum Haupt-Event (bzw. bei
           einer Klammer zur Anmeldung insgesamt). */}
       {childEvents.length > 0 && event.eventSpecificFields.length > 0 && (
-        <div style={{ gridColumn: '1 / -1', fontSize: '0.8rem', fontWeight: 700, color: 'var(--dex-gray-600)', marginBottom: -6 }}>
+        // v32.25: marginBottom 10 statt -6 — seit v32.23 hat das Raster keinen
+        // Zeilenabstand mehr (Subgrid), die Überschrift klebte an der Frage.
+        <div style={{ gridColumn: '1 / -1', fontSize: '0.8rem', fontWeight: 700, color: 'var(--dex-gray-600)', marginTop: 4, marginBottom: 10 }}>
           {event.subEventsOnlyMode
             ? (locale === 'de' ? 'Allgemeine Fragen zur Anmeldung' : 'General questions for your registration')
             : (locale === 'de' ? 'Fragen zum Haupt-Event' : 'Questions for the main event')}

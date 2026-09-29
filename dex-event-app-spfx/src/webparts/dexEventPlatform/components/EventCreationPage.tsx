@@ -2008,10 +2008,15 @@ export default function EventCreationPage(): React.ReactElement {
   // Organizer beschwert haben. Hat der Organizer selbst entschieden
   // (orgInvitesTouchedRef) oder wird ein bestehendes Event bearbeitet, bleibt
   // sein Wert stehen.
+  // v32.25: „Reihe" heißt Kalender-Termine oder ab drei Sub-Events. Bis
+  // v32.24 kippte die Vorgabe schon beim ersten Sub-Event — beim Demo-Event
+  // mit einem Dinner bekamen die Organizer keinen Termin (Nutzer-Befund
+  // 29.09.2026), obwohl genau dieser Fall laut Kommentar oben der Default ist.
   React.useEffect(() => {
     if (orgInvitesTouchedRef.current) return;
-    setOrgGetsSubInvites(!(subEventsOptIn && subEvents.length > 0));
-  }, [subEventsOptIn, subEvents.length]);
+    const reihe = subEventsOptIn && (subEventCalendar || subEvents.length >= 3);
+    setOrgGetsSubInvites(!reihe);
+  }, [subEventsOptIn, subEvents.length, subEventCalendar]);
 
   // ============================================================
   // v30.0: Entwurfs-Zwischenspeicher fuer die Neu-Anlage.
