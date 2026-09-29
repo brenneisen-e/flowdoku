@@ -413,8 +413,10 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                   width: 40, height: 40, borderRadius: '50%',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: extrasDurch || (extrasAktiv && !extrasOffen) ? 'var(--dex-green)' : '#fff',
-                  color: extrasDurch || (extrasAktiv && !extrasOffen) ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
-                  border: extrasDurch || (extrasAktiv && !extrasOffen) ? '3px solid var(--dex-green)' : '3px dashed var(--dex-green, #86bc25)',
+                  // v32.43: noch nicht erreicht = grau wie die anderen offenen
+                  // Schritte (Nutzer-Ansage 29.09.2026), nur gestrichelt.
+                  color: extrasDurch || (extrasAktiv && !extrasOffen) ? '#fff' : (extrasAktiv ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-400)'),
+                  border: extrasDurch || (extrasAktiv && !extrasOffen) ? '3px solid var(--dex-green)' : (extrasAktiv ? '3px dashed var(--dex-green, #86bc25)' : '3px dashed var(--dex-gray-300, #d4d4d4)'),
                   boxShadow: extrasAktiv && !extrasOffen ? '0 0 0 4px rgba(134,188,37,0.2)' : 'none',
                   position: 'relative',
                   transition: 'all 0.3s ease',
@@ -424,7 +426,7 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
                     <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, background: 'var(--dex-green-dark, #4a7c1f)', color: '#fff', fontSize: '0.65rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{extrasGenutzt}</span>
                   )}
                 </div>
-                <span className="dex-step-label" style={{ fontSize: '0.75rem', fontWeight: extrasAktiv ? 700 : 500, color: 'var(--dex-green-dark, #4a7c1f)', textAlign: 'center' }}>
+                <span className="dex-step-label" style={{ fontSize: '0.75rem', fontWeight: extrasAktiv ? 700 : 500, color: extrasAktiv || extrasDurch ? 'var(--dex-green)' : 'var(--dex-gray-400)', textAlign: 'center' }}>
                   {isDe ? 'Extras' : 'Extras'} <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}>{extrasOffen ? '▴' : (isDe ? '(optional)' : '(optional)')}</span>
                 </span>
               </div>

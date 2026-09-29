@@ -2485,7 +2485,8 @@ export default function EventCreationPage(): React.ReactElement {
     return getStepErrorsForImpl({
       allDay, endDate, lastDeregisterDate, maxParticipants, organizer, registrationDeadline,
       startDate, subEvents, subEventsOnlyMode, title, unlimitedParticipants, userCancelAllowed,
-      useSplitCapacities,
+      // v32.43: Das Tutorial-Testevent schreibt keine Beschreibung — dort keine Pflicht.
+      useSplitCapacities, description, noDescription: noDescription || coachMode,
     }, step);
   };
   const getStepErrors = (): string[] => getStepErrorsFor(currentStep);

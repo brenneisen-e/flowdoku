@@ -56,13 +56,22 @@ export function useWizardEventFieldState(ctx: UseWizardEventFieldStateCtx) {
     // v28.79: beim Bearbeiten aus dem gespeicherten Flag vorbelegen —
     // sonst stand der Schalter nach dem Neuladen wieder auf „Beschreibung
     // nutzen", obwohl der Organizer sie bewusst weggelassen hatte.
-    if (!editEvent) return false;
+    // v32.43: Neue Events starten OHNE Beschreibung (Nutzer-Ansage 29.09.2026:
+    // „default aus, aber wenn an, dann muss sie befüllt werden" — die
+    // Pflichtprüfung steht in getStepErrorsForImpl).
+    if (!editEvent) return true;
     if ((editEvent.description || '').trim()) return false;
     try {
       const ov = JSON.parse(editEvent.emailTemplateOverrides || '{}');
       return !!(ov && ov._noDescription);
     } catch { return false; }
   });
+  // v32.43: Bringt eine Vorlage, ein Entwurf oder eine Demo eine Beschreibung
+  // mit, ist der Schalter an — sonst stünde der Text unsichtbar im Event.
+  React.useEffect(() => {
+    if (noDescription && (description || '').replace(/<[^>]*>/g, '').trim()) setNoDescription(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [description]);
   // EventType wird nicht mehr als UI-Feld abgefragt (v5.2) — neue Events:
   // aus Template abgeleitet (b2run → 'B2Run', sonst → 'Other'). Bei Edit:
   // den gespeicherten Wert beibehalten. Die Variable wird weiterhin für

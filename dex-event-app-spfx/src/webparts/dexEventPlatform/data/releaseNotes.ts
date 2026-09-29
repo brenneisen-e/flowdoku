@@ -128,6 +128,8 @@ export function splitReleaseNote(text: string): ReleaseNoteParts {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '32.43.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Feature', text: 'Die Beschreibung ist bei neuen Events zunächst ausgeschaltet. Wer „Beschreibung anzeigen“ einschaltet, muss sie auch ausfüllen – sonst meldet „Weiter“ den Fehler. Bringt eine Vorlage oder ein Entwurf eine Beschreibung mit, ist der Schalter automatisch an.' },
+  { version: '32.43.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Feature', text: 'Die Frage zu Programmpunkten in Schritt 1 ist verständlicher formuliert und hat ein Beispiel (Trainingstag mit Keynote und Workshops). Der Knoten „Extras“ im Stepper ist grau, solange du die Extras noch nicht erreicht hast.' },
   { version: '32.42.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Bugfix', text: 'Der Assistent behauptete, der erste Organizer stehe in Mails als Absender. Das stimmte nicht: In den Mails stehen alle Organizer in der Reihenfolge der Liste, abgeschickt wird über das DEX-Postfach. Der Text sagt das jetzt so.' },
   { version: '32.42.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Feature', text: 'Die Einleitung von Schritt 1 sagt jetzt klar: „Hier legst du Titel, Zeitraum, Beschreibung und Bild fest“ – und dass weiter unten Sub-Events bzw. Programmpunkte und die Sichtbarkeit folgen.' },
   { version: '32.41.0', date: '2026-09-29', bereich: 'Allgemein', type: 'Bugfix', text: 'Events ohne Foto zeigen jetzt überall den grünen DEX-Orb. Das eingebaute Ersatzbild war noch das alte bunte Ring-Logo – es erschien, solange das Bild aus SharePoint noch nicht geladen war.' },

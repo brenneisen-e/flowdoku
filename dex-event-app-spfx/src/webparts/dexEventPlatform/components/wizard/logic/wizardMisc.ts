@@ -89,6 +89,9 @@ export interface GetStepErrorsForCtx {
   unlimitedParticipants: boolean;
   userCancelAllowed: boolean;
   useSplitCapacities: boolean;
+  /** v32.43: Beschreibung — Pflicht, solange der Schalter „Beschreibung anzeigen" an ist. */
+  description?: string;
+  noDescription?: boolean;
 }
 
 export function getStepErrorsForImpl(ctx: GetStepErrorsForCtx, step: number): string[] {
@@ -112,7 +115,13 @@ export function getStepErrorsForImpl(ctx: GetStepErrorsForCtx, step: number): st
             : new Date(endDate) <= new Date(startDate);
           if (bad) errors.push('endBeforeStart');
         }
-        // v9.14: description ist optional — kein Pflichtfeld mehr
+        // v9.14: description ist optional — kein Pflichtfeld mehr.
+        // v32.43: …aber wer „Beschreibung anzeigen" eingeschaltet lässt, muss
+        // eine schreiben (Nutzer-Ansage 29.09.2026) — sonst steht eine leere
+        // Beschreibungs-Fläche auf der Anmeldeseite. Abschalten ist der Ausweg.
+        if (ctx.noDescription === false && !(ctx.description || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim()) {
+          errors.push('description');
+        }
         // v28.87: Die Sub-Events stehen seit dem Wegfall von Schritt 3 in
         // Grundlagen — also wird ihre Datumsprüfung hier mitgeführt (v18.36:
         // Ende vor Start laesst den Outlook-Create-Flow mit HTTP 400 scheitern).

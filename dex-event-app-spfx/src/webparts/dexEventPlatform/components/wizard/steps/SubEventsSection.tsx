@@ -303,8 +303,9 @@ export const SubEventsSection: React.FC<SubEventsSectionProps> = (p) => {
               </h3>
               <p className="dex-step-sub-lead">
                 {isDe
-                  ? 'Soll sich jeder einmal fürs ganze Event anmelden — und du erfasst je Programmpunkt nur, wer da war?'
-                  : 'Should everyone register once for the whole event — while you only record who attended each agenda item?'}
+                  // v32.43: mit Beispiel (Nutzer-Ansage 29.09.2026: „das versteht man nicht").
+                  ? <>Gibt es mehrere Programmpunkte, für die sich niemand einzeln anmeldet, bei denen du aber wissen willst, <strong>wer dabei war</strong>? Beispiel: Beim Trainingstag melden sich alle einmal an — am Tag checkst du bei &bdquo;Keynote&ldquo;, &bdquo;Workshop A&ldquo; und &bdquo;Workshop B&ldquo; jeweils ein, wer im Raum ist. Anders als bei Sub-Events gibt es dafür keine eigenen Plätze und keine eigene Anmeldung.</>
+                  : <>Are there several agenda items nobody registers for separately, but where you want to know <strong>who attended</strong>? Example: everyone registers once for the training day — on the day you check people in at “Keynote”, “Workshop A” and “Workshop B”. Unlike sub-events there are no separate seats and no separate registration.</>}
               </p>
               <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
                 <label className={cx('dex-ui-toggle-row', agendaCheckIn && 'is-active')}>

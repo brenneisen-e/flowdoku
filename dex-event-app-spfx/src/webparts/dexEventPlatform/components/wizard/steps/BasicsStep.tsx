@@ -838,7 +838,8 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   tabIndex={0}
                   onClick={openDescriptionEditor}
                   onKeyDown={rowKeyHandler(openDescriptionEditor)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: 'pointer' }}
+                  // v32.43: rot, wenn „Beschreibung anzeigen" an ist, aber nichts drinsteht.
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: 'pointer', ...(!scopeSub ? errorBorderStyle('description') : {}) }}
                 >
                   <span className="dex-ui-muted" style={{ minWidth: 200, lineHeight: 1.5 }}>
                     {scDescription
