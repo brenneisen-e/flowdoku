@@ -128,6 +128,7 @@ export function splitReleaseNote(text: string): ReleaseNoteParts {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '32.40.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Bugfix', text: 'Wer das Mitmach-Tutorial im Assistenten schließt, bleibt jetzt in der Event-Erstellung – ohne Tutorial und ohne erneute Abfrage der Nutzungsbedingungen. Bisher ging es zurück auf die Startseite.' },
   { version: '32.39.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Feature', text: 'Im Assistenten steht links neben jedem Abschnitt, ob er „Pflicht“ oder „Optional“ ist. Pflicht sind nur Titel, Zeitraum, Organizer sowie Plätze und Fristen – alles andere kannst du überspringen. Auf dem Handy steht die Angabe als kleine Pille über dem Abschnitt.' },
   { version: '32.38.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Feature', text: 'Der Assistent wirkt kürzer: Team-Anmeldung, Dokumente und Fun-Zone stehen im Stepper als ein Knoten „Extras (optional)“, der sich per Klick aufklappt. Nach dem Schritt Kommunikation fragt DEX „Brauchst du noch Extras?“ – wer keine braucht, ist mit einem Klick fertig. Die Kopfzeile zählt jetzt „Schritt 3 von 6“.' },
   { version: '32.38.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Feature', text: 'In Schritt 3 sind „Organisierte Anreisen“ und das Programm eingeklappt, solange nichts eingetragen ist. Mit Einträgen – oder bei Programmpunkten mit Check-in – sind sie offen.' },

@@ -260,7 +260,14 @@ export function TutorialProvider(props: { children: React.ReactNode }): React.Re
           // Tutorial-Modus eingehängt; ohne Tutorial hängt DexEventPlatform
           // einen FRISCHEN Assistenten ein (key-Wechsel), und der fragte die
           // Nutzungsbedingungen erneut ab (Nutzer-Befund 29.09.2026).
-          onClose={() => { const imAssistent = currentPage === 'create-event'; stopCoach(); if (imAssistent) window.setTimeout(() => navigate('landing'), 0); }}
+          // v32.40: Schließen lässt die Person im Assistenten (Nutzer-Ansage
+          // 29.09.2026) — ohne Tutorial. v32.18 schickte sie auf die Startseite,
+          // weil der frisch eingehängte Assistent die Nutzungsbedingungen erneut
+          // abfragte; der Merker unten sagt ihm, dass sie eben bestätigt wurden.
+          onClose={() => {
+            if (currentPage === 'create-event') { try { window.sessionStorage.setItem('dex_tc_nach_tutorial', '1'); } catch { /* */ } }
+            stopCoach();
+          }}
           onGoWizardStep={(n: number) => { try { window.dispatchEvent(new CustomEvent('dex-tutorial-wizard-step', { detail: n })); } catch { /* */ } }}
           onGoToWizard={() => navigate('create-event')}
           onDeleteTest={() => { void deleteTest(); }}

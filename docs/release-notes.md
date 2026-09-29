@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 32.40.0 | 2026-09-29 | Bugfix | **TutorialGuide:** Schließen im Assistenten navigiert nicht mehr auf die Startseite (v32.18), sondern setzt `sessionStorage.dex_tc_nach_tutorial` und beendet den Coach; **EventCreationPage** übernimmt dann einmalig `dex_tc_accepted_v1` für `tcAccepted`. |
 | 32.39.0 | 2026-09-29 | Feature | **dexUi:** `dex-ui-section--pflicht`/`--optional` mit `::before` (Text aus `data-art`, vertical-rl, im Karten-Innenabstand; ≤768 px als Pille). Zuordnung je Abschnitt nach `getStepErrorsForImpl`: Pflicht = Event/Zeitraum (1), Organizer (2), Plätze/Fristen (4, außer `subEventsOnlyMode`); alles übrige optional. |
 | 32.38.0 | 2026-09-29 | Feature | **WizardFormShell:** Extras-Knoten (`EXTRA_IDX` 6/7/8, Anzeige-Liste statt `steps.map`, Fortschrittslinie über die Anzeige-Position, gestrichelte Kreise), Zwischenkarte beim Weiter aus Index 5 (`weiter`), Knopf „Ohne Extras“ → Abrechnung bzw. Anlegen/Speichern. Indizes unverändert. Kopfzeilen „von 6“ / „Extra · optional“. **Aufklapper (neu)** für Transfers und Programm in LocationProgramStep (Haupt und Sub-Event). Icons Sparkles/Gamepad. |
 | 32.37.0 | 2026-09-29 | Feature | **renderVisibilitySummaryBoxImpl:** Kontext um `isFictive`/`activeFrom` erweitert; Zusatzsatz bei Entwurf bzw. Aktiv-ab in der Zukunft; Rand `10px 0 16px` statt nur oben. |
