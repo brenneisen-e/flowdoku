@@ -170,7 +170,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   Fehler aus den ersten Screenshots. */}
               <h2 className="dex-step-head-title" style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <span className="dex-step-eyebrow">{isDe ? 'Schritt 1 von 9' : 'Step 1 of 9'}</span>
+                  <span className="dex-step-eyebrow">{isDe ? 'Schritt 1 von 6' : 'Step 1 of 6'}</span>
                   <span>{isDe ? 'Grundlagen' : 'Basics'}</span>
                 </span>
                 {!isEditMode && !tutorialMode && (

@@ -194,7 +194,7 @@ export const CommunicationStep: React.FC<CommunicationStepProps> = (p) => {
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
                 <h2 className="dex-step-head-title">
-                  <span className="dex-step-eyebrow">{isDe ? 'Schritt 6 von 9' : 'Step 6 of 9'}</span>
+                  <span className="dex-step-eyebrow">{isDe ? 'Schritt 6 von 6' : 'Step 6 of 6'}</span>
                   {t('create.step.communication')}
                 </h2>
                 <p className="dex-step-head-lead">

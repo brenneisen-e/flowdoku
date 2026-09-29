@@ -168,7 +168,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                <span className="dex-step-eyebrow">{isDe ? 'Schritt 4 von 9' : 'Step 4 of 9'}</span>
+                <span className="dex-step-eyebrow">{isDe ? 'Schritt 4 von 6' : 'Step 4 of 6'}</span>
                 {isDe ? 'Kapazität, Fristen & Sichtbarkeit' : 'Capacity, deadlines & visibility'}
               </h2>
               <p className="dex-step-head-lead">

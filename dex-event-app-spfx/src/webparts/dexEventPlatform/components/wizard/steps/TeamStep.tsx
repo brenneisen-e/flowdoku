@@ -58,7 +58,7 @@ export const TeamStep: React.FC<TeamStepProps> = ({
   return (
     <div style={{ display: visible ? 'block' : 'none' }}>
     <h2 className="dex-step-head-title">
-      <span className="dex-step-eyebrow">{isDe ? 'Schritt 7 von 9' : 'Step 7 of 9'}</span>
+      <span className="dex-step-eyebrow">{isDe ? 'Extra · optional' : 'Extra · optional'}</span>
       {isDe ? 'Team-Anmeldung' : 'Team registration'}
     </h2>
     <p className="dex-step-head-lead">

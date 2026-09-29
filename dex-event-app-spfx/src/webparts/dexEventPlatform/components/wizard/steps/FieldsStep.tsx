@@ -213,7 +213,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                <span className="dex-step-eyebrow">{isDe ? 'Schritt 5 von 9' : 'Step 5 of 9'}</span>
+                <span className="dex-step-eyebrow">{isDe ? 'Schritt 5 von 6' : 'Step 5 of 6'}</span>
                 {isDe ? 'Fragen im Anmeldeformular' : 'Questions on the registration form'}
               </h2>
               <p className="dex-step-head-lead">

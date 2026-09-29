@@ -259,7 +259,7 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
   return (
               <div style={{ display: visible ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                <span className="dex-step-eyebrow">{isDe ? 'Schritt 2 von 9' : 'Step 2 of 9'}</span>
+                <span className="dex-step-eyebrow">{isDe ? 'Schritt 2 von 6' : 'Step 2 of 6'}</span>
                 {isDe ? 'Organizer & Team' : 'Organizers & team'}
               </h2>
               <p className="dex-step-head-lead">
