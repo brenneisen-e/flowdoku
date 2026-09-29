@@ -1187,6 +1187,24 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         die Optionen unter der Beschreibung. */}
                     {isExpanded && (
                     <div className="dex-ui-stack" style={{ marginLeft: 36, marginTop: 12 }}>
+                    {/* v32.15: Englische Frage direkt unter der Frage und beschriftet —
+                        vorher stand sie unter der Beschreibung, ohne Titel, und
+                        las sich wie ein Teil davon (Nutzer-Ansage 29.09.2026). */}
+                    {bilingualFields && (
+                      <div className="dex-ui-field">
+                        <label className="dex-ui-label">{isDe ? 'Frage auf Englisch' : 'Question in English'}<span className="dex-ui-label-optional">{isDe ? '(leer = deutscher Text)' : '(empty = German text)'}</span></label>
+                        <div className="dex-ui-inline" style={{ flexWrap: 'nowrap' }}>
+                          {enBadge}
+                          <input
+                            className="dex-ui-input dex-ui-input--sm"
+                            value={field.labelEn || ''}
+                            placeholder={isDe ? 'z. B. „Have you used DEX before?"' : 'e.g. “Have you used DEX before?”'}
+                            onChange={e => updateCustomField(field.id, { labelEn: e.target.value })}
+                            style={{ flex: 1, width: 'auto' }}
+                          />
+                        </div>
+                      </div>
+                    )}
                     {/* v7.20: Beschreibung pro Feld. v18.18: Darstellung
                         wählbar — „i"-Box neben dem Label ODER Erklär-Text
                         unter dem Label. */}
@@ -1213,6 +1231,21 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         onChange={text => updateCustomField(field.id, { helpText: text })}
                         isDe={isDe}
                       />
+                      {/* v17.20: EN-Variante der Beschreibung. */}
+                      {bilingualFields && (
+                        <div className="dex-ui-inline" style={{ flexWrap: 'nowrap', marginTop: 6 }} title={isDe ? 'Beschreibung auf Englisch' : 'Description in English'}>
+                          {enBadge}
+                          <input
+                            className="dex-ui-input dex-ui-input--sm"
+                            value={field.helpTextEn || ''}
+                            placeholder={isDe
+                              ? 'Englische Beschreibung (optional)'
+                              : 'English description (optional)'}
+                            onChange={e => updateCustomField(field.id, { helpTextEn: e.target.value })}
+                            style={{ flex: 1, width: 'auto' }}
+                          />
+                        </div>
+                      )}
                       {field.helpText && field.helpText.trim() && (
                         <div className="dex-ui-inline" style={{ marginTop: 8 }}>
                           <span className="dex-ui-muted" style={{ fontWeight: 600 }}>{isDe ? 'Wo erscheint er?' : 'Where does it show?'}</span>
@@ -1238,40 +1271,9 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                           </label>
                         </div>
                       )}
-                      {/* v17.20: EN-Variante der Beschreibung. */}
-                      {bilingualFields && (
-                        <div className="dex-ui-inline" style={{ flexWrap: 'nowrap', marginTop: 6 }}>
-                          {enBadge}
-                          <input
-                            className="dex-ui-input dex-ui-input--sm"
-                            value={field.helpTextEn || ''}
-                            placeholder={isDe
-                              ? 'Englische Beschreibung (optional)'
-                              : 'English description (optional)'}
-                            onChange={e => updateCustomField(field.id, { helpTextEn: e.target.value })}
-                            style={{ flex: 1, width: 'auto' }}
-                          />
-                        </div>
-                      )}
                       </div>
                       )}
                     </div>
-                    {/* v17.20: EN-Feld-Name — sichtbar wenn der Bilingual-
-                        Toggle aktiviert wurde. */}
-                    {bilingualFields && (
-                      <div className="dex-ui-inline" style={{ flexWrap: 'nowrap' }}>
-                        {enBadge}
-                        <input
-                          className="dex-ui-input dex-ui-input--sm"
-                          value={field.labelEn || ''}
-                          placeholder={isDe
-                            ? 'Englischer Fragetext (optional — leer = fällt auf den deutschen Text zurück)'
-                            : 'English question text (optional — empty = falls back to the German text)'}
-                          onChange={e => updateCustomField(field.id, { labelEn: e.target.value })}
-                          style={{ flex: 1, width: 'auto' }}
-                        />
-                      </div>
-                    )}
                     {/* v11.94: Bei Checkbox-Feldern kann der Organizer den
                         Text neben der Checkbox individuell setzen — Default
                         ist „Ja, bestätigen" / „Yes, confirm". */}

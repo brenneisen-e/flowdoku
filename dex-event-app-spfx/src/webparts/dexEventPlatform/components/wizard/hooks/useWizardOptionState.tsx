@@ -231,6 +231,10 @@ export function useWizardOptionState(ctx: UseWizardOptionStateCtx) {
     const neu: CustomFieldInput = {
       id: newId, label: '', type: 'text',
       required: false, options: [], visible: true,
+      // v32.15: Beschreibung standardmäßig als Text unter der Frage (Nutzer-
+      // Ansage 29.09.2026) — nur für NEUE Fragen; bestehende behalten ihre
+      // Darstellung, sonst änderte sich die Anmeldeseite laufender Events.
+      helpTextStyle: 'inline',
     };
     const pos = typeof at === 'number' && at >= 0 && at <= customFields.length ? at : customFields.length;
     setCustomFields([...customFields.slice(0, pos), neu, ...customFields.slice(pos)]);
