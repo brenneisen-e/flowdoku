@@ -75,9 +75,28 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // Öffnen schon ein Zusatz-CC, startet er offen — eine getroffene Wahl
         // darf nicht versteckt beginnen.
         const [ccOpen, setCcOpen] = React.useState(inviteCc.length > 0);
-        const audienceEmails = (selectedEvent.audienceFilter || [])
+        // v32.26: Empfänger und Kopfbild zugeklappt — wie im Massenmail-Editor
+        // (Nutzer-Ansage 29.09.2026); die Zeile nennt Ziel und Anzahl trotzdem.
+        const [aufAn, setAufAn] = React.useState(false);
+        const [aufBild, setAufBild] = React.useState(false);
+        // v32.27: Verteiler in ihre Mitglieder auflösen (Nutzer-Befund 29.09.2026:
+        // „An alle im Mailverteiler“ zeigte 1 — die Verteiler-Adresse selbst). Ein
+        // Verteiler hat ein @ und lief deshalb als einzelne Person durch; damit
+        // konnten „noch nicht Eingeladene/Angemeldete“ nichts herausrechnen. Die
+        // Mitglieder löst der Assistent beim Speichern auf (AudienceResolvedEmails,
+        // Personen bleiben darin sie selbst). Muster ohne @ (DEKOELN) stehen dort
+        // nicht und werden wie bisher mitgenommen. Ohne aufgelöste Liste (altes
+        // Event, nie gespeichert) gilt die Zielgruppe wie eingetragen.
+        const audienceRoh = (selectedEvent.audienceFilter || [])
           .map(s => (s || '').trim())
           .filter(Boolean);
+        const aufgeloest = selectedEvent.audienceResolvedEmails || [];
+        // Ausgeschlossene sehen das Event nie — sie bekommen auch keine Einladung
+        // (dieselbe Regel wie resolveAudienceEmails in useMailComposers).
+        const ausgeschlossen = new Set((selectedEvent.excludedUsers || []).map(e => (e || '').toLowerCase().trim()).filter(Boolean));
+        const audienceEmails = (aufgeloest.length > 0
+          ? Array.from(new Set([...aufgeloest, ...audienceRoh.filter(e => e.indexOf('@') < 0)]))
+          : audienceRoh).filter(e => !ausgeschlossen.has(e.toLowerCase()));
         const myEmail = currentUser.email || '';
         const myDisplayName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || myEmail;
         // v28.37: „Nur an noch nicht Angemeldete" — der Verteiler abzueglich
@@ -407,7 +426,14 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
           <div>
             {/* ---- 1. An wen? ------------------------------------------ */}
             <div className="dex-ui-section">
-              <div className="dex-ui-section-title">{isDe ? 'An wen geht die Mail?' : 'Who receives the email?'}</div>
+              <button type="button" className={cx('dex-ui-disclosure', aufAn && 'is-open')} onClick={() => setAufAn(o => !o)} aria-expanded={aufAn}>
+                <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                {isDe ? 'An wen geht die Mail?' : 'Who receives the email?'}
+                <span className="dex-ui-pill dex-ui-pill--green" style={{ marginLeft: 8 }}>{targetEmails.length}</span>
+                <span className="dex-ui-muted" style={{ marginLeft: 6, fontWeight: 400, fontSize: '0.8rem' }}>{recipientLabel}</span>
+              </button>
+              {aufAn && (
+              <div className="dex-ui-disclosure-body">
               <div className="dex-ui-grid-2" role="radiogroup" aria-label={isDe ? 'Empfänger' : 'Recipients'}>
                 {/* v31.2: „Nur an mich" ist die Vorgabe (inviteTarget-Default
                     'organizer') und steht deshalb oben links — die Blickführung
@@ -631,12 +657,19 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                   </div>
                 )}
               </div>
+              </div>
+              )}
             </div>
 
             {/* ---- 2. Wie sieht die Mail aus? --------------------------- */}
             {/* v30.52: dieselbe Auswahl wie in Massen- und QR-Mail. */}
             <div className="dex-ui-section">
-              <div className="dex-ui-section-title">{isDe ? 'Wie sieht die Mail aus?' : 'What does the email look like?'}</div>
+              <button type="button" className={cx('dex-ui-disclosure', aufBild && 'is-open')} onClick={() => setAufBild(o => !o)} aria-expanded={aufBild}>
+                <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                {isDe ? 'Wie sieht die Mail aus? (Kopfbild)' : 'What does the email look like? (header image)'}
+              </button>
+              {aufBild && (
+              <div className="dex-ui-disclosure-body">
               <MailHeaderImageChooser
                 value={inviteHeaderImage}
                 onChange={setInviteHeaderImage}
@@ -652,6 +685,8 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                   ? 'Die Vorschau zeigt Kopfbild, Überschrift und Text so, wie die Mail ankommt.'
                   : 'The preview shows header image, heading and text as the email will arrive.'}
               </div>
+              </div>
+              )}
             </div>
 
             {/* ---- 3. Was steht drin? — Betreff, Überschrift und Text folgen
