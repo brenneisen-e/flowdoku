@@ -17,7 +17,8 @@ import { HtmlEditorModal } from '../../HtmlEditorModal';
 import { cx } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
-import { MailHeaderImage } from '../../../utils/mailHeaderImage';
+import { MailHeaderImage, applyHeroImage, hasOwnHeaderImage, kopfBildVorschau, kopfMasseFuerBild, mailHeaderOpts } from '../../../utils/mailHeaderImage';
+import { ladeKopfbild } from '../../../utils/inlineMailImage';
 
 export interface InviteComposerModalProps {
   applyInviteHero: (wrappedHtml: string) => string;
@@ -66,10 +67,12 @@ export interface InviteComposerModalProps {
   showInviteModal: boolean;
   siteUrl: string;
   updateEvent: (eventId: string, updates: Record<string, unknown>, opts?: { skipReload?: boolean; }) => Promise<boolean>;
+  /** v32.33: Zurück zur Frage „Was für eine Mail?" (MailTypeModal). */
+  onZurueckZurArt?: () => void;
 }
 
 export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
-  const { applyInviteHero, confirmDialog, currentUser, eventServiceRef, getGroupMembers, inviteAddInput, inviteAudienceOpen, inviteBody, inviteCc, inviteCustomEmails, invitedLc, inviteDraftSaved, inviteEventPhotoB64, inviteHeaderImage, inviteHeaderOpts, inviteHeading, inviteSending, inviteSubheading, inviteSubject, inviteTarget, isDe, refreshEvents, registrations, resetInviteDraft, saveInviteDraft, searchUser, searchUsers, selectedEvent, setComposerCrop, setInviteAddInput, setInviteAudienceOpen, setInviteBody, setInviteCc, setInviteCustomEmails, setInviteHeaderImage, setInviteHeading, setInviteSending, setInviteSubheading, setInviteSubject, setInviteTarget, setShowInviteModal, showAlert, showInviteModal, siteUrl, updateEvent } = p;
+  const { applyInviteHero, confirmDialog, currentUser, eventServiceRef, getGroupMembers, inviteAddInput, inviteAudienceOpen, inviteBody, inviteCc, inviteCustomEmails, invitedLc, inviteDraftSaved, inviteEventPhotoB64, inviteHeaderImage, inviteHeading, inviteSending, inviteSubheading, inviteSubject, inviteTarget, isDe, refreshEvents, registrations, resetInviteDraft, saveInviteDraft, searchUser, searchUsers, selectedEvent, setComposerCrop, setInviteAddInput, setInviteAudienceOpen, setInviteBody, setInviteCc, setInviteCustomEmails, setInviteHeaderImage, setInviteHeading, setInviteSending, setInviteSubheading, setInviteSubject, setInviteTarget, setShowInviteModal, showAlert, showInviteModal, siteUrl, updateEvent, onZurueckZurArt } = p;
         // v31.2: Der einzige Hook steht vor allem anderen; die Komponente hat
         // keine frühen Returns, die Reihenfolge ist damit fest. Das CC ist
         // Feineinstellung — der Aufklapper startet zu, der Zähler im Knopf
@@ -98,6 +101,11 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // v32.30: „Woher kommt der Verteiler?“ — ein Klick zeigt ihn (Nutzer-
         // Ansage 29.09.2026), statt den Organizer in den Assistenten zu schicken.
         const [verteilerZeigen, setVerteilerZeigen] = React.useState(false);
+        // v32.33: Eigenes Kopfbild auch in der Einladung (Nutzer-Ansage
+        // 29.09.2026) — dieselbe Kachel und Leiter wie in Massen- und QR-Mail.
+        const [eigenesKopfB64, setEigenesKopfB64] = React.useState('');
+        const [kopfBusy, setKopfBusy] = React.useState(false);
+        const [kopfNote, setKopfNote] = React.useState('');
         // v32.31: Eigene Liste (Nutzer-Ansage 29.09.2026: „bei der Einladungsmail
         // eine eigene Liste reinladen … mit der Sichtbarkeit abgleichen und
         // fragen, ob die Delta-Personen auch in die Sichtbarkeit sollen“). Die
@@ -280,6 +288,24 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
             return (o && typeof o._eventLogo === 'string') ? o._eventLogo : '';
           } catch { return ''; }
         })();
+        const mailLogo = selectedEvent.mailImageBase64 || customLogo;
+        // v32.33: Kopf lokal rechnen — `applyInviteHero`/`inviteHeaderOpts` aus
+        // dem Hook kennen das hochgeladene Bild dieser Einladung nicht.
+        const kopfEinsetzen = (html: string): string =>
+          (inviteHeaderImage.hero === 'custom' || inviteHeaderImage.hero === 'orb')
+            ? applyHeroImage(html, inviteHeaderImage, inviteEventPhotoB64, eigenesKopfB64)
+            : applyInviteHero(html);
+        const kopfOpts = mailHeaderOpts(inviteHeaderImage, hasOwnHeaderImage(inviteHeaderImage, inviteEventPhotoB64, mailLogo, eigenesKopfB64));
+        const eigenesKopfLaden = async (file: File): Promise<void> => {
+          setKopfBusy(true); setKopfNote('');
+          try {
+            const out = await ladeKopfbild(file, isDe);
+            setKopfNote(out.note);
+            if (!out.dataUrl) return;
+            setEigenesKopfB64(out.dataUrl);
+            setInviteHeaderImage(prev => ({ ...prev, hero: 'custom', ...kopfMasseFuerBild(out.width, out.height) }));
+          } finally { setKopfBusy(false); }
+        };
         const sendAction = async (): Promise<void> => {
           if (!eventServiceRef || !selectedEvent) return;
           // v30.67 (Review): Der Modus kann noch gewählt sein, wenn das Lesen
@@ -367,7 +393,7 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
           const resolvedSubheading = inviteSubheading && inviteSubheading.trim()
             ? replacePlaceholders(inviteSubheading, previewVars)
             : `Event ${selectedEvent.title}`;
-          const fullBody = applyInviteHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, inviteHeaderOpts));
+          const fullBody = kopfEinsetzen(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, kopfOpts));
           const ccString = ccEmails.join(';');
           const recipientName = !isBroadcast
             ? (nurIch ? myDisplayName : internLabel)
@@ -474,6 +500,12 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // Handanpassung der Empfängerliste.
         type InviteTargetKey = InviteComposerModalProps['inviteTarget'];
         const noAudience = audienceEmails.length === 0;
+        const keinVersandVerteiler = (() => {
+          const mitAt = audienceRoh.filter(e => e.indexOf('@') > 0);
+          if (mitAt.length === 0) return true; // leer oder nur Standort-Muster
+          const gesperrt = new Set(getBlockedInviteRecipients(mitAt).map(b => b.email.toLowerCase()));
+          return mitAt.every(e => gesperrt.has(e.toLowerCase()));
+        })();
         const namenAus = (dn: string, first?: string, last?: string): { vorname: string; nachname: string } => {
           if (last || first) return { vorname: (first || '').trim(), nachname: (last || '').trim() };
           const d = (dn || '').replace(/\s*\(.*\)\s*$/, '').trim();
@@ -587,12 +619,28 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                 return (
                   <>
                     {zeile(isDe ? 'Mailverteiler' : 'Distribution', <>
-                      {chip('audience', isDe ? 'Alle im Verteiler' : 'Everyone on the list', audienceEmails.length, inviteTarget === 'audience', () => waehleVerteiler('audience'), noAudience, verteilerTitel)}
-                      {chip('uninvited', isDe ? 'Noch nicht Eingeladene' : 'Not yet invited', invitedKnown ? uninvitedEmails.length : (invitedLc === undefined ? '…' : '–'), inviteTarget === 'uninvited', () => waehleVerteiler('uninvited'), noAudience || !invitedKnown,
+                      {chip('audience', isDe ? 'Alle im Verteiler' : 'Everyone on the list', audienceEmails.length, inviteTarget === 'audience', () => waehleVerteiler('audience'), noAudience || keinVersandVerteiler, verteilerTitel)}
+                      {chip('uninvited', isDe ? 'Noch nicht Eingeladene' : 'Not yet invited', invitedKnown ? uninvitedEmails.length : (invitedLc === undefined ? '…' : '–'), inviteTarget === 'uninvited', () => waehleVerteiler('uninvited'), noAudience || keinVersandVerteiler || !invitedKnown,
                         invitedLc === null ? (isDe ? 'Die bereits verschickten Einladungen konnten nicht gelesen werden — schließe den Dialog und öffne ihn erneut.' : 'The invitations already sent could not be read — close and reopen the dialog.') : (isDe ? `Wer schon eine Einladungsmail bekommen hat, fällt raus (${alreadyInvitedCount}).` : `Whoever already got an invitation is excluded (${alreadyInvitedCount}).`))}
-                      {chip('pending', isDe ? 'Noch nicht Angemeldete' : 'Not yet registered', pendingEmails.length, inviteTarget === 'pending', () => waehleVerteiler('pending'), noAudience,
+                      {chip('pending', isDe ? 'Noch nicht Angemeldete' : 'Not yet registered', pendingEmails.length, inviteTarget === 'pending', () => waehleVerteiler('pending'), noAudience || keinVersandVerteiler,
                         isDe ? `Wer sich schon an- oder abgemeldet hat, fällt raus (${alreadyDecidedCount}).` : `Whoever already registered or cancelled is excluded (${alreadyDecidedCount}).`)}
                     </>)}
+                    {/* v32.33: Ohne anschreibbaren Verteiler (nur Standort-Muster oder
+                        pauschale Verteiler wie DEALL) kann DEX die Einladung nicht
+                        verschicken — das Gruppenpostfach darf an diese großen
+                        Verteiler nicht senden (Nutzer-Ansage 29.09.2026). Das muss
+                        HIER stehen, nicht erst beim Senden. */}
+                    {keinVersandVerteiler && (
+                      <div className="dex-ui-callout dex-ui-callout--warn" style={{ margin: '-2px 0 12px' }}>
+                        <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                        <div>
+                          <strong>{isDe ? 'An diesen Verteiler kann DEX nicht senden.' : 'DEX cannot send to this distribution.'}</strong>{' '}
+                          {isDe
+                            ? 'Die Sichtbarkeit läuft über Standorte oder große Verteiler (z. B. DEALL). Über das Gruppenpostfach können wir an diese großen Verteiler nicht schicken — die Einladung schreibst du als Organizer deshalb außerhalb von DEX, z. B. direkt aus Outlook. Tipp: „An mich“ schicken und aus Outlook an den Verteiler weiterleiten.'
+                            : 'Visibility runs via locations or large distribution lists (e.g. DEALL). The group mailbox cannot send to these — please send the invitation yourself outside DEX, e.g. from Outlook. Tip: send it “to me” and forward it from Outlook.'}
+                        </div>
+                      </div>
+                    )}
                     <div className="dex-ui-help" style={{ margin: '-4px 0 10px', paddingLeft: 120 }}>
                       {isDe ? 'Der Mailverteiler kommt aus der Sichtbarkeit des Events (Assistent, Schritt 3).' : 'The distribution comes from the event’s visibility (wizard, step 3).'}
                       {' '}
@@ -711,14 +759,14 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
               })()}
               {/* v31.2: Die Grenze des Abgleichs gehört zum Zähler der Kachel,
                   nicht erst zur Wahl — sie steht, sobald die Kachel wählbar ist. */}
-              {!noAudience && invitedKnown && (
+              {!noAudience && !keinVersandVerteiler && invitedKnown && (
                 <div className="dex-ui-help">
                   {isDe
                     ? '„Noch nicht Eingeladene" zählt nur die letzten rund vier Wochen: Versendete Mails werden nach etwa einem Monat archiviert, ältere Einladungsrunden sind im Abgleich nicht mehr enthalten.'
                     : '"Not yet invited" covers only the last four weeks or so: sent mails are archived after about a month, so older invitation rounds are no longer part of the comparison.'}
                 </div>
               )}
-              {blockedInAudience.length > 0 && (
+              {blockedInAudience.length > 0 && !keinVersandVerteiler && (
                 <div className="dex-ui-callout dex-ui-callout--danger" role="alert" style={{ marginTop: 10 }}>
                   <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
                   <div style={{ minWidth: 0 }}>
@@ -911,9 +959,15 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                 value={inviteHeaderImage}
                 onChange={setInviteHeaderImage}
                 eventPhotoB64={inviteEventPhotoB64}
+                mailLogoB64={mailLogo}
                 disabled={inviteSending}
                 onCrop={() => setComposerCrop('invite')}
                 isDe={isDe}
+                customB64={eigenesKopfB64}
+                onPickCustom={(f) => { eigenesKopfLaden(f).catch(() => setKopfBusy(false)); }}
+                onRemoveCustom={() => { setEigenesKopfB64(''); setKopfNote(''); setInviteHeaderImage(prev => ({ ...prev, hero: 'logo' })); }}
+                customBusy={kopfBusy}
+                customNote={kopfNote}
               />
               <div className="dex-ui-help" style={{ marginTop: 0 }}>
                 {isDe
@@ -972,12 +1026,12 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         const previewSubjectLine = replacePlaceholders(inviteSubject, previewVars);
         React.useEffect(() => {
           if (vorgewaehltRef.current || inviteCustomEmails) return;
-          if (noAudience) { vorgewaehltRef.current = true; setIntern(new Set<'ich' | 'orgs' | 'test'>(['ich'])); return; }
+          if (noAudience || keinVersandVerteiler) { vorgewaehltRef.current = true; setIntern(new Set<'ich' | 'orgs' | 'test'>(['ich'])); return; }
           if (invitedLc === undefined) return; // Einladungen werden noch gelesen
           vorgewaehltRef.current = true;
           setInviteTarget(invitedKnown && uninvitedEmails.length > 0 ? 'uninvited' : 'audience');
           // eslint-disable-next-line react-hooks/exhaustive-deps
-        }, [invitedLc, noAudience]);
+        }, [invitedLc, noAudience, keinVersandVerteiler]);
         if (schritt === 'wer') {
           return (
             <Modal
@@ -989,6 +1043,11 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
               icon={<Users size={20} />}
               footer={
                 <>
+                  {onZurueckZurArt && (
+                    <button type="button" className="btn btn-outline" style={{ marginRight: 'auto' }} onClick={() => { setShowInviteModal(false); onZurueckZurArt(); }}>
+                      {isDe ? 'Zurück: Art der Mail' : 'Back: type of mail'}
+                    </button>
+                  )}
                   <button type="button" className="btn btn-secondary" onClick={() => setShowInviteModal(false)}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
                   <button type="button" className="btn btn-primary" disabled={targetEmails.length === 0} onClick={() => setSchritt('mail')}>
                     {isDe ? `Weiter: Einladung schreiben (${targetEmails.length})` : `Next: write invitation (${targetEmails.length})`}
@@ -1025,7 +1084,7 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
               { key: '{{Link}}', label: isDe ? 'Anmelde-Link' : 'Registration link' },
               { key: '{{Organizer}}', label: 'Organizer' },
             ]}
-            imageBase64={(inviteHeaderImage.hero === 'event' && inviteEventPhotoB64) ? inviteEventPhotoB64 : customLogo}
+            imageBase64={kopfBildVorschau(inviteHeaderImage, { photo: inviteEventPhotoB64, custom: eigenesKopfB64, mailLogo })}
             imageWidth={inviteHeaderImage.width}
             imagePaddingV={inviteHeaderImage.paddingV}
             imagePaddingH={inviteHeaderImage.paddingH}

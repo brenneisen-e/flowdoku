@@ -43,12 +43,14 @@ export const ACCESS_DENIED_MSG = '__DEX_ACCESS_DENIED__';
  * bei neuen Events seit v29.29. Das kleine zentrierte Bild ist die Ausnahme,
  * nicht der Regelfall; wer es will, stellt es im Mail-Editor um.
  */
-export function eventHeaderImageLayout(overridesJson: string | undefined): { width: number; paddingV: number; paddingH: number } {
+export function eventHeaderImageLayout(overridesJson: string | undefined, mailLogoB64?: string | null): { width: number; paddingV: number; paddingH: number } {
   const fullWidth = { width: 600, paddingV: 0, paddingH: 0 };
-  if (!overridesJson) return fullWidth;
+  if (!overridesJson) return formRegelKopf(fullWidth, mailLogoB64 || '');
   // v31.78: rundes Mail-Logo → 300 px statt automatischer Vollbreite (Rund-
   // und Einladungsmail starten mit diesem Layout; s. formRegelKopf).
-  const logo = eventLogoAus(overridesJson);
+  // v32.33: das Logo auch aus der Spalte (EmailImageBase64) — seit v32.0.10
+  // steht es nicht mehr im JSON, solange der Hintergrund-Nachlauf fehlt.
+  const logo = eventLogoAus(overridesJson) || (mailLogoB64 || '');
   try {
     const il = (JSON.parse(overridesJson) || {})._headerImageLayout;
     if (!il || typeof il !== 'object') return formRegelKopf(fullWidth, logo);

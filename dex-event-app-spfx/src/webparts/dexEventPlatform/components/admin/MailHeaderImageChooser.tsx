@@ -21,6 +21,10 @@ export interface MailHeaderImageChooserProps {
   onChange: (next: MailHeaderImage) => void;
   /** Event-Foto als Base64. Leer = „Event-Foto" ist nicht wählbar. */
   eventPhotoB64: string;
+  /** v32.33: Mail-Logo des Events (EmailImageBase64/_eventLogo). Hat das
+   *  Event eins, IST das sein Bild für Mails — der Flow setzt es für
+   *  {{ORB_URL}} ein (hero 'logo'). */
+  mailLogoB64?: string;
   disabled?: boolean;
   /** Öffnet den Zuschneiden-Dialog. Fehlt er, entfällt der Knopf. */
   onCrop?: () => void;
@@ -42,28 +46,44 @@ export interface MailHeaderImageChooserProps {
  * jedem Mail-Dialog. Die Maße stehen im „HEADER-BILD"-Block des Editors (s. oben).
  */
 export default function MailHeaderImageChooser(props: MailHeaderImageChooserProps): React.ReactElement {
-  const { value, onChange, eventPhotoB64, disabled, isDe, customB64, onPickCustom, onRemoveCustom, customBusy, customNote } = props;
+  const { value, onChange, eventPhotoB64, disabled, isDe, customB64, onPickCustom, onRemoveCustom, customBusy, customNote, mailLogoB64 } = props;
   const fileRef = React.useRef<HTMLInputElement | null>(null);
   const noPhoto = isDe ? 'Dieses Event hat kein Bild hinterlegt.' : 'This event has no image set.';
   // v31.2: Aus der schmalen Reiter-Reihe werden zwei Kacheln mit Vorschau und
   // einer Zeile Folge — der frühere Statussatz unter der Reihe („Das Event-Foto
   // erscheint im Mail-Kopf") steht jetzt in der Kachel selbst, wo er beim
   // Entscheiden gelesen wird, nicht erst danach.
-  const opts: Array<{ key: 'logo' | 'event' | 'custom'; label: string; desc: string; enabled: boolean; icon: React.ReactNode }> = [
+  // v32.33: Drei Fragen statt Technik-Begriffen (Nutzer-Ansage 29.09.2026:
+  // „wenn ein Event ein Event-Foto hat, ist Event-Foto Standard — sonst DEX-
+  // Logo oder die Möglichkeit, ein eigenes Foto hochzuladen"). „Standard-Logo"
+  // hieß bis v32.32 je nach Event das Mail-Logo ODER der Orb — man sah der
+  // Kachel nicht an, was kommt. Jetzt:
+  //  - „Event-Bild" = das Mail-Logo des Events (hero 'logo', vom Flow
+  //    eingesetzt), sonst das Event-Foto (hero 'event', eingebacken);
+  //  - „DEX-Logo" = immer der Orb (hero 'orb', eingebacken; ohne Mail-Logo
+  //    setzt ihn auch der Flow, dann zählt hero 'logo' ebenfalls als Orb);
+  //  - „Eigenes Bild" wie bisher.
+  const eventBild = mailLogoB64 || eventPhotoB64;
+  type Kachel = 'eventbild' | 'orb' | 'custom';
+  const aktiv: Kachel = value.hero === 'custom' ? 'custom'
+    : value.hero === 'orb' ? 'orb'
+    : value.hero === 'event' ? 'eventbild'
+    : (mailLogoB64 ? 'eventbild' : 'orb');
+  const opts: Array<{ key: Kachel; label: string; desc: string; enabled: boolean; icon: React.ReactNode }> = [
     {
-      key: 'logo', enabled: true, icon: <Mail size={18} />,
-      label: isDe ? 'Standard-Logo' : 'Default logo',
-      desc: isDe ? 'Das DEX-Logo — oder dein Mail-Logo, wenn das Event eins hat.' : 'The DEX logo — or your mail logo if the event has one.',
+      key: 'eventbild', enabled: !!eventBild,
+      icon: eventBild
+        ? <img src={eventBild} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        : <Calendar size={18} strokeWidth={2} />,
+      label: isDe ? 'Event-Bild' : 'Event image',
+      desc: eventBild
+        ? (isDe ? 'Das Bild dieses Events steht oben in der Mail.' : 'This event’s image sits at the top of the email.')
+        : noPhoto,
     },
     {
-      key: 'event', enabled: !!eventPhotoB64,
-      icon: eventPhotoB64
-        ? <img src={eventPhotoB64} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        : <Calendar size={18} strokeWidth={2} />,
-      label: isDe ? 'Event-Foto' : 'Event photo',
-      desc: eventPhotoB64
-        ? (isDe ? 'Das Foto des Events erscheint oben in der Mail.' : 'The event photo appears at the top of the email.')
-        : noPhoto,
+      key: 'orb', enabled: true, icon: <Mail size={18} />,
+      label: isDe ? 'DEX-Logo' : 'DEX logo',
+      desc: isDe ? 'Das runde DEX-Logo, 300 px breit.' : 'The round DEX logo, 300 px wide.',
     },
   ];
   // v31.9.7: Ein Bild nur für DIESE Mail. Nutzer-Frage 10.09.2026: „warum kann
@@ -98,7 +118,7 @@ export default function MailHeaderImageChooser(props: MailHeaderImageChooserProp
             dazwischen der ganze Mailkopf. Die Rechnung dahinter ist dieselbe
             wie in der Formregel: Banner → 600/0/0, sonst 300/24/24. */}
         {opts.map(opt => {
-          const active = value.hero === opt.key;
+          const active = aktiv === opt.key;
           return (
             <button
               key={opt.key}
@@ -117,13 +137,13 @@ export default function MailHeaderImageChooser(props: MailHeaderImageChooserProp
                 // (kopfMasseFuerBild). Vorher blieben die Maße des Mail-Logos
                 // (600/0/0) stehen, und der runde Event-Kreis füllte die ganze
                 // Mail. Das Standard-Logo behält seine Maße.
-                if (opt.key === 'event' || opt.key === 'custom') {
-                  const src = opt.key === 'event' ? eventPhotoB64 : customB64;
-                  const hero = opt.key;
-                  void bildMasse(src).then(m => onChange({ ...value, hero, ...kopfMasseFuerBild(m.width, m.height) }));
+                if (opt.key === 'orb') { onChange({ ...value, hero: 'orb', ...KOPF_RUND }); return; }
+                if (opt.key === 'eventbild') {
+                  const hero = mailLogoB64 ? 'logo' : 'event';
+                  void bildMasse(eventBild).then(m => onChange({ ...value, hero, ...kopfMasseFuerBild(m.width, m.height) }));
                   return;
                 }
-                onChange({ ...value, hero: opt.key });
+                void bildMasse(customB64 || '').then(m => onChange({ ...value, hero: 'custom', ...kopfMasseFuerBild(m.width, m.height) }));
               }}
               title={!opt.enabled ? noPhoto : undefined}
               style={{ padding: '10px 12px' }}

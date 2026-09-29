@@ -2482,6 +2482,7 @@ export default function AdminPage(): React.ReactElement {
     massmailAudience, massmailStatuses, registrations, setMassmailAudience,
     setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal,
     massmailOffene, massmailExtras, setMassmailExtras, selectedEvent, myEmail: currentUser.email || '',
+    onZurueckZurArt: () => setMailTypOpen(true),
   };
   const massmailPasteModalProps = {
     // v31.70: `massmailAudience` — derselbe Dialog dient jetzt „Nachrücker"
@@ -2546,6 +2547,7 @@ export default function AdminPage(): React.ReactElement {
     setInviteAudienceOpen, setInviteBody, setInviteCc, setInviteCustomEmails, setInviteHeaderImage, setInviteHeading,
     setInviteSending, setInviteSubheading, setInviteSubject, setInviteTarget, setShowInviteModal, showAlert,
     showInviteModal, siteUrl, updateEvent,
+    onZurueckZurArt: () => setMailTypOpen(true),
   };
   const declineCheckModalProps = {
     declineCopied, declineResult, isDe, setDeclineCopied, setShowDeclineModal, showAlert,

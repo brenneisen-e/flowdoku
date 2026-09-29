@@ -278,6 +278,7 @@ const PageComponent: React.FC = () => {
     }
     case 'mailpick': return <MailPickDemo />;
     case 'invitepick': return <InvitePickDemo />;
+    case 'invitedeall': return <InvitePickDemo ev={{ ...mailEv, audienceFilter: ['DEKOELN', 'deall@deloitte.de'], audienceResolvedEmails: [] }} />;
     default: return coach ? <CoachWizard /> : <EventCreationPage />;
   }
 };
@@ -305,11 +306,11 @@ const MailPickDemo: React.FC = () => {
       massmailExtras={ex} setMassmailExtras={setEx} selectedEvent={mailEv} myEmail={me.email} />
   );
 };
-const InvitePickDemo: React.FC = () => {
+const InvitePickDemo: React.FC<{ ev?: any }> = ({ ev }) => {
   const [target, setTarget] = React.useState<any>('organizer');
   const [custom, setCustom] = React.useState<any>(null);
   const props: any = new Proxy({
-    selectedEvent: mailEv, currentUser: me, isDe: true, registrations: mailRegs,
+    selectedEvent: ev || mailEv, currentUser: me, onZurueckZurArt: () => undefined, isDe: true, registrations: mailRegs,
     invitedLc: new Set(Array.from({ length: 20 }, (_, i) => `person${i}@example.com`)),
     inviteTarget: target, setInviteTarget: setTarget, inviteCustomEmails: custom, setInviteCustomEmails: setCustom,
     inviteCc: [], inviteBody: '', inviteSubject: 'Einladung', inviteHeading: '', inviteSubheading: '', inviteAddInput: '',

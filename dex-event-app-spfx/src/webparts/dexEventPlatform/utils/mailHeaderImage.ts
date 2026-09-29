@@ -30,6 +30,8 @@
  * demselben `MailHeaderImage`-Objekt.
  */
 
+import { DEX_ORB_PNG } from '../data/brandLogos';
+
 export interface MailHeaderImage {
   /** `logo` = Standard (DEX-Orb bzw. das Mail-Logo des Events, vom Flow
    *  eingesetzt), `event` = das Event-Foto fest eingebacken, `custom` = ein
@@ -39,7 +41,7 @@ export interface MailHeaderImage {
    *  SharePoint gespeichert (QR-Mail-Overrides), ein Base64-Bild würde die
    *  Spalte aufblähen. Es wird — genau wie das Event-Foto — als eigener
    *  Parameter durchgereicht. */
-  hero: 'logo' | 'event' | 'custom';
+  hero: 'logo' | 'event' | 'custom' | 'orb';
   width: number;
   paddingV: number;
   paddingH: number;
@@ -85,6 +87,11 @@ export function kopfMasseFuerBild(width: number, height: number): Pick<MailHeade
  * hält `shrinkLogoB64` mit einer Qualitäts-Leiter unter 250 KB.
  */
 export const LOGO_MAX_BREITE = 1200;
+
+/** v32.33: Trägt ein Layout genau die Voreinstellung „Standard (300 px)"? */
+export function istKopfRund(l: KopfMasse): boolean {
+  return l.width === KOPF_RUND.width && l.paddingV === KOPF_RUND.paddingV && l.paddingH === KOPF_RUND.paddingH;
+}
 
 /** Trägt ein Layout genau die automatische Vollbreiten-Vorgabe (600/0/0)? */
 export function istVolleBreite(l: KopfMasse): boolean {
@@ -149,7 +156,19 @@ export function formRegelKopf<T extends KopfMasse>(layout: T, logoB64?: string |
   const m = bildMasseSync(logoB64);
   if (!m || !m.width || !m.height) return layout;
   let out: T = layout;
-  if (istVolleBreite(layout) && m.width / m.height <= 1.3) out = { ...layout, ...KOPF_RUND };
+  // v32.33: Die Regel gilt in BEIDE Richtungen (Nutzer-Ansage 29.09.2026:
+  // „Standard für breite Bilder ist volle Breite — nur wenn es ein Kreis oder
+  // kreisähnlich ist, 300 px. Das gilt für alle Mails."). Bis v32.32 wurde
+  // nur die Vollbreite bei runden Bildern verkleinert; die Voreinstellung
+  // 300/24/24 — seit v32.0.3 der Startwert im Assistenten — blieb bei einem
+  // Banner stehen. Jedes Event, dessen Logo nicht im Upload-Pfad gemessen
+  // wurde (Event-Foto übernommen, Logo vor dem Speichern gewechselt, Bestand),
+  // verschickte sein Querformat-Bild deshalb klein. Beide Voreinstellungen
+  // gelten jetzt als „automatisch" und folgen der Form; eigene Werte (jede
+  // andere Breite oder Abstände) bleiben unberührt.
+  const rund = m.width / m.height <= 1.3;
+  if (istVolleBreite(layout) && rund) out = { ...layout, ...KOPF_RUND };
+  else if (istKopfRund(layout) && !rund) out = { ...layout, ...KOPF_VOLLE_BREITE };
   // v31.80: Nie breiter rendern, als das Bild Pixel hat. Ein altes Logo, das
   // der Wizard auf 360 oder 480 px verkleinert hatte, wurde vom Kopf auf 600
   // px aufgezogen — genau die weiche Schrift aus dem Nutzer-Befund vom
@@ -216,6 +235,9 @@ export function hasOwnHeaderImage(
 ): boolean {
   return (img.hero === 'event' && !!eventPhotoB64)
     || (img.hero === 'custom' && !!customB64)
+    // v32.33: Das DEX-Logo fest eingebacken — seine Größe (300 px) gilt, statt
+    // auf den alten Orb-Deckel von 180 px zu fallen.
+    || img.hero === 'orb'
     || !!eventMailLogo;
 }
 
@@ -239,6 +261,11 @@ export function applyHeroImage(
   // stehen und der Flow setzt wie gehabt das Standard-Bild ein.
   if (img.hero === 'custom' && customB64) {
     return wrappedHtml.replace(/\{\{ORB_URL\}\}/g, customB64);
+  }
+  // v32.33: „DEX-Logo" auch dann, wenn das Event ein eigenes Mail-Logo hat —
+  // der Flow setzt für {{ORB_URL}} sonst das Mail-Logo ein.
+  if (img.hero === 'orb') {
+    return wrappedHtml.replace(/\{\{ORB_URL\}\}/g, DEX_ORB_PNG);
   }
   return (img.hero === 'event' && eventPhotoB64)
     ? wrappedHtml.replace(/\{\{ORB_URL\}\}/g, eventPhotoB64)
@@ -265,7 +292,7 @@ export function normalizeMailHeaderImage(raw: unknown, allowCustom?: boolean): M
     // ohne Bild waere eine Auswahl, die still auf den Platzhalter faellt.
     // v31.74: Der Aufrufer sagt mit `allowCustom`, dass er das Bild hat
     // (QR-Mail: `headerCustomB64` im Override).
-    hero: o.hero === 'event' ? 'event' : (o.hero === 'custom' && allowCustom ? 'custom' : 'logo'),
+    hero: o.hero === 'event' ? 'event' : o.hero === 'orb' ? 'orb' : (o.hero === 'custom' && allowCustom ? 'custom' : 'logo'),
     width: num(o.width, MAIL_HEADER_IMAGE_DEFAULT.width, 600),
     paddingV: num(o.paddingV, MAIL_HEADER_IMAGE_DEFAULT.paddingV, 80),
     paddingH: num(o.paddingH, MAIL_HEADER_IMAGE_DEFAULT.paddingH, 80),
@@ -367,3 +394,15 @@ export function isDefaultMailHeaderImage(img: MailHeaderImage): boolean {
     && img.paddingH === MAIL_HEADER_IMAGE_DEFAULT.paddingH;
 }
 
+
+/**
+ * v32.33: Welches Bild zeigt die Vorschau im Kopf? EINE Antwort für alle Mail-
+ * Editoren — bis v32.32 rechnete jeder Dialog selbst, und die Massenmail zeigte
+ * ein hochgeladenes Bild in der Vorschau gar nicht.
+ */
+export function kopfBildVorschau(img: MailHeaderImage, q: { photo?: string; custom?: string; mailLogo?: string }): string {
+  if (img.hero === 'custom' && q.custom) return q.custom;
+  if (img.hero === 'event' && q.photo) return q.photo;
+  if (img.hero === 'orb') return DEX_ORB_PNG;
+  return q.mailLogo || '';
+}

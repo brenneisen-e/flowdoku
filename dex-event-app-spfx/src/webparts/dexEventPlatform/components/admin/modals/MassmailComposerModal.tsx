@@ -12,7 +12,7 @@ import { Check, ChevronDown, Send, Users } from '../../Icons';
 import { cx } from '../../dexUi';
 import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
-import { MailHeaderImage, kopfMasseFuerBild } from '../../../utils/mailHeaderImage';
+import { MailHeaderImage, kopfBildVorschau, kopfMasseFuerBild } from '../../../utils/mailHeaderImage';
 import { MassmailAudience, AudiencePerson } from '../adminTypes';
 import { ladeKopfbild } from '../../../utils/inlineMailImage';
 // v31.10: Dieselbe Rechnung wie die Anmeldeseite — wer dort ausgeblendet ist,
@@ -300,7 +300,7 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
               { key: '{{EventTitle}}', label: 'Event' },
               { key: '{{Organizer}}', label: 'Organizer' },
             ]}
-            imageBase64={(massmailHeaderImage.hero === 'event' && massmailEventPhotoB64) ? massmailEventPhotoB64 : customLogo}
+            imageBase64={kopfBildVorschau(massmailHeaderImage, { photo: massmailEventPhotoB64, custom: massmailCustomHeaderB64, mailLogo: selectedEvent.mailImageBase64 || customLogo })}
             imageWidth={massmailHeaderImage.width}
             imagePaddingV={massmailHeaderImage.paddingV}
             imagePaddingH={massmailHeaderImage.paddingH}
@@ -407,6 +407,7 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                   <MailHeaderImageChooser
                     value={massmailHeaderImage} onChange={setMassmailHeaderImage}
                     eventPhotoB64={massmailEventPhotoB64} disabled={emailSending}
+                    mailLogoB64={selectedEvent.mailImageBase64 || customLogo}
                     onCrop={() => setComposerCrop('massmail')} isDe={isDe}
                     customB64={massmailCustomHeaderB64}
                     onPickCustom={(f) => { pickCustomHeader(f).catch(() => setHeaderBusy(false)); }}
