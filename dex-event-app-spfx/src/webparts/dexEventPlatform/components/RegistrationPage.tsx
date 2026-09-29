@@ -9,6 +9,7 @@ import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
+import { istImTestTeam } from '../utils/testTeam';
 import { useRoles } from '../context/RoleContext';
 // v22.10: Sub-Sections nach ihrer EIGENEN Sichtbarkeit filtern (gleiche Logik
 // wie die Event-Liste) — sonst sieht jeder Hauptevent-Teilnehmer alle Sub-Events.
@@ -243,6 +244,10 @@ export default function RegistrationPage(): React.ReactElement {
   );
   const isEventOrganizer = !previewAsUser && isEventOrganizerReal;
   const isOrganizer = isEventOrganizer; // alten Namen behalten für Referenzen unten
+  // v32.29: Test-Team der Klammer — darf vor „Aktiv ab" rein und die
+  // Entwurfs-Termine buchen. In der User-Vorschau zählt es wie der
+  // Organizer NICHT (dieselbe Regel wie v30.3).
+  const istTestTeam = !previewAsUser && istImTestTeam(currentUser, event);
   const canCreateEvents = isEventOrganizer || isAdmin; // statt tenant-weitem Organizer
 
   // Assistant-Ausnahme: User mit JobTitle "Assistant" / "Senior Assistant" dürfen
@@ -479,9 +484,13 @@ export default function RegistrationPage(): React.ReactElement {
     // NICHT buchbar — vorher wurden sie nicht gefiltert und waren trotz
     // „Entwurf" buchbar, solange die Klammer sichtbar war. Organizer/
     // Stellvertreter (oben) sehen Entwürfe weiterhin.
+    // v32.29: Das Test-Team der Klammer sieht die Termine eines Entwurfs
+    // wie der Organizer — die Termine tragen kein eigenes `_testTeam`, und
+    // ohne diese Ausnahme blieb bei `subEventsOnlyMode` nichts zu buchen.
+    if (!previewAsUser && istImTestTeam(currentUser, null, event)) return all;
     return all.filter(ce => !ce.isFictive && isEventVisibleForUser(ce, currentUser.email, currentUser.location, groupEmails, currentUser.jobTitle));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [event?.id, canCreateEvents, registerForOther, currentUser.email, currentUser.location, groupEmails]);
+  }, [event?.id, canCreateEvents, registerForOther, previewAsUser, currentUser.email, currentUser.id, currentUser.location, groupEmails]);
   /**
    * v29.77: „Anmeldung ab" gilt jetzt fuer ALLE Sub-Event-Darstellungen,
    * nicht nur die Kalender-Kacheln — deshalb ein gemeinsamer Rechner.
@@ -1402,14 +1411,14 @@ export default function RegistrationPage(): React.ReactElement {
   // ist keines freigegeben" gibt es die v29.9-Meldung, nicht die Frist-Seite.
   const isFullyClosed = isRegistrationFullyClosed(
     event,
-    event.subEventsDisabled ? [] : childEventsOf(event.id).filter(ce => !ce.isFictive)
+    event.subEventsDisabled ? [] : childEventsOf(event.id).filter(ce => !ce.isFictive || istTestTeam)
   );
 
   // v23.14: Vorschau vor Aktivierung — reguläre User dürfen die Anmeldeseite
   // erst ab dem „Aktiv ab"-Zeitpunkt öffnen (Deep-Link-Schutz; die Karte
   // blockiert den Klick ohnehin). Organizer/Admin dürfen vorbereiten.
   const notYetActive = !!event.activeFrom && new Date(event.activeFrom) > new Date();
-  if (notYetActive && !isOrganizer && !isAdmin) {
+  if (notYetActive && !isOrganizer && !isAdmin && !istTestTeam) {
     const activeFromStr = new Date(event.activeFrom as string).toLocaleString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     return (
       <div className="page-container">

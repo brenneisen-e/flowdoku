@@ -20,7 +20,7 @@ import { ladeKopfbild } from '../../../utils/inlineMailImage';
 import { visibleOrganizerEmails } from '../../../utils/organizerVisibility';
 import { PollComposerSection } from '../PollComposerSection';
 // v31.70: Erinnerungs-Empfänger aus dem Verteiler — dieselbe Rechnung wie im Paste-Dialog.
-import { reminderRecipientsAus } from './MassmailPasteModal';
+import { MassmailZielChips, MassmailExtra, massmailEmpfaenger, massmailZielLabel } from './MassmailZielChips';
 
 export interface MassmailComposerModalProps {
   applyMassmailHero: (wrappedHtml: string) => string;
@@ -36,6 +36,11 @@ export interface MassmailComposerModalProps {
   // gemeldet, sonst haette der Composer eine Auswahl bekommen, die er
   // nicht kennt.
   massmailAudience: MassmailAudience;
+  /** v32.30: additive Zusätze der Chip-Auswahl (MassmailZielChips). */
+  massmailExtras: Set<MassmailExtra>;
+  setMassmailExtras: React.Dispatch<React.SetStateAction<Set<MassmailExtra>>>;
+  setMassmailStatuses: React.Dispatch<React.SetStateAction<Set<string>>>;
+  myEmail: string;
   massmailCc: string[];
   massmailDraftSaved: boolean;
   massmailEventPhotoB64: string;
@@ -77,7 +82,7 @@ export interface MassmailComposerModalProps {
 }
 
 export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) => {
-  const { applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject, eventServiceRef, isDe, massmailAudience, massmailCc, massmailCustomHeaderB64, setMassmailCustomHeaderB64, massmailDraftSaved, massmailEventPhotoB64, massmailHeaderImage, massmailHeaderOpts, massmailPasteRaw, massmailStatuses, massmailSubheading, massmailTesting, massmailTestMsg, registrations, resetMassmailDraft, saveMassmailDraft, searchUser, searchUsers, selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending, setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading, setShowEmailModal, showAlert, showEmailModal, massmailOffene, setMassmailAudience } = p;
+  const { applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject, eventServiceRef, isDe, massmailAudience, massmailCc, massmailCustomHeaderB64, setMassmailCustomHeaderB64, massmailDraftSaved, massmailEventPhotoB64, massmailHeaderImage, massmailHeaderOpts, massmailPasteRaw, massmailStatuses, massmailSubheading, massmailTesting, massmailTestMsg, registrations, resetMassmailDraft, saveMassmailDraft, searchUser, searchUsers, selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending, setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading, setShowEmailModal, showAlert, showEmailModal, massmailOffene, setMassmailAudience, massmailExtras, setMassmailExtras, setMassmailStatuses, myEmail } = p;
         // v31.2: Das zusätzliche CC ist selten nötig und steht deshalb in
         // einem Aufklapper — offen nur, wenn schon jemand eingetragen ist,
         // damit ein gesetzter Verteiler nie unsichtbar mitfährt.
@@ -104,7 +109,6 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
           }
         };
         // v17.10: Empfänger-Filter abhängig vom gewählten massmailAudience.
-        const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
         // v31.70: „Empfänger verdeckt (BCC)" — EINE Mail an die Organizer-Adresse,
         // alle Empfänger im BCC (Nutzer-Ansage 17.09.2026: „einstellen, dass
         // eine Mail nur in BCC an alle geschickt wird"). Nicht im Entwurf
@@ -117,48 +121,12 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
         const [aufUmfrage, setAufUmfrage] = React.useState(false);
         // v31.70: Empfänger können auch von AUSSERHALB der Teilnehmerliste kommen
         // (Erinnerung an einen Verteiler) — deshalb nur das, was der Versand braucht.
-        const recipients: Array<{ ParticipantEmail: string; Vorname?: string; Nachname?: string }> = (() => {
-          if (massmailAudience === 'custom') {
-            return registrations.filter(r => massmailStatuses.has(r.Status));
-          }
-          if (massmailAudience === 'waitOnly') {
-            return registrations.filter(r => r.Status === 'Warteliste');
-          }
-          if (massmailAudience === 'activePlusWait') {
-            return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0 || r.Status === 'Warteliste');
-          }
-          if (massmailAudience === 'everyone') {
-            // v31.9.6: Wirklich JEDE Zeile — keine Status-Aufzählung, sonst
-            // fehlt jeder Status, den jemand später in SharePoint ergänzt.
-            // Ohne diesen Zweig wäre die Auswahl still auf „nur aktive"
-            // zurückgefallen (der Rückfall unten) und hätte damit etwas
-            // anderes verschickt, als der Organizer angeklickt hat.
-            return registrations;
-          }
-          if (massmailAudience === 'nachruecker') {
-            // Aktive minus die in der eingefügten Liste enthaltenen E-Mails.
-            const matches = (massmailPasteRaw || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
-            const pastedSet = new Set(matches.map(m => m.toLowerCase()));
-            return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0 && !pastedSet.has((r.ParticipantEmail || '').toLowerCase()));
-          }
-          if (massmailAudience === 'reminder') {
-            // v31.72: Kennt DEX die Offenen (Sichtbarkeits-Verteiler minus alle,
-            // die geantwortet haben), sind SIE die Empfänger — dieselbe Liste
-            // wie „Wer hat noch nicht geantwortet?". Sonst (Standort-
-            // Sichtbarkeit) der v31.70-Weg: eingefügter Verteiler minus aktive.
-            if (Array.isArray(massmailOffene) && massmailOffene.length > 0) {
-              return massmailOffene.map(x => {
-                const dn = (x.displayName || '').trim();
-                const komma = dn.indexOf(',');
-                const nachname = komma > 0 ? dn.slice(0, komma).trim() : dn.split(' ').slice(-1)[0] || '';
-                const vorname = komma > 0 ? dn.slice(komma + 1).trim() : dn.split(' ').slice(0, -1).join(' ');
-                return { ParticipantEmail: x.email, Vorname: vorname, Nachname: nachname };
-              });
-            }
-            return reminderRecipientsAus(massmailPasteRaw || '', registrations);
-          }
-          return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0);
-        })();
+        // v32.30: Die Rechnung steht in MassmailZielChips — dieselbe wie in der
+        // Empfängerwahl, damit Auswahl und Versand dieselbe Zahl nennen.
+        const recipients = massmailEmpfaenger({
+          audience: massmailAudience, statuses: massmailStatuses, extras: massmailExtras, registrations,
+          offene: massmailOffene, pasteRaw: massmailPasteRaw || '', ev: selectedEvent, myEmail,
+        });
         // v30.67: Über `formatOrganizerList` wie alle anderen Mail-Stellen —
         // `join(', ')` auf den Roh-Werten („Nachname, Vorname") ergab
         // „Sathasivam, Philipp, Oesterle, Ines", Vor- und Nachnamen nicht
@@ -291,14 +259,7 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
         };
         // v22.11: „Briefumschlag"-Kopf über der Vorschau — wie bei der
         // Einladungsmail (An: Empfängergruppe, Betreff: aufgelöster Subject).
-        const audienceLabel = massmailAudience === 'custom'
-          ? Array.from(massmailStatuses).join(', ')
-          : massmailAudience === 'waitOnly' ? (isDe ? 'Nur Warteliste' : 'Waitlist only')
-          : massmailAudience === 'activePlusWait' ? (isDe ? 'Teilnehmer + Warteliste' : 'Attendees + waitlist')
-          : massmailAudience === 'everyone' ? (isDe ? 'Alle — auch Abgemeldete' : 'Everyone — incl. cancellations')
-          : massmailAudience === 'nachruecker' ? (isDe ? 'Nachrücker (manueller Abgleich)' : 'Replacements (manual match)')
-          : massmailAudience === 'reminder' ? (isDe ? 'Erinnerung (noch nicht geantwortet)' : 'Reminder (not responded yet)')
-          : (isDe ? 'Alle aktiven Teilnehmer' : 'All active attendees');
+        const audienceLabel = massmailZielLabel(isDe, massmailAudience, massmailStatuses, massmailExtras);
         // v30.51.1: Die Vorschau nennt die WIRKLICHE CC-Zahl (s. massmailCcPreview).
         const ccCount = massmailCcPreview.length;
         const ccNobody = isDe ? 'niemand in CC' : 'nobody in CC';
@@ -310,7 +271,7 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
           setShowEmailModal(false);
           // v31.72: Die Erinnerung kam direkt aus der Auswahl, wenn DEX die
           // Offenen kennt — dann führt „Zurück" auch dorthin.
-          const ausPaste = massmailAudience === 'nachruecker' || (massmailAudience === 'reminder' && !(Array.isArray(massmailOffene) && massmailOffene.length > 0));
+          const ausPaste = massmailAudience === 'nachruecker' || massmailAudience === 'reminder';
           setMassmailMode(ausPaste ? 'paste' : 'pick');
         };
         const previewSubjectLine = replacePlaceholders(emailSubject, previewVars);
@@ -365,21 +326,14 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                       eigene Auswahl brauchen einen Zwischenschritt — dafür der
                       Rückweg in die Empfängerwahl. */}
                   {setMassmailAudience && (
-                    <div className="dex-ui-inline" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
-                      {([
-                        ['active', isDe ? 'Alle aktiven' : 'All active'],
-                        ['activePlusWait', isDe ? 'Aktive + Warteliste' : 'Active + waitlist'],
-                        ['waitOnly', isDe ? 'Nur Warteliste' : 'Waitlist only'],
-                        ['everyone', isDe ? 'Alle inkl. Abgemeldete' : 'Everyone incl. cancelled'],
-                      ] as Array<[MassmailAudience, string]>).map(([k, lbl]) => (
-                        <button key={k} type="button" className={cx('dex-ui-chip', massmailAudience === k && 'is-active')} aria-pressed={massmailAudience === k}
-                          disabled={emailSending} onClick={() => setMassmailAudience(k)}>
-                          {massmailAudience === k && <Check size={12} />} {lbl}
-                        </button>
-                      ))}
-                      <button type="button" className="dex-ui-textbtn" onClick={zurueck} disabled={emailSending}>
-                        {isDe ? 'Erinnerung, Nachrücker, eigene Auswahl …' : 'Reminder, late joiners, custom …'}
-                      </button>
+                    <div style={{ marginBottom: 8 }}>
+                      <MassmailZielChips
+                        isDe={isDe} ev={selectedEvent} myEmail={myEmail} registrations={registrations}
+                        audience={massmailAudience} setAudience={setMassmailAudience}
+                        statuses={massmailStatuses} setStatuses={setMassmailStatuses}
+                        extras={massmailExtras} setExtras={setMassmailExtras} offene={massmailOffene}
+                        disabled={emailSending}
+                      />
                     </div>
                   )}
                   <div className="dex-ui-inline">

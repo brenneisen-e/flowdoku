@@ -101,6 +101,7 @@ import { DeregModal } from './admin/modals/DeregModal';
 import { QrPreviewModal } from './admin/modals/QrPreviewModal';
 import { CommsLogModal } from './admin/modals/CommsLogModal';
 import { MassmailPickModal } from './admin/modals/MassmailPickModal';
+import { MassmailExtra } from './admin/modals/MassmailZielChips';
 import { MailTypeModal } from './admin/modals/MailTypeModal';
 import { MassmailPasteModal } from './admin/modals/MassmailPasteModal';
 import { ExcelTargetModal } from './admin/modals/ExcelTargetModal';
@@ -1116,6 +1117,26 @@ export default function AdminPage(): React.ReactElement {
   // undefined = wird gerade gerechnet, null = keine Liste (Sichtbarkeit nur
   // nach Standort) → dann bleibt der Einfüge-Schritt, [] = alle haben geantwortet.
   const [massmailOffene, setMassmailOffene] = React.useState<AudiencePerson[] | null | undefined>(undefined);
+  // v32.30: Zusätze der Chip-Auswahl (Offene, ich, Organizer, Test-Team).
+  const [massmailExtras, setMassmailExtras] = React.useState<Set<MassmailExtra>>(new Set());
+  // Beim ÖFFNEN der Empfängerwahl (closed → pick, nicht beim Zurück aus dem
+  // Editor) die Startgruppe in die Chip-Welt übersetzen: Standard = aktive
+  // Teilnehmer, „Reminder“ = die noch nicht Antwortenden.
+  const massmailModeVorherRef = React.useRef<string>('closed');
+  React.useEffect(() => {
+    const vorher = massmailModeVorherRef.current;
+    massmailModeVorherRef.current = massmailMode;
+    if (vorher !== 'closed' || massmailMode !== 'pick') return;
+    if (massmailAudience === 'reminder') {
+      setMassmailStatuses(new Set());
+      setMassmailExtras(new Set<MassmailExtra>(['offene']));
+    } else {
+      setMassmailStatuses(new Set(['Angemeldet', 'QR versendet', 'Eingecheckt']));
+      setMassmailExtras(new Set());
+    }
+    setMassmailAudience('custom');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [massmailMode]);
   const [emailSubject, setEmailSubject] = React.useState('');
   const [emailHeading, setEmailHeading] = React.useState('');
   const [emailBody, setEmailBody] = React.useState('');
@@ -2460,7 +2481,7 @@ export default function AdminPage(): React.ReactElement {
   const massmailPickModalProps = {
     massmailAudience, massmailStatuses, registrations, setMassmailAudience,
     setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal,
-    massmailOffene,
+    massmailOffene, massmailExtras, setMassmailExtras, selectedEvent, myEmail: currentUser.email || '',
   };
   const massmailPasteModalProps = {
     // v31.70: `massmailAudience` — derselbe Dialog dient jetzt „Nachrücker"
@@ -2514,7 +2535,7 @@ export default function AdminPage(): React.ReactElement {
     selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending,
     setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading, setMassmailAudience,
     setShowEmailModal, showAlert, showEmailModal,
-    massmailOffene,
+    massmailOffene, massmailExtras, setMassmailExtras, setMassmailStatuses, myEmail: currentUser.email || '',
   };
   const inviteComposerModalProps = {
     applyInviteHero, confirmDialog, currentUser, eventServiceRef, getGroupMembers, inviteAddInput,

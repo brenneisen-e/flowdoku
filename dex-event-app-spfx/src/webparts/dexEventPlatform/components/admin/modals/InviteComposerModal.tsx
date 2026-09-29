@@ -8,7 +8,9 @@ import { replacePlaceholders, wrapTemplate } from '../../../services/EmailTempla
 import { formatOrganizerList } from '../../../context/eventTextHelpers';
 import RecipientPicker from '../../admin/RecipientPicker';
 import MailHeaderImageChooser from '../../admin/MailHeaderImageChooser';
-import { AlertCircle, Check, ChevronDown, Plus, Send, X } from '../../Icons';
+import { AlertCircle, Check, ChevronDown, Plus, Send, Users, X } from '../../Icons';
+import Modal from '../../Modal';
+import { parsePastedRecipients } from '../../../utils/pastedRecipients';
 import { HtmlEditorModal } from '../../HtmlEditorModal';
 // v31.2: Gemeinsame UI-Klassen — das Stylesheet hängt HtmlEditorModal beim
 // Öffnen selbst ein (`ensureDexUiStyles`), hier braucht es nur `cx`.
@@ -79,6 +81,42 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // (Nutzer-Ansage 29.09.2026); die Zeile nennt Ziel und Anzahl trotzdem.
         const [aufAn, setAufAn] = React.useState(false);
         const [aufBild, setAufBild] = React.useState(false);
+        // v32.29: „Nur intern“ hat drei Kreise — ich, alle Organizer, Organizer
+        // plus Test-Team (Nutzer-Ansage 29.09.2026). Bewusst KEINE zwei neuen
+        // Kacheln („das werden dann viele Kacheln“), sondern eine Kachel mit
+        // Chip-Zeile darunter; `inviteTarget` bleibt 'organizer', der Kreis
+        // lebt nur hier im Dialog. Intern heißt weiter: kein Bcc-Versand, kein
+        // Eintrag im Kommunikations-Log.
+        // v32.30: Mehrfachauswahl (Chips) — ich / Organizer / Test-Team sind
+        // additiv und lassen sich mit einer Verteiler-Gruppe kombinieren.
+        const [intern, setIntern] = React.useState<Set<'ich' | 'orgs' | 'test'>>(new Set());
+        // Vorauswahl einmal, sobald die früheren Einladungen gelesen sind (Nutzer-
+        // Ansage 29.09.2026: „sinnvoll vorausgewählt“): mit Verteiler „Noch nicht
+        // Eingeladene“ (sonst „Alle im Verteiler“), ohne Verteiler „An mich“. Eine
+        // vorgesetzte Liste (Offene Personen) oder eine eigene Wahl gewinnt.
+        const vorgewaehltRef = React.useRef(false);
+        // v32.30: „Woher kommt der Verteiler?“ — ein Klick zeigt ihn (Nutzer-
+        // Ansage 29.09.2026), statt den Organizer in den Assistenten zu schicken.
+        const [verteilerZeigen, setVerteilerZeigen] = React.useState(false);
+        // v32.31: Eigene Liste (Nutzer-Ansage 29.09.2026: „bei der Einladungsmail
+        // eine eigene Liste reinladen … mit der Sichtbarkeit abgleichen und
+        // fragen, ob die Delta-Personen auch in die Sichtbarkeit sollen“). Die
+        // Liste ist ein Zusatz zu den Gruppen, kein eigener Modus.
+        // v32.31: „Sichtbarkeit prüfen“ — die Personen mit Namen, nach Nachname
+        // sortiert, und ein Suchfeld „sieht X das Event?“ (Nutzer-Ansage
+        // 29.09.2026). null = noch nicht geladen.
+        const [sichtPersonen, setSichtPersonen] = React.useState<Array<{ email: string; vorname: string; nachname: string; standort: string; quelle: string }> | null>(null);
+        const [sichtSuche, setSichtSuche] = React.useState('');
+        const [eigeneOffen, setEigeneOffen] = React.useState(false);
+        const [eigeneRoh, setEigeneRoh] = React.useState('');
+        const [eigene, setEigene] = React.useState<string[]>([]);
+        const [eigeneAn, setEigeneAn] = React.useState(false);
+        const [eigeneSpeichern, setEigeneSpeichern] = React.useState(false);
+        // v32.29: Erst „An wen?“, dann der Editor — wie bei Info-Mail und
+        // Reminder (Nutzer-Ansage 29.09.2026). Kommt der Dialog mit einer schon
+        // gesetzten Auswahl (Kasten „Offene Personen“ setzt die Liste vorab),
+        // ist die Frage beantwortet und der Editor öffnet direkt.
+        const [schritt, setSchritt] = React.useState<'wer' | 'mail'>(inviteCustomEmails ? 'mail' : 'wer');
         // v32.27: Verteiler in ihre Mitglieder auflösen (Nutzer-Befund 29.09.2026:
         // „An alle im Mailverteiler“ zeigte 1 — die Verteiler-Adresse selbst). Ein
         // Verteiler hat ein @ und lief deshalb als einzelne Person durch; damit
@@ -99,6 +137,34 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
           : audienceRoh).filter(e => !ausgeschlossen.has(e.toLowerCase()));
         const myEmail = currentUser.email || '';
         const myDisplayName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || myEmail;
+        const eindeutig = (list: string[]): string[] => {
+          const seen = new Set<string>();
+          const out: string[] = [];
+          for (const raw of list) {
+            const e = (raw || '').trim();
+            const lc = e.toLowerCase();
+            if (!e || lc.indexOf('@') < 0 || seen.has(lc)) continue;
+            seen.add(lc);
+            out.push(e);
+          }
+          return out;
+        };
+        const internAdr = {
+          ich: eindeutig([myEmail]),
+          orgs: eindeutig([...(selectedEvent.organizerEmails || []), ...(selectedEvent.coOrganizerEmails || [])]),
+          test: eindeutig(selectedEvent.testTeamEmails || []),
+        };
+        const internEmails = eindeutig([
+          ...(intern.has('ich') ? internAdr.ich : []),
+          ...(intern.has('orgs') ? internAdr.orgs : []),
+          ...(intern.has('test') ? internAdr.test : []),
+        ]);
+        const internLabel = [
+          intern.has('ich') ? (isDe ? 'mich' : 'me') : '',
+          intern.has('orgs') ? 'Organizer' : '',
+          intern.has('test') ? (isDe ? 'Test-Team' : 'test team') : '',
+        ].filter(Boolean).join(' + ');
+        const nurIch = intern.size === 1 && intern.has('ich');
         // v28.37: „Nur an noch nicht Angemeldete" — der Verteiler abzueglich
         // aller, die im Event schon eine Zeile haben (angemeldet, Warteliste,
         // eingecheckt ODER abgemeldet). Genau der Nachfass-Fall: erinnern, ohne
@@ -137,11 +203,14 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
           : (inviteTarget === 'uninvited' ? uninvitedEmails : audienceEmails);
         // Handanpassung sticht die Radio-Auswahl.
         const effectiveEmails = inviteCustomEmails || modeEmails;
+        const eigeneAktiv = eigeneAn && eigene.length > 0;
         const targetEmails = inviteTarget === 'organizer'
-          ? [myEmail].filter(Boolean)
-          : effectiveEmails;
+          ? eindeutig([...internEmails, ...(eigeneAktiv ? eigene : [])])
+          : eindeutig([...effectiveEmails.filter(e => e.indexOf('@') > 0), ...internEmails, ...(eigeneAktiv ? eigene : [])]).concat(effectiveEmails.filter(e => e.indexOf('@') < 0));
         /** Echter Massenversand (Verteiler ODER Nachfass) — nur „An mich" nicht. */
-        const isBroadcast = inviteTarget !== 'organizer';
+        // v32.31: Eine eigene Liste ist ein echter Versand an Teilnehmende —
+        // Bcc, Auflösung, Kommunikations-Log wie beim Verteiler.
+        const isBroadcast = inviteTarget !== 'organizer' || eigeneAktiv;
         // v11.43: Organizer-Mails als CC mitschicken — damit alle Organizer
         // sehen, dass die Einladung raus ist und ggf. auf Rückfragen
         // antworten können. Duplikate gegenüber TO werden rausgefiltert
@@ -179,16 +248,21 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // WIRKLICH adressierte Liste nennen — sie zeigte bisher stur die
         // Verteilergröße, selbst nachdem Adressen entfernt wurden.
         const nRecipients = targetEmails.length;
-        const recipientLabel = inviteTarget === 'organizer'
-          ? (isDe ? `An mich (${myEmail})` : `To me (${myEmail})`)
+        const recipientLabel = !isBroadcast
+          ? (nurIch
+            ? (isDe ? `An mich (${myEmail})` : `To me (${myEmail})`)
+            : targetEmails.length === 0 ? (isDe ? 'Noch niemand gewählt' : 'Nobody selected yet')
+            : `${isDe ? 'An' : 'To'} ${internLabel} (${targetEmails.length} ${isDe ? 'Empfänger' : 'recipients'})`)
           : (isDe
             ? `${inviteCustomEmails
               ? 'An angepasste Auswahl'
+              : inviteTarget === 'organizer' ? 'An deine eigene Liste'
               : inviteTarget === 'uninvited' ? 'An noch nicht Eingeladene'
               : inviteTarget === 'pending' ? 'An noch nicht Angemeldete'
               : 'An alle im Mailverteiler'} (${nRecipients === 0 ? 'leer' : nRecipients + ' Empfänger'})`
             : `${inviteCustomEmails
               ? 'To adjusted selection'
+              : inviteTarget === 'organizer' ? 'To your own list'
               : inviteTarget === 'uninvited' ? 'To not-yet-invited'
               : inviteTarget === 'pending' ? 'To not-yet-registered'
               : 'To everyone on the mail distribution'} (${nRecipients === 0 ? 'empty' : nRecipients + ' recipients'})`);
@@ -221,10 +295,10 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
             showAlert(isDe
               ? (isBroadcast
                 ? 'Es ist kein Mailverteiler auf dem Event hinterlegt. Bitte zuerst in Schritt 3 (Sichtbarkeit) Empfänger ergänzen.'
-                : 'Keine eigene E-Mail-Adresse verfügbar.')
+                : 'Noch niemand gewählt — wähle unter „An wen geht die Mail?“ mindestens eine Gruppe.')
               : (isBroadcast
                 ? 'No mail distribution list configured on the event. Please add recipients in step 3 (Visibility) first.'
-                : 'No own email address available.'));
+                : 'Nobody selected yet — pick at least one group under “Who receives the email?”.'));
             return;
           }
           // v11.41: Hart blocken — Einladungsmail darf nie an pauschale
@@ -274,11 +348,15 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
             setInviteSending(false);
           }
           const confirmMsg = isDe
-            ? (inviteTarget === 'organizer'
-              ? `Einladungs-Mail an dich selbst (${myEmail}) senden? Du kannst sie anschließend aus Outlook an deinen Verteiler weiterleiten.`
+            ? (!isBroadcast
+              ? (nurIch
+                ? `Einladungs-Mail an dich selbst (${myEmail}) senden? Du kannst sie anschließend aus Outlook an deinen Verteiler weiterleiten.`
+                : `Einladungs-Mail zur Probe an ${internLabel} senden (${targetEmails.length} Empfänger)?\n\n${targetEmails.join(', ')}\n\nDas ist ein interner Versand — er zählt nicht als Einladung an die Teilnehmenden.`)
               : `Einladungs-Mail an ${resolvedRecipients.length} aufgelöste Empfänger des Mailverteilers senden?\n\nDie Verteiler wurden in einzelne Mitglieder-Adressen aufgelöst; die Empfänger stehen im Bcc (sehen einander nicht), du selbst im An-Feld.\n\n${resolvedRecipients.slice(0, 12).join(', ')}${resolvedRecipients.length > 12 ? `, … (+${resolvedRecipients.length - 12})` : ''}`)
             : (inviteTarget === 'organizer'
-              ? `Send invitation email to yourself (${myEmail})? You can then forward it from Outlook to your distribution list.`
+              ? (nurIch
+                ? `Send invitation email to yourself (${myEmail})? You can then forward it from Outlook to your distribution list.`
+                : `Send a test invitation to ${internLabel} (${targetEmails.length} recipients)?\n\n${targetEmails.join(', ')}\n\nThis is an internal send — it does not count as an invitation to participants.`)
               : `Send invitation email to ${resolvedRecipients.length} resolved recipients of the mail distribution?\n\nDistribution lists were resolved into individual member addresses; recipients are on Bcc (cannot see each other), you are in the To field.\n\n${resolvedRecipients.slice(0, 12).join(', ')}${resolvedRecipients.length > 12 ? `, … (+${resolvedRecipients.length - 12})` : ''}`);
           if (!(await confirmDialog(confirmMsg, { confirmLabel: isDe ? 'Senden' : 'Send' }))) return;
           setInviteSending(true);
@@ -291,8 +369,8 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
             : `Event ${selectedEvent.title}`;
           const fullBody = applyInviteHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, inviteHeaderOpts));
           const ccString = ccEmails.join(';');
-          const recipientName = inviteTarget === 'organizer'
-            ? myDisplayName
+          const recipientName = !isBroadcast
+            ? (nurIch ? myDisplayName : internLabel)
             : (inviteTarget === 'uninvited'
               ? (isDe ? 'Noch nicht Eingeladene' : 'Not-yet-invited')
               : inviteTarget === 'pending'
@@ -371,7 +449,10 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                 { confirmLabel: isDe ? 'In den Verteiler aufnehmen' : 'Add to distribution' },
               );
               if (ok) {
-                const next = audienceEmails.concat([addr]);
+                // v32.31: die EINGETRAGENEN Einträge fortschreiben, nicht die
+                // aufgelösten Mitglieder — sonst ersetzt ein Klick den Verteiler
+                // durch seine Einzeladressen.
+                const next = audienceRoh.concat([addr]);
                 const saved = await updateEvent(selectedEvent.id, { 'Audience': next.join(',') });
                 if (saved) {
                   await refreshEvents();
@@ -392,108 +473,249 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // feuert onClick immer — ohne den Guard verwarf ein Doppelklick die
         // Handanpassung der Empfängerliste.
         type InviteTargetKey = InviteComposerModalProps['inviteTarget'];
-        const renderTargetTile = (opt: { key: InviteTargetKey; title: string; count?: string | number; desc: string; disabled?: boolean }): React.ReactElement => {
-          const active = inviteTarget === opt.key;
-          return (
-            <button
-              key={opt.key}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              disabled={opt.disabled}
-              className={cx('dex-ui-choice', active && 'is-active', opt.disabled && 'is-disabled')}
-              onClick={() => {
-                if (active) return;
-                setInviteTarget(opt.key);
-                if (opt.key !== 'organizer') setInviteCustomEmails(null);
-              }}
-            >
-              <div className="dex-ui-choice-body">
-                <div className="dex-ui-choice-title" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  {opt.title}
-                  {opt.count !== undefined && (
-                    <span className={cx('dex-ui-pill', active ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}>{opt.count}</span>
-                  )}
-                </div>
-                <div className="dex-ui-choice-desc" style={{ wordBreak: 'break-word' }}>{opt.desc}</div>
-              </div>
-              <span className="dex-ui-choice-check" aria-hidden="true">{active && <Check size={12} />}</span>
-            </button>
-          );
-        };
         const noAudience = audienceEmails.length === 0;
-        const headerExtra = (
-          <div>
-            {/* ---- 1. An wen? ------------------------------------------ */}
-            <div className="dex-ui-section">
-              <button type="button" className={cx('dex-ui-disclosure', aufAn && 'is-open')} onClick={() => setAufAn(o => !o)} aria-expanded={aufAn}>
-                <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
-                {isDe ? 'An wen geht die Mail?' : 'Who receives the email?'}
-                <span className="dex-ui-pill dex-ui-pill--green" style={{ marginLeft: 8 }}>{targetEmails.length}</span>
-                <span className="dex-ui-muted" style={{ marginLeft: 6, fontWeight: 400, fontSize: '0.8rem' }}>{recipientLabel}</span>
-              </button>
-              {aufAn && (
-              <div className="dex-ui-disclosure-body">
-              <div className="dex-ui-grid-2" role="radiogroup" aria-label={isDe ? 'Empfänger' : 'Recipients'}>
-                {/* v31.2: „Nur an mich" ist die Vorgabe (inviteTarget-Default
-                    'organizer') und steht deshalb oben links — die Blickführung
-                    beginnt dort, und der Senden-Knopf „An mich (…)" überrascht
-                    nicht mehr. */}
-                {renderTargetTile({
-                  key: 'organizer',
-                  title: isDe ? 'Nur an mich' : 'Only to me',
-                  desc: isDe
-                    ? `${myEmail} — zum Prüfen oder zum Weiterleiten aus Outlook an deinen Verteiler.`
-                    : `${myEmail} — to check it, or to forward it from Outlook to your distribution list.`,
-                })}
-                {renderTargetTile({
-                  key: 'audience',
-                  title: isDe ? 'An alle im Mailverteiler' : 'Everyone on the mail distribution',
-                  count: audienceEmails.length,
-                  disabled: noAudience,
-                  desc: noAudience
-                    ? (isDe
-                      ? 'Kein Mailverteiler auf dem Event hinterlegt — ergänze ihn im Event-Edit, Schritt 3 (Sichtbarkeit).'
-                      : 'No mail distribution configured — add recipients in event edit, step 3 (Visibility).')
-                    : (isDe
-                      ? 'Der komplette Verteiler des Events. Die Adressen stehen unten und lassen sich vor dem Senden anpassen.'
-                      : 'The full event distribution list. The addresses are listed below and can be adjusted before sending.'),
-                })}
-                {/* v28.37: Zwei Nachfass-Modi. Beide arbeiten auf dem Verteiler und
-                    ziehen davon ab, wer schon „durch" ist — einmal gemessen an den
-                    bereits verschickten Einladungen, einmal an der Teilnehmerliste. */}
-                {renderTargetTile({
-                  key: 'uninvited',
-                  title: isDe ? 'Nur an noch nicht Eingeladene' : 'Only those not yet invited',
-                  count: invitedKnown ? uninvitedEmails.length : '–',
-                  disabled: noAudience || !invitedKnown,
-                  desc: invitedLc === undefined
-                    ? (isDe ? 'Frühere Einladungen werden geladen …' : 'Loading earlier invitations …')
-                    : invitedLc === null
-                    ? (isDe
-                      ? 'Abgleich nicht möglich — die bereits verschickten Einladungen konnten nicht gelesen werden. Schließe den Dialog und öffne ihn erneut.'
-                      : 'Comparison not possible — the invitations already sent could not be read. Close and reopen the dialog.')
-                    : (isDe
-                      ? `Wer schon eine Einladungsmail bekommen hat, fällt raus — ${alreadyInvitedCount} Adresse(n).`
-                      : `Whoever already received an invitation is excluded — ${alreadyInvitedCount} address(es).`),
-                })}
-                {renderTargetTile({
-                  key: 'pending',
-                  title: isDe ? 'Nur an noch nicht Angemeldete' : 'Only those not yet registered',
-                  count: pendingEmails.length,
-                  disabled: noAudience,
-                  desc: isDe
-                    ? `Wer sich schon an- oder abgemeldet hat, fällt raus — ${alreadyDecidedCount} Adresse(n) laut Teilnehmerliste.`
-                    : `Whoever already registered or cancelled is excluded — ${alreadyDecidedCount} address(es) per participant list.`,
-                })}
-              </div>
+        const namenAus = (dn: string, first?: string, last?: string): { vorname: string; nachname: string } => {
+          if (last || first) return { vorname: (first || '').trim(), nachname: (last || '').trim() };
+          const d = (dn || '').replace(/\s*\(.*\)\s*$/, '').trim();
+          const k = d.indexOf(',');
+          if (k > 0) return { nachname: d.slice(0, k).trim(), vorname: d.slice(k + 1).trim() };
+          const teile = d.split(/\s+/).filter(Boolean);
+          return { vorname: teile.slice(0, -1).join(' '), nachname: teile.slice(-1)[0] || '' };
+        };
+        const sichtbarkeitLaden = (): void => {
+          setVerteilerZeigen(true);
+          if (sichtPersonen) return;
+          (async () => {
+            const map = new Map<string, { email: string; vorname: string; nachname: string; standort: string; quelle: string }>();
+            for (const entry of audienceRoh) {
+              if (entry.indexOf('@') < 0) continue; // Standort-Muster — keine Personenliste
+              try {
+                const grp = await getGroupMembers(entry);
+                if (grp && grp.members && grp.members.length > 0) {
+                  for (const m of grp.members) {
+                    const lc = (m.email || '').toLowerCase();
+                    if (!lc || ausgeschlossen.has(lc) || map.has(lc)) continue;
+                    map.set(lc, { email: m.email, ...namenAus(m.displayName, m.firstName, m.lastName), standort: m.location || '', quelle: grp.groupName || entry });
+                  }
+                  continue;
+                }
+              } catch { /* Einzelperson oder nicht auflösbar */ }
+              const lc = entry.toLowerCase();
+              if (ausgeschlossen.has(lc) || map.has(lc)) continue;
+              let dn = ''; let standort = '';
+              try { const u = await searchUser(entry); dn = (u && u.displayName) || ''; standort = (u && u.location) || ''; } catch { /* */ }
+              map.set(lc, { email: entry, ...namenAus(dn), standort, quelle: isDe ? 'Einzelperson' : 'Individual' });
+            }
+            // Beim Speichern eingefrorene Mitglieder, die die Live-Auflösung nicht
+            // lieferte (fehlende Rechte), trotzdem zeigen — Name aus der Adresse.
+            for (const e of aufgeloest) {
+              const lc = (e || '').toLowerCase();
+              if (!lc || map.has(lc) || ausgeschlossen.has(lc)) continue;
+              map.set(lc, { email: e, vorname: '', nachname: e.split('@')[0], standort: '', quelle: isDe ? 'gespeicherte Auflösung' : 'saved resolution' });
+            }
+            const liste = Array.from(map.values()).sort((a, b) =>
+              (a.nachname || a.email).localeCompare(b.nachname || b.email, 'de', { sensitivity: 'base' })
+              || a.vorname.localeCompare(b.vorname, 'de', { sensitivity: 'base' }));
+            setSichtPersonen(liste);
+          })().catch(() => setSichtPersonen([]));
+        };
+        const bekanntLc = new Set([...audienceEmails, ...audienceRoh].map(e => e.toLowerCase()));
+        const eigeneUebernehmen = (): void => {
+          (async () => {
+            const liste = eindeutig(parsePastedRecipients(eigeneRoh).map(x => x.email));
+            if (liste.length === 0) {
+              showAlert(isDe ? 'In der eingefügten Liste wurde keine E-Mail-Adresse gefunden.' : 'No email address found in the pasted list.', { variant: 'error' });
+              return;
+            }
+            setEigene(liste);
+            setEigeneAn(true);
+            vorgewaehltRef.current = true;
+            setEigeneOffen(false);
+            // Abgleich mit der Sichtbarkeit: Wer nicht darin steht, sieht das
+            // Event nicht und kommt über den Link nicht zur Anmeldung.
+            const delta = liste.filter(e => !bekanntLc.has(e.toLowerCase()));
+            if (delta.length === 0) return;
+            const vorschau = delta.slice(0, 12).join(', ') + (delta.length > 12 ? `, … (+${delta.length - 12})` : '');
+            const ok = await confirmDialog(
+              isDe
+                ? `${delta.length} von ${liste.length} Personen stehen noch nicht in der Sichtbarkeit des Events — sie sehen es nicht in ihrer Übersicht und können sich nicht anmelden.\n\n${vorschau}\n\nSollen sie in die Sichtbarkeit (Mailverteiler) aufgenommen werden?`
+                : `${delta.length} of ${liste.length} people are not in the event’s visibility yet — they cannot see it or register.\n\n${vorschau}\n\nAdd them to the visibility (mail distribution)?`,
+              { confirmLabel: isDe ? 'In die Sichtbarkeit aufnehmen' : 'Add to visibility' },
+            );
+            if (!ok) return;
+            setEigeneSpeichern(true);
+            try {
+              const next = eindeutig([...audienceRoh, ...delta]).concat(audienceRoh.filter(e => e.indexOf('@') < 0));
+              const saved = await updateEvent(selectedEvent.id, { 'Audience': Array.from(new Set(next)).join(',') });
+              if (saved) {
+                setSichtPersonen(null);
+                await refreshEvents();
+                showAlert(isDe ? `${delta.length} Personen in die Sichtbarkeit aufgenommen.` : `${delta.length} people added to the visibility.`, { variant: 'success' });
+              } else {
+                showAlert(isDe ? 'Die Sichtbarkeit konnte nicht gespeichert werden — die Personen bekommen die Einladung trotzdem, sehen das Event aber nicht.' : 'The visibility could not be saved — the people still get the invitation but cannot see the event.', { variant: 'error' });
+              }
+            } finally { setEigeneSpeichern(false); }
+          })().catch(() => { setEigeneSpeichern(false); });
+        };
+        const zielAuswahl = (
+            <>
+              {/* v32.30: Chips statt Kacheln (Nutzer-Ansage 29.09.2026). Die drei
+                  Verteiler-Gruppen schließen sich aus (jede ist eine Teilmenge der
+                  ersten), ein zweiter Klick wählt ab; „Intern“ ist additiv. */}
+              {(() => {
+                const zeile = (titel: string, kinder: React.ReactNode): React.ReactElement => (
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 10 }}>
+                    <span className="dex-ui-muted" style={{ fontSize: '0.8rem', fontWeight: 600, minWidth: 110, paddingTop: 6 }}>{titel}</span>
+                    <div className="dex-ui-inline" style={{ gap: 6, flexWrap: 'wrap', flex: '1 1 300px' }}>{kinder}</div>
+                  </div>
+                );
+                const chip = (key: string, label: string, n: number | string, on: boolean, click: () => void, off?: boolean, title?: string): React.ReactElement => (
+                  <button key={key} type="button" className={cx('dex-ui-chip', on && 'is-active')} aria-pressed={on} disabled={off} title={title} onClick={click}>
+                    {on && <Check size={12} />} {label} <span style={{ opacity: 0.75, marginLeft: 2 }}>{n}</span>
+                  </button>
+                );
+                const waehleVerteiler = (k: InviteTargetKey): void => {
+                  vorgewaehltRef.current = true;
+                  setInviteCustomEmails(null);
+                  setInviteTarget(inviteTarget === k ? 'organizer' : k);
+                };
+                const toggleIntern = (k: 'ich' | 'orgs' | 'test'): void => {
+                  vorgewaehltRef.current = true;
+                  setIntern(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+                };
+                const verteilerTitel = noAudience ? (isDe ? 'Kein Mailverteiler auf dem Event hinterlegt — ergänze ihn im Event-Edit, Schritt 3 (Sichtbarkeit).' : 'No mail distribution configured — add it in event edit, step 3 (Visibility).') : undefined;
+                return (
+                  <>
+                    {zeile(isDe ? 'Mailverteiler' : 'Distribution', <>
+                      {chip('audience', isDe ? 'Alle im Verteiler' : 'Everyone on the list', audienceEmails.length, inviteTarget === 'audience', () => waehleVerteiler('audience'), noAudience, verteilerTitel)}
+                      {chip('uninvited', isDe ? 'Noch nicht Eingeladene' : 'Not yet invited', invitedKnown ? uninvitedEmails.length : (invitedLc === undefined ? '…' : '–'), inviteTarget === 'uninvited', () => waehleVerteiler('uninvited'), noAudience || !invitedKnown,
+                        invitedLc === null ? (isDe ? 'Die bereits verschickten Einladungen konnten nicht gelesen werden — schließe den Dialog und öffne ihn erneut.' : 'The invitations already sent could not be read — close and reopen the dialog.') : (isDe ? `Wer schon eine Einladungsmail bekommen hat, fällt raus (${alreadyInvitedCount}).` : `Whoever already got an invitation is excluded (${alreadyInvitedCount}).`))}
+                      {chip('pending', isDe ? 'Noch nicht Angemeldete' : 'Not yet registered', pendingEmails.length, inviteTarget === 'pending', () => waehleVerteiler('pending'), noAudience,
+                        isDe ? `Wer sich schon an- oder abgemeldet hat, fällt raus (${alreadyDecidedCount}).` : `Whoever already registered or cancelled is excluded (${alreadyDecidedCount}).`)}
+                    </>)}
+                    <div className="dex-ui-help" style={{ margin: '-4px 0 10px', paddingLeft: 120 }}>
+                      {isDe ? 'Der Mailverteiler kommt aus der Sichtbarkeit des Events (Assistent, Schritt 3).' : 'The distribution comes from the event’s visibility (wizard, step 3).'}
+                      {' '}
+                      <button type="button" className="dex-ui-textbtn" onClick={sichtbarkeitLaden}>
+                        {isDe ? 'Sichtbarkeit prüfen' : 'Check visibility'}
+                      </button>
+                    </div>
+                    {zeile(isDe ? 'Intern' : 'Internal', <>
+                      {chip('ich', isDe ? 'An mich' : 'To me', internAdr.ich.length, intern.has('ich'), () => toggleIntern('ich'), internAdr.ich.length === 0)}
+                      {chip('orgs', 'Organizer', internAdr.orgs.length, intern.has('orgs'), () => toggleIntern('orgs'), internAdr.orgs.length === 0)}
+                      {chip('test', isDe ? 'Test-Team' : 'Test team', internAdr.test.length, intern.has('test'), () => toggleIntern('test'), internAdr.test.length === 0,
+                        internAdr.test.length === 0 ? (isDe ? 'Für dieses Event ist kein Test-Team eingetragen.' : 'No test team on this event.') : undefined)}
+                    </>)}
+                    {zeile(isDe ? 'Eigene Liste' : 'Own list', <>
+                      {eigene.length > 0 && chip('eigene', isDe ? 'Eigene Liste' : 'Own list', eigene.length, eigeneAn, () => { vorgewaehltRef.current = true; setEigeneAn(o => !o); })}
+                      <button type="button" className="dex-ui-textbtn" disabled={eigeneSpeichern} onClick={() => setEigeneOffen(true)}>
+                        {eigene.length > 0 ? (isDe ? 'Liste ändern …' : 'Change list …') : (isDe ? 'Adressliste einfügen …' : 'Paste address list …')}
+                      </button>
+                      {eigeneAktiv && (() => {
+                        const n = eigene.filter(e => !bekanntLc.has(e.toLowerCase())).length;
+                        return n > 0 ? <span className="dex-ui-help" style={{ margin: 0 }}>{isDe ? `${n} davon nicht in der Sichtbarkeit` : `${n} of them not in the visibility`}</span> : null;
+                      })()}
+                    </>)}
+                    {eigeneOffen && (
+                      <Modal open={true} onClose={() => setEigeneOffen(false)} maxWidth={720}
+                        title={isDe ? 'Eigene Liste einfügen' : 'Paste your own list'}
+                        subtitle={isDe ? 'Aus Outlook kopiert oder beliebig formatiert — DEX erkennt die Adressen und gleicht sie mit der Sichtbarkeit ab.' : 'Copied from Outlook or any format — DEX picks out the addresses and checks them against the visibility.'}
+                        icon={<Users size={20} />}
+                        footer={<>
+                          <button type="button" className="btn btn-secondary" onClick={() => setEigeneOffen(false)}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+                          <button type="button" className="btn btn-primary" onClick={eigeneUebernehmen} disabled={!eigeneRoh.trim()}>
+                            {isDe ? `Übernehmen (${parsePastedRecipients(eigeneRoh).length})` : `Apply (${parsePastedRecipients(eigeneRoh).length})`}
+                          </button>
+                        </>}>
+                        <textarea className="form-control" rows={10} value={eigeneRoh} onChange={e => setEigeneRoh(e.target.value)}
+                          placeholder={isDe ? 'Max Mustermann <mmustermann@deloitte.de>; erika@deloitte.de …' : 'Jane Doe <jdoe@deloitte.com>; john@deloitte.com …'}
+                          style={{ width: '100%', fontFamily: 'inherit', fontSize: '0.9rem' }} />
+                      </Modal>
+                    )}
+                    <div className="dex-ui-inline" style={{ gap: 6 }}>
+                      <span className={cx('dex-ui-pill', targetEmails.length > 0 ? 'dex-ui-pill--green' : 'dex-ui-pill--red')}>{targetEmails.length} {isDe ? 'Empfänger' : 'recipients'}</span>
+                      {!isBroadcast && intern.size > 0 && (
+                        <span className="dex-ui-help" style={{ margin: 0 }}>{isDe ? 'Nur intern — zählt nicht als Einladung an die Teilnehmenden.' : 'Internal only — does not count as an invitation to participants.'}</span>
+                      )}
+                    </div>
+                    {!isBroadcast && intern.size > 0 && !nurIch && (
+                      <div className="dex-ui-help" style={{ wordBreak: 'break-word' }}>{targetEmails.join(', ')}</div>
+                    )}
+                    {verteilerZeigen && (() => {
+                      const q = sichtSuche.trim().toLowerCase();
+                      const treffer = (sichtPersonen || []).filter(x => !q
+                        || x.email.toLowerCase().indexOf(q) >= 0
+                        || `${x.vorname} ${x.nachname}`.toLowerCase().indexOf(q) >= 0
+                        || `${x.nachname}, ${x.vorname}`.toLowerCase().indexOf(q) >= 0);
+                      const muster = audienceRoh.filter(e => e.indexOf('@') < 0);
+                      return (
+                        <Modal open={true} onClose={() => setVerteilerZeigen(false)} maxWidth={860}
+                          title={isDe ? 'Sichtbarkeit prüfen' : 'Check visibility'}
+                          subtitle={isDe ? 'Wer das Event sieht — aus der Sichtbarkeit (Assistent, Schritt 3). Ändern kannst du sie dort oder über „Eigene Liste“.' : 'Who can see the event — from the visibility settings (wizard, step 3). Change them there or via “Own list”.'}
+                          icon={<Users size={20} />}
+                          footer={<button type="button" className="btn btn-secondary" onClick={() => setVerteilerZeigen(false)}>{isDe ? 'Schließen' : 'Close'}</button>}>
+                          <div className="dex-ui-inline" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                            <span className="dex-ui-muted" style={{ fontSize: '0.8rem', fontWeight: 600 }}>{isDe ? 'Eingetragen:' : 'Entered:'}</span>
+                            {audienceRoh.length === 0
+                              ? <span className="dex-ui-help" style={{ margin: 0 }}>{isDe ? 'nichts — die Sichtbarkeit läuft nur über den Standort.' : 'nothing — visibility runs via location only.'}</span>
+                              : audienceRoh.map(e => <span key={e} className="dex-ui-pill dex-ui-pill--gray dex-ui-pill--wrap">{e}</span>)}
+                          </div>
+                          {muster.length > 0 && (
+                            <div className="dex-ui-help">{isDe ? `Standort-Muster (${muster.join(', ')}) sehen alle an diesem Standort — sie stehen nicht einzeln in der Liste.` : `Location patterns (${muster.join(', ')}) include everyone at that location — they are not listed individually.`}</div>
+                          )}
+                          <input className="form-control" value={sichtSuche} onChange={e => setSichtSuche(e.target.value)}
+                            placeholder={isDe ? 'Name oder E-Mail — sieht diese Person das Event?' : 'Name or email — can this person see the event?'}
+                            style={{ width: '100%', margin: '6px 0 8px' }} />
+                          {q && sichtPersonen && (
+                            <div className={cx('dex-ui-callout', treffer.length > 0 ? 'dex-ui-callout--success' : 'dex-ui-callout--warn')} style={{ marginBottom: 8 }}>
+                              <span>{treffer.length > 0
+                                ? (isDe ? `${treffer.length} Treffer — sieht das Event.` : `${treffer.length} match(es) — can see the event.`)
+                                : (isDe ? 'Kein Treffer — diese Person sieht das Event nicht (außer über ein Standort-Muster).' : 'No match — this person cannot see the event (unless via a location pattern).')}</span>
+                            </div>
+                          )}
+                          {sichtPersonen === null
+                            ? <div className="dex-ui-help">{isDe ? 'Verteiler werden aufgelöst …' : 'Resolving distribution lists …'}</div>
+                            : (
+                              <div style={{ maxHeight: 360, overflowY: 'auto', border: '1px solid var(--dex-gray-200, #e5e5e5)', borderRadius: 8 }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                  <thead>
+                                    <tr style={{ position: 'sticky', top: 0, background: 'var(--dex-gray-50, #fafafa)', textAlign: 'left' }}>
+                                      <th style={{ padding: '6px 10px' }}>{isDe ? 'Nachname' : 'Last name'}</th>
+                                      <th style={{ padding: '6px 10px' }}>{isDe ? 'Vorname' : 'First name'}</th>
+                                      <th style={{ padding: '6px 10px' }}>{isDe ? 'E-Mail' : 'Email'}</th>
+                                      <th style={{ padding: '6px 10px' }}>{isDe ? 'Standort' : 'Location'}</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {treffer.map(x => (
+                                      <tr key={x.email} style={{ borderTop: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
+                                        <td style={{ padding: '5px 10px', fontWeight: 600 }}>{x.nachname}</td>
+                                        <td style={{ padding: '5px 10px' }}>{x.vorname}</td>
+                                        <td style={{ padding: '5px 10px', wordBreak: 'break-all' }}>{x.email}</td>
+                                        <td style={{ padding: '5px 10px' }}>{x.standort}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          <div className="dex-ui-help">
+                            {sichtPersonen ? (isDe ? `${sichtPersonen.length} Personen` : `${sichtPersonen.length} people`) : ''}
+                            {ausgeschlossen.size > 0 ? (isDe ? ` · ${ausgeschlossen.size} ausgeschlossene nicht enthalten` : ` · ${ausgeschlossen.size} excluded not included`) : ''}
+                          </div>
+                        </Modal>
+                      );
+                    })()}
+                  </>
+                );
+              })()}
               {/* v31.2: Die Grenze des Abgleichs gehört zum Zähler der Kachel,
                   nicht erst zur Wahl — sie steht, sobald die Kachel wählbar ist. */}
               {!noAudience && invitedKnown && (
                 <div className="dex-ui-help">
                   {isDe
-                    ? '„Nur an noch nicht Eingeladene" zählt nur die letzten rund vier Wochen: Versendete Mails werden nach etwa einem Monat archiviert, ältere Einladungsrunden sind im Abgleich nicht mehr enthalten.'
-                    : '"Only those not yet invited" covers only the last four weeks or so: sent mails are archived after about a month, so older invitation rounds are no longer part of the comparison.'}
+                    ? '„Noch nicht Eingeladene" zählt nur die letzten rund vier Wochen: Versendete Mails werden nach etwa einem Monat archiviert, ältere Einladungsrunden sind im Abgleich nicht mehr enthalten.'
+                    : '"Not yet invited" covers only the last four weeks or so: sent mails are archived after about a month, so older invitation rounds are no longer part of the comparison.'}
                 </div>
               )}
               {blockedInAudience.length > 0 && (
@@ -517,6 +739,21 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                   </div>
                 </div>
               )}
+            </>
+        );
+        const headerExtra = (
+          <div>
+            {/* ---- 1. An wen? ------------------------------------------ */}
+            <div className="dex-ui-section">
+              <button type="button" className={cx('dex-ui-disclosure', aufAn && 'is-open')} onClick={() => setAufAn(o => !o)} aria-expanded={aufAn}>
+                <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                {isDe ? 'An wen geht die Mail?' : 'Who receives the email?'}
+                <span className="dex-ui-pill dex-ui-pill--green" style={{ marginLeft: 8 }}>{targetEmails.length}</span>
+                <span className="dex-ui-muted" style={{ marginLeft: 6, fontWeight: 400, fontSize: '0.8rem' }}>{recipientLabel}</span>
+              </button>
+              {aufAn && (
+              <div className="dex-ui-disclosure-body">
+              {zielAuswahl}
               {/* v28.37: Empfaengerliste — eingeklappt (sie kann mehrere hundert
                   Adressen haben und schob den Dialog vorher auseinander) und vor
                   dem Senden anpassbar: einzelne rausnehmen oder ergaenzen. Eine
@@ -719,8 +956,8 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // Verteilergröße — auch in den Nachfass-Modi und nach dem Entfernen
         // einzelner Adressen. Sie muss die WIRKLICH adressierte Liste nennen,
         // sonst widerspricht sie dem Senden-Knopf direkt daneben.
-        const previewToLine = inviteTarget === 'organizer'
-          ? myEmail
+        const previewToLine = !isBroadcast
+          ? (nurIch ? myEmail : targetEmails.join(', '))
           : (isDe
             ? `${targetEmails.length} ${targetEmails.length === 1 ? 'Empfänger' : 'Empfänger'}${
               inviteCustomEmails ? ' (angepasste Auswahl)'
@@ -733,6 +970,36 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                 : inviteTarget === 'pending' ? ' — not yet registered'
                 : ' of the mail distribution'}`);
         const previewSubjectLine = replacePlaceholders(inviteSubject, previewVars);
+        React.useEffect(() => {
+          if (vorgewaehltRef.current || inviteCustomEmails) return;
+          if (noAudience) { vorgewaehltRef.current = true; setIntern(new Set<'ich' | 'orgs' | 'test'>(['ich'])); return; }
+          if (invitedLc === undefined) return; // Einladungen werden noch gelesen
+          vorgewaehltRef.current = true;
+          setInviteTarget(invitedKnown && uninvitedEmails.length > 0 ? 'uninvited' : 'audience');
+          // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, [invitedLc, noAudience]);
+        if (schritt === 'wer') {
+          return (
+            <Modal
+              open={true}
+              onClose={() => setShowInviteModal(false)}
+              maxWidth={980}
+              title={isDe ? 'An wen soll die Einladung gehen?' : 'Who should receive the invitation?'}
+              subtitle={isDe ? 'Wähle die Empfänger — den Text schreibst du danach im Editor.' : 'Choose the recipients — you write the text in the editor next.'}
+              icon={<Users size={20} />}
+              footer={
+                <>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowInviteModal(false)}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+                  <button type="button" className="btn btn-primary" disabled={targetEmails.length === 0} onClick={() => setSchritt('mail')}>
+                    {isDe ? `Weiter: Einladung schreiben (${targetEmails.length})` : `Next: write invitation (${targetEmails.length})`}
+                  </button>
+                </>
+              }
+            >
+              {zielAuswahl}
+            </Modal>
+          );
+        }
         return (
           <HtmlEditorModal
             open={showInviteModal}

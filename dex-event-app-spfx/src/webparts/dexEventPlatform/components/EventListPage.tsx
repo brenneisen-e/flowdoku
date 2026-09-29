@@ -9,6 +9,7 @@
 import * as React from 'react';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
+import { istImTestTeam } from '../utils/testTeam';
 import { useRoles } from '../context/RoleContext';
 import { useNavigation } from '../context/NavigationContext';
 import { DeloitteEvent } from '../types';
@@ -321,7 +322,8 @@ export default function EventListPage(): React.ReactElement {
       if (e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
       if ((e.coOrganizerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
       if ((e.qrScannerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
-      if ((e.testTeamEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
+      // v32.29: beide Schreibweisen der Person (SMTP + loginName).
+      if (istImTestTeam(currentUser, e)) return true;
       return false;
     });
     const isExpired = (e: DeloitteEvent): boolean => {
@@ -333,6 +335,10 @@ export default function EventListPage(): React.ReactElement {
       : fictiveFiltered.filter((e: DeloitteEvent) =>
           isEventVisibleForUser(e, currentUser.email, currentUser.location, groupEmails, currentUser.jobTitle)
           || e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc)
+          // v32.29: Das Test-Team steht oft NICHT im Verteiler (es testet
+          // ja vorab) — ohne diese Ausnahme ließ der Entwurfs-Filter es durch
+          // und der Verteiler-Filter warf es gleich wieder hinaus.
+          || istImTestTeam(currentUser, e)
         )
     ).slice().sort((a: DeloitteEvent, b: DeloitteEvent) => {
       // v11.90: Priorität — eigene, noch nicht abgelaufene Events zuerst.
@@ -350,7 +356,7 @@ export default function EventListPage(): React.ReactElement {
     // ausgewertet. So erscheinen auch bis dahin ausgeblendete Events (Anmeldung
     // ab in der Zukunft ohne Vorschau) live in dem Moment, in dem sie öffnen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, onlyActive, isAdmin, currentEmailLc, currentUser.email, currentUser.location, groupEmails, isOwnOrganizer, nowTick]);
+  }, [events, onlyActive, isAdmin, currentEmailLc, currentUser.email, currentUser.id, currentUser.location, groupEmails, isOwnOrganizer, nowTick]);
   // v31.54: Ansicht = bewusste Wahl, sonst ab sechs Events die Liste. Fünf
   // Karten überblickt man, ab sechs scrollt man — und in der Liste steht das
   // Datum in einer Spalte untereinander.
