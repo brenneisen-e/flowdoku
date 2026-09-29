@@ -459,6 +459,10 @@ async function reise(l) {
   await l.schritt('detail', async () => {
     await l.karte(T(D.erste)).click();
     await l.page.getByRole('heading', { level: 1, name: T(D.erste) }).waitFor({ timeout: 10000 });
+    // Der erste Use Case trägt ein Kachelbild (Beispieldaten). Fehlt es auf der Detailseite, hat die App die
+    // Adresse verworfen (nur http(s) zählt) oder das Bild-Element fehlt — beides sah man früher nur im Bild.
+    const heldMitBild = await l.page.evaluate(() => { const el = document.querySelector('.page-container [role="img"]'); return !!el && /url\(/.test(el.style.background || ''); });
+    if (!heldMitBild) l.befund('detail', 'Die Detailseite zeigt kein Kachelbild, obwohl der Use Case eines hat.', 'kein [role=img] mit url(...) im Hintergrund');
     await l.shot('detail', 'Detailseite eines Live-Use-Cases mit Kachelbild: Kopf, Start-Knopf, Beschreibung, Bewertung, Ressourcen.' + (istOrg ? ' Organizer sehen zusätzlich „Verlauf" und „Bearbeiten".' : ''), { voll: true });
     // „Link kopieren": Die Zwischenablage ist freigegeben — der Text muss der Deep-Link dieses Use Cases sein.
     await l.page.getByRole('button', { name: /Link kopieren|Copy link/ }).click();

@@ -104,14 +104,15 @@ const SPALTEN_LOG = ['UseCaseId', 'Aktion', 'Detail', 'Wer'];
 
 /* ------------------------------------------------------- Beispiel-Zeilen -- */
 
+/**
+ * Die Adresse eines Beispiel-Kachelbilds. Bis v1.3 war das eine `data:`-URL; die App
+ * nimmt aber als Bild-Adresse nur `http(s)` an (`utils/sicher.ts` — die echte Adresse
+ * ist immer die eines Anhangs auf der Site), und die Detailseite zeigte dann kein Bild.
+ * `serve.js` baut das SVG zu dieser Adresse (`/harness-bild.svg`).
+ */
 function bildSvg(titel: string, farbe: string): string {
   const k = titel.split(/[\s/-]+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">`
-    + `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${farbe}"/><stop offset="1" stop-color="#0b2e4f"/></linearGradient></defs>`
-    + `<rect width="640" height="360" fill="url(#g)"/>`
-    + `<g fill="none" stroke="rgba(255,255,255,.25)" stroke-width="2"><circle cx="500" cy="90" r="120"/><circle cx="520" cy="110" r="70"/><path d="M0 300 L160 240 L260 270 L400 190 L640 250"/></g>`
-    + `<text x="40" y="320" font-family="Arial" font-size="64" font-weight="700" fill="#fff">${k}</text></svg>`;
-  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  return `${window.location.origin}/harness-bild.svg?k=${encodeURIComponent(k)}&f=${encodeURIComponent(farbe)}`;
 }
 
 /** Abweichungen von den Startdaten, damit die Zustände sichtbar werden, die beim Umbau kaputtgehen. */
