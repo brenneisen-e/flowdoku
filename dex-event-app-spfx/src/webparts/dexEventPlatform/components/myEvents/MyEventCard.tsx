@@ -232,21 +232,18 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                    ============================================================ */}
                 {/* v31.70: `flexWrap` — die Knopfspalte rechts (s.u.) rutscht auf
                     dem Handy unter Bild und Titel statt sie zu quetschen. */}
-                <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                  {dexIntro ? (
-                    <div
-                      className="my-event-card__thumb"
-                      style={{
-                        flexShrink: 0, width: 140, height: 100,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        ...(istVorbei ? { filter: 'grayscale(1)', opacity: 0.7 } : {}),
-                      }}
-                    >
-                      <div style={{ width: 100, height: 100, borderRadius: '50%', overflow: 'hidden' }}>
-                        <DexLogo title="DEX" motion="oscillate" size={100} paused={istVorbei} pointerSpin={!istVorbei} />
-                      </div>
+                {/* v32.41: Einführungs-Event — die animierte Kugel als Kreis ÜBER der
+                    Karte, wie auf der Anmeldeseite (Nutzer-Befund 29.09.2026: „auf
+                    einmal oben links und nicht als Kreis oben drüber"). */}
+                {dexIntro && (
+                  <div style={{ display: 'flex', justifyContent: 'center', margin: '-4px 0 14px', ...(istVorbei ? { filter: 'grayscale(1)', opacity: 0.7 } : {}) }}>
+                    <div style={{ width: 150, height: 150, borderRadius: '50%', overflow: 'hidden', border: '6px solid #fff', boxShadow: '0 6px 20px rgba(0,0,0,0.12)', background: '#fff' }}>
+                      <DexLogo title="DEX" motion="oscillate" size={138} paused={istVorbei} pointerSpin={!istVorbei} />
                     </div>
-                  ) : event.imageUrl && (
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  {!dexIntro && event.imageUrl && (
                     <div
                       className="my-event-card__thumb"
                       style={{

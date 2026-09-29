@@ -273,8 +273,8 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                 <div className="dex-ui-section-title">{isDe ? 'Wer verantwortet das Event?' : 'Who is responsible for the event?'}</div>
                 <p className="dex-ui-section-desc">
                   {isDe
-                    ? 'Organizer können das Event bearbeiten, die Teilnehmerliste einsehen und Mails versenden. Die erste Person in der Liste ist Haupt-Organizer und steht in Mails als Absender-Name.'
-                    : 'Organizers can edit the event, see the attendee list and send mails. The first person in the list is the main organizer and appears as the sender name in mails.'}
+                    ? 'Organizer können das Event bearbeiten, die Teilnehmerliste einsehen und Mails versenden. In den Mails stehen alle Organizer — in der Reihenfolge dieser Liste; abgeschickt wird über das DEX-Postfach.'
+                    : 'Organizers can edit the event, see the attendee list and send mails. Mails name all organizers — in the order of this list; they are sent from the DEX mailbox.'}
                 </p>
                 {/* v31.2: flexWrap — bei schmaler Breite bricht der Massenimport-Knopf
                     linksbündig unter die Beschriftung, statt sie zu quetschen. */}
@@ -286,14 +286,14 @@ export const DetailsStep: React.FC<DetailsStepProps> = (p) => {
                       <strong>Was du hier einstellst:</strong> die <strong>verantwortlichen Personen</strong> für dieses Event — beliebige Deloitte-User per Graph-Suche. Du selbst bist standardmäßig vorbefüllt, kannst aber Co-Organizer hinzunehmen oder dich selbst rauslöschen.<br /><br />
                       <strong>Anzeige in der App:</strong> Organizer dürfen das Event <strong>bearbeiten, deaktivieren, löschen</strong>, die <strong>Teilnehmerliste</strong> einsehen, <strong>QR-Codes versenden</strong> und <strong>Massenmails</strong> verschicken. Sie tauchen auf der Anmelde-Seite und in Meine Events als <strong>Ansprechpartner</strong> mit Foto + Mail-Adresse auf.<br /><br />
                       <strong>Automatismen:</strong> Organizer bekommen je nach Einstellung in <strong>Schritt 6 (Kommunikation)</strong> eine BCC-Kopie der Anmelde-/Abmelde-Mails. Late-Cancel- und Roommate-Mails gehen ebenfalls an alle Organizer. Wenn ein Teilnehmer die Outlook-Einladung weiterleitet und der Empfänger nicht angemeldet ist, bekommen die Organizer eine FYI-Mail.<br /><br />
-                      <strong>Reihenfolge zählt:</strong> der erste Organizer ist der Haupt-Organizer und wird in Mails als Absender-Name verwendet.
+                      <strong>Reihenfolge:</strong> In Mails und auf der Anmeldeseite stehen alle Organizer in dieser Reihenfolge (Platzhalter „Organizer“, Kopie der Mails). Abgeschickt wird über das DEX-Postfach, nicht im Namen einer Person.
                     </>
                   ) : (
                     <>
                       <strong>What you set here:</strong> the <strong>responsible people</strong> for this event — any Deloitte user via Graph search. You are pre-filled by default, but you can add co-organizers or remove yourself.<br /><br />
                       <strong>Shown in the app:</strong> organizers can <strong>edit, deactivate, delete</strong> the event, see the <strong>attendee list</strong>, <strong>send QR codes</strong> and <strong>mass emails</strong>. They appear on the registration page and in My Events as <strong>contacts</strong> with photo + email.<br /><br />
                       <strong>Automation:</strong> depending on the setting in <strong>step 5 (Communication)</strong>, organizers receive BCC copies of registration / cancellation mails. Late-cancel and roommate mails go to all organizers. If an attendee forwards the Outlook invite to someone unregistered, organizers receive an FYI mail.<br /><br />
-                      <strong>Order matters:</strong> the first organizer is the main organizer and is used as the sender name in mails.
+                      <strong>Order:</strong> mails and the registration page list all organizers in this order (placeholder “Organizer”, copy of the mails). Mails are sent from the DEX mailbox, not in a person’s name.
                     </>
                   )} />
                   <BulkImportButton isDe={isDe} onClick={() => setBulkOrganizerOpen(true)} />

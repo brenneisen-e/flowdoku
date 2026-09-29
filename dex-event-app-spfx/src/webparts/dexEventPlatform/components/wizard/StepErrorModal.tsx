@@ -16,6 +16,7 @@ export interface StepErrorState { step: number; errs: string[] }
 const TEXTE: Record<string, { de: string; en: string }> = {
   title: { de: 'Titel des Events („Wie heißt das Event?")', en: 'Event title' },
   startDate: { de: 'Beginn des Events', en: 'Event start' },
+  description: { de: 'Beschreibung — schreib eine oder schalte „Beschreibung anzeigen" aus', en: 'Description — write one or switch off “Show a description”' },
   endDate: { de: 'Ende des Events', en: 'Event end' },
   endBeforeStart: { de: 'Das Ende liegt vor dem Beginn', en: 'The end is before the start' },
   subEventEndBeforeStart: { de: 'Bei einem Sub-Event liegt das Ende vor dem Beginn', en: 'A sub-event ends before it starts' },

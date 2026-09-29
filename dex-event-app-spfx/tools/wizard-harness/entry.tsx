@@ -29,6 +29,7 @@ import MyEventsPage from '../../src/webparts/dexEventPlatform/components/MyEvent
 // für den Knopf „Entwurf weiter bearbeiten" und seinen Dialog.
 import { EventOverviewScreen } from '../../src/webparts/dexEventPlatform/components/admin/sections/EventOverviewScreen';
 import * as sample from './sampleData';
+import DexLogo from '../../src/webparts/dexEventPlatform/components/DexLogo';
 // v32.30: Empfängerwahl der Mails (?page=mailpick | invitepick).
 import { MassmailPickModal } from '../../src/webparts/dexEventPlatform/components/admin/modals/MassmailPickModal';
 import { InviteComposerModal } from '../../src/webparts/dexEventPlatform/components/admin/modals/InviteComposerModal';
@@ -276,6 +277,7 @@ const PageComponent: React.FC = () => {
         />
       );
     }
+    case 'orb': return <div id="orbbox" style={{ width: 300, height: 300, background: 'transparent' }}><DexLogo title="DEX" size={300} paused /></div>;
     case 'mailpick': return <MailPickDemo />;
     case 'invitepick': return <InvitePickDemo />;
     case 'invitedeall': return <InvitePickDemo ev={{ ...mailEv, audienceFilter: ['DEKOELN', 'deall@deloitte.de'], audienceResolvedEmails: [] }} />;

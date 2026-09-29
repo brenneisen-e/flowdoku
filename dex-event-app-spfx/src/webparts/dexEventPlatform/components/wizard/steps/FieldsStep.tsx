@@ -191,7 +191,8 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
       document: ['Lade bitte deine Bahnbuchung hoch.', 'Please upload your train booking.'],
     };
     const e = bsp[typ] || bsp.text;
-    return isDe ? `Frage eingeben – z. B. „${e[0]}"` : `Enter the question – e.g. “${e[1]}”`;
+    // v32.41: ohne „Frage eingeben –" (Nutzer-Ansage 29.09.2026) — das Feld sagt es selbst.
+    return isDe ? `z. B. „${e[0]}"` : `e.g. “${e[1]}”`;
   };
   // v32.14: „+" zwischen und unter den Fragen (Nutzer-Ansage 29.09.2026) —
   // bisher hing jede neue Frage am Ende, und eine Folgefrage direkt unter
@@ -507,7 +508,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                               <input
                                 className="form-input"
                                 value={field.label}
-                                placeholder={isDe ? 'Frage eingeben – z. B. „Welche Strecke läufst du?"' : 'Enter the question – e.g. “Which distance will you run?”'}
+                                placeholder={isDe ? 'z. B. „Welche Strecke läufst du?"' : 'e.g. “Which distance will you run?”'}
                                 onChange={e => updateSubEventCustomField(se.id, field.id, { label: e.target.value })}
                                 disabled={inherit}
                                 style={{ flex: '1 1 260px', minWidth: 180, fontSize: '0.95rem', fontWeight: 600, padding: '8px 12px', minHeight: 0 }}
@@ -844,17 +845,6 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     </p>
                   </div>
                 )}
-                {/* v31.2: Leerer Zustand statt leerer Fläche — sagt, was das
-                    Formular ohne eigene Fragen tut und wo es weitergeht. */}
-                {customFields.length === 0 && !askSalutation && (
-                  <div className="dex-ui-empty" style={{ marginBottom: 12 }}>
-                    <div className="dex-ui-empty-icon"><Plus size={18} /></div>
-                    <div className="dex-ui-empty-title">{isDe ? 'Noch keine Zusatzfragen' : 'No extra questions yet'}</div>
-                    {isDe
-                      ? 'Das Formular fragt bisher nur die Profildaten ab. Füge oben eine Frage hinzu oder wähle aus den Vorschlägen.'
-                      : 'So far the form only asks for the profile data. Add a question above or pick from the suggestions.'}
-                  </div>
-                )}
                 {/* v22.38: Anrede als Standard-Feld-Zeile — aktiviert über das
                     Vorgeschlagene-Felder-Modal (Eintrag „Anrede"), entfernbar
                     über das X. Kein Custom-Field (eigener askSalutation-Flag). */}
@@ -929,6 +919,23 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                     </div>
                   ))}
                 </div>
+                {/* v31.2: Leerer Zustand statt leerer Fläche — sagt, was das
+                    Formular ohne eigene Fragen tut und wo es weitergeht.
+                    v32.41: UNTER den Profildaten (Nutzer-Ansage 29.09.2026: die
+                    fünf Standardfragen zuerst) und mit klickbarem Plus. */}
+                {customFields.length === 0 && !askSalutation && (
+                  <div className="dex-ui-empty" style={{ marginBottom: 12 }}>
+                    <button type="button" className="dex-ui-empty-icon" onClick={() => addCustomField()}
+                      aria-label={isDe ? 'Frage hinzufügen' : 'Add question'} title={isDe ? 'Frage hinzufügen' : 'Add question'}
+                      style={{ border: 'none', cursor: 'pointer' }}>
+                      <Plus size={18} />
+                    </button>
+                    <div className="dex-ui-empty-title">{isDe ? 'Noch keine Zusatzfragen' : 'No extra questions yet'}</div>
+                    {isDe
+                      ? 'Das Formular fragt bisher nur die Profildaten oben ab. Klick auf das Plus für eine eigene Frage oder wähle aus den Vorschlägen.'
+                      : 'So far the form only asks for the profile data above. Click the plus for your own question or pick from the suggestions.'}
+                  </div>
+                )}
                 {customFields.map((field, idx) => {
                   const isExpanded = !!fieldExpandOverride[field.id];
                   const isPeople = field.type === 'user' || field.type === 'roommate';

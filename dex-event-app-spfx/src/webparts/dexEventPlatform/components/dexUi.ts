@@ -409,6 +409,7 @@ input.dex-ui-checkbox:not([hidden]):disabled { opacity: 0.55; cursor: not-allowe
 /* ---- Leere Zustände -------------------------------------------------- */
 .dex-ui-empty { text-align: center; padding: 28px 16px; color: ${G500}; font-size: 0.86rem; border: 1.5px dashed ${G200}; border-radius: 14px; background: ${SOFT}; }
 .dex-ui-empty-icon { display: inline-flex; width: 44px; height: 44px; border-radius: 50%; background: ${G100}; color: ${G500}; align-items: center; justify-content: center; margin-bottom: 10px; }
+button.dex-ui-empty-icon:hover { background: rgba(134,188,37,0.16); color: ${GDT}; }
 .dex-ui-empty-title { font-weight: 700; color: ${G700}; font-size: 0.92rem; margin-bottom: 4px; }
 
 /* ---- Nachzug aus der v31.2-Runde (Wünsche der Umbau-Agenten) ---------- */
