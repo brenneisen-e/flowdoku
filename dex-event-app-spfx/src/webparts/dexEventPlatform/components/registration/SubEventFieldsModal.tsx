@@ -4,6 +4,7 @@
  * Anzeige-Bedingung (`pendingSubEventModal`) ist beim Aufrufer geblieben.
  * v31.2: Optik auf dex-ui-Klassen umgestellt; Logik, Werteformat, Speichern gleich. */
 import * as React from 'react';
+import { SingleSelectDropdown } from '../SingleSelectDropdown';
 import { DeloitteEvent, EventSpecificField } from '../../types';
 import Modal from '../Modal';
 import { InfoTooltip } from '../InfoTooltip';
@@ -179,14 +180,13 @@ export const SubEventFieldsModal: React.FC<SubEventFieldsModalProps> = (p) => {
                           })}
                         </div>
                       ) : f.type === 'select' ? (
-                        <select
-                          className="dex-ui-select"
+                        // v32.34: umbrechende Anzeige statt abgeschnittener Antwort.
+                        <SingleSelectDropdown
                           value={val}
-                          onChange={e => updateFieldValue(f.id, e.target.value)}
-                        >
-                          <option value="">{isDe ? '— bitte wählen —' : '— please select —'}</option>
-                          {(f.options || []).map((opt, optIdx) => <option key={opt} value={opt}>{fOpt(f, opt, optIdx)}</option>)}
-                        </select>
+                          onChange={v => updateFieldValue(f.id, v)}
+                          placeholder={isDe ? 'Bitte wählen' : 'Please select'}
+                          options={(f.options || []).map((opt, optIdx) => ({ value: opt, label: fOpt(f, opt, optIdx) }))}
+                        />
                       ) : f.type === 'number' ? (
                         <input
                           type="number"

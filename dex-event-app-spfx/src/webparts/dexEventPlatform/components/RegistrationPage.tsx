@@ -29,6 +29,7 @@ import { ensureDexUiStyles, cx } from './dexUi';
 import { AlertCircle, Check, Search, Send } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
+import { SingleSelectDropdown } from './SingleSelectDropdown';
 import OrganizerList from './OrganizerList';
 import { UserFieldPicker } from './UserFieldPicker';
 // v29.51: nachgeladen — zieht react-datepicker + date-fns aus dem Boot-Bundle.
@@ -2539,26 +2540,35 @@ export default function RegistrationPage(): React.ReactElement {
         const opts = field.options || [];
         const distinctCats = Array.from(new Set(cats.map(c => (c || '').trim()).filter(Boolean)));
         return (
-          <select className="form-select" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} style={inputStyleGreen}>
-            <option value="" disabled hidden>{tEvent('reg.pleaseselect')}</option>
-            {distinctCats.map(cat => (
-              <optgroup key={cat} label={cat}>
-                {opts.map((opt, i) => ((cats[i] || '').trim() === cat && (opt || '').trim())
-                  ? <option key={`${cat}-${i}`} value={`${cat} ${opt}`}>{cat} {pickOptionLabel(field, i, opt)}</option>
-                  : null)}
-              </optgroup>
-            ))}
-            {opts.map((opt, i) => ((cats[i] || '').trim() === '' && (opt || '').trim())
-              ? <option key={`nocat-${i}`} value={opt}>{pickOptionLabel(field, i, opt)}</option>
-              : null)}
-          </select>
+          // v32.34: SingleSelectDropdown statt <select> — lange Antworten brechen
+          // um, statt abgeschnitten zu werden. Werte unverändert („Kategorie Option").
+          <SingleSelectDropdown
+            value={vals[field.id] || ''}
+            onChange={v => setVals({ ...vals, [field.id]: v })}
+            placeholder={tEvent('reg.pleaseselect')}
+            error={isErrEmpty}
+            options={[
+              ...distinctCats.reduce<Array<{ value: string; label: string; group: string }>>((acc, cat) => acc.concat(opts
+                .map((opt, i) => ((cats[i] || '').trim() === cat && (opt || '').trim())
+                  ? { value: `${cat} ${opt}`, label: pickOptionLabel(field, i, opt), group: cat }
+                  : null)
+                .filter((x): x is { value: string; label: string; group: string } => !!x)), []),
+              ...opts
+                .map((opt, i) => ((cats[i] || '').trim() === '' && (opt || '').trim()) ? { value: opt, label: pickOptionLabel(field, i, opt) } : null)
+                .filter((x): x is { value: string; label: string } => !!x),
+            ]}
+          />
         );
       })()
     ) : field.type === 'select' ? (
-      <select className="form-select" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} style={inputStyleGreen}>
-        <option value="" disabled hidden>{tEvent('reg.pleaseselect')}</option>
-        {field.options && field.options.map((opt, i) => <option key={opt} value={opt}>{pickOptionLabel(field, i, opt)}</option>)}
-      </select>
+      // v32.34: lange Antworten brechen um (s. SingleSelectDropdown).
+      <SingleSelectDropdown
+        value={vals[field.id] || ''}
+        onChange={v => setVals({ ...vals, [field.id]: v })}
+        placeholder={tEvent('reg.pleaseselect')}
+        error={isErrEmpty}
+        options={(field.options || []).map((opt, i) => ({ value: opt, label: pickOptionLabel(field, i, opt) }))}
+      />
     ) : field.type === 'user' || field.type === 'roommate' ? (
       // v7.17: 'roommate' nutzt denselben Picker wie 'user' — der
       // einzige Unterschied ist dass 'roommate' beim Anmelden
