@@ -537,6 +537,15 @@ v29.10 bis v29.11, korrigiert in v29.12. Die vollständige Liste steht in
 `ArchitecturePage` und ergibt sich aus den Queue-Listen im `EventService`
 (`ensure*List`-Methoden nennen den zugehörigen Flow im Description-Feld).
 
+**Der DEX-Orb ist die GRÜNE Kugel — nicht der bunte Ring (v32.41).**
+`DEX_ORB_PNG` (data/brandLogos) war bis v32.40 noch das alte Ring-Logo; überall,
+wo der SharePoint-Orb (`getCachedOrbBase64`, _Config.DefaultImageBase64) noch
+nicht geladen war, stand deshalb der Ring — zweimal gemeldet. Seit v32.41 ist
+die Konstante ein Standbild von `DexLogo` (Harness `?page=orb`, 300 px, auf 96
+Farben quantisiert). In SharePoint liegt bereits die grüne Kugel — NICHT mit
+der Konstante überschreiben, ohne sie vorher anzusehen. Wer ein Bild als „alt"
+oder „neu" einordnet: erst dekodieren und ansehen.
+
 **Es gibt ZWEI Bilder je Event, und sie haben nichts miteinander zu tun.**
 Das Event-Bild (Schritt 1 → `EventImageUrl`, Item-Attachment) trägt Kachel und
 Anmeldeseite; das Mail-Logo (Schritt Kommunikation → `EmailTemplateOverrides.
