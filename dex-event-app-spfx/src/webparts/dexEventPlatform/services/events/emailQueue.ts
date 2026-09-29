@@ -314,7 +314,16 @@ export async function queueEmail(
       `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`,
       payload
     );
-    if (!response.ok) return false;
+    if (!response.ok) {
+      // v32.19: Ein abgelehnter Queue-Eintrag war bisher unsichtbar — die
+      // Aufrufer werten das false meist nicht aus. Status und SharePoint-Text
+      // gehören in die Konsole, sonst ist "keine Zeile in DEX_Emails" nicht
+      // zuzuordnen (Befund 29.09.2026).
+      let text = '';
+      try { text = (await response.text()).slice(0, 300); } catch { /* */ }
+      console.warn(`[DEX] queueEmail abgelehnt (${response.status}) — ${emailType} · ${eventTitle}: ${text}`);
+      return false;
+    }
     if (attachment && attachment.fileName && attachment.content) {
       try {
         const data = await response.json();
