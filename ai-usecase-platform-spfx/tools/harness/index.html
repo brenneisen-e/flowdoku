@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<!-- Ohne dieses Meta legt Chromium im Handy-Modus ein 980px breites Layout an
+     und skaliert es herunter: Die Seite SIEHT dann klein aus, die
+     Media-Queries (und damit useIsMobile) greifen aber nie. -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIUC Screenshot Harness</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  /* Wie die SharePoint-Seite darum: kein Rand, heller Grund. Die Höhe der
+     App-Hülle setzt die App selbst (useShellHeight). */
+  html, body { margin: 0; background: #f5f5f5; font-family: Aptos, "Open Sans", "Segoe UI", Arial, Helvetica, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="bundle.js"></script>
+</body>
+</html>

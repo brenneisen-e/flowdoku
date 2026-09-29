@@ -1,0 +1,9 @@
+{
+  "name": "aiuc-screenshot-harness",
+  "private": true,
+  "description": "Werkzeug-Paket des Screenshot-Harness. Steht hier, damit npm esbuild und playwright NICHT in ai-usecase-platform-spfx/package.json einträgt — npm sucht sonst die nächste package.json weiter oben und landet im Produkt-Paket, aus dem SPFx das .sppkg baut.",
+  "dependencies": {
+    "esbuild": "^0.21.5",
+    "playwright": "^1.55.0"
+  }
+}

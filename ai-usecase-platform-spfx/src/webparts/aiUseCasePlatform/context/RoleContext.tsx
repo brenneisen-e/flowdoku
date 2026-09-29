@@ -192,12 +192,12 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   }, [service]);
 
   /**
-   * Rechte zur Rolle setzen. Rueckgabe: was NICHT gesetzt werden konnte.
+   * Rechte zur Rolle setzen. Rückgabe: was NICHT gesetzt werden konnte.
    *
-   * `vorher` ist die bisherige Rolle, wenn es eine Aenderung ist. Bei
+   * `vorher` ist die bisherige Rolle, wenn es eine Änderung ist. Bei
    * Admin → Organizer reicht es nicht, Read zu vergeben: `addroleassignment`
    * ist ADDITIV, das Full Control auf der Rollenliste bliebe daneben stehen,
-   * und der frühere Admin koennte die Liste weiter bearbeiten und sich selbst
+   * und der frühere Admin könnte die Liste weiter bearbeiten und sich selbst
    * wieder hochstufen (DEX v30.67). Erst entziehen, dann Read vergeben.
    */
   async function applyRights(email: string, role: UserRole, vorher?: UserRole): Promise<string[]> {

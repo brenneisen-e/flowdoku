@@ -31,7 +31,7 @@
 
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions, SPHttpClientConfiguration } from '@microsoft/sp-http';
-import { withThrottleRetry } from '../utils/spThrottle';
+import { withThrottleRetry, isThrottled } from '../utils/spThrottle';
 import { isCurrentUser } from '../utils/sessionIdentities';
 import { rolleFuerSpeicher } from '../utils/rollen';
 import { LIST } from '../constants';
@@ -202,6 +202,13 @@ export interface RechteBericht {
   geprueft: number;
   /** Davon ohne Befund. */
   ok: number;
+  /**
+   * Die Adressen (klein, getrimmt) der Zeilen ohne Befund. Die Zahl `ok` allein
+   * genügt der Oberfläche nicht: Sie will je Zeile sagen können „geprüft, in
+   * Ordnung" — und bei einer Zeile, die erst nach dem Lauf entstand, ehrlich
+   * „nicht geprüft".
+   */
+  okAdressen: string[];
   luecken: RechteLuecke[];
   ueberschuss: RechteUeberschuss[];
   /** Rechte da — aber unter einer anderen Schreibweise der Adresse als in der Rollenliste. */
@@ -858,6 +865,14 @@ export class SharePointService {
     this.lastPersonSearchStatus = 0;
     const roh = (query || '').trim();
     if (roh.length < 2) return { treffer: [], ausgeblendet: 0 };
+    // Drosselt SharePoint gerade, würden bis zu sechs Anfragen je Tastendruck an
+    // der Schranke warten und beim Öffnen GEMEINSAM losgehen — genau das Muster,
+    // das aus einer Drosselung eine Sperre macht (`utils/spThrottle`). Lieber
+    // sofort „nicht möglich" melden; die Person tippt gleich noch einmal.
+    if (isThrottled()) {
+      this.lastPersonSearchStatus = 429;
+      return null;
+    }
 
     const varianten: string[] = [];
     const merke = (v: string): void => {
@@ -1124,7 +1139,7 @@ export class SharePointService {
       return true;
     });
     const bericht: RechteBericht = {
-      geprueft: 0, ok: 0, luecken: [], ueberschuss: [], aliase: [],
+      geprueft: 0, ok: 0, okAdressen: [], luecken: [], ueberschuss: [], aliase: [],
       ohneAdresse: zeilen.filter(z => !(z.email || '').trim()).length,
     };
 
@@ -1178,7 +1193,7 @@ export class SharePointService {
           auffaellig = true;
         }
       }
-      if (!auffaellig) bericht.ok++;
+      if (!auffaellig) { bericht.ok++; bericht.okAdressen.push(em); }
       if (onProgress) onProgress(i + 1, relevant.length);
     }
     return bericht;
