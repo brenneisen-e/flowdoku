@@ -128,6 +128,7 @@ export function splitReleaseNote(text: string): ReleaseNoteParts {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '32.19.0', date: '2026-09-29', bereich: 'E-Mails', type: 'Bugfix', text: 'Wenn die Mail „Event angelegt“ nicht in die Versand-Warteschlange (DEX_Emails) geschrieben werden kann, steht der Grund jetzt in der Browser-Konsole. Bisher scheiterte das still, und es war nicht nachvollziehbar, warum keine Zeile entstand.' },
   { version: '32.18.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Feature', text: 'Die Event-Beschreibung gibt es jetzt auch auf Englisch: Im Beschreibungs-Editor wechselst du oben über die Reiter „Deutsch“ und „English“ zwischen den Sprachen. Wer die App auf Englisch nutzt, sieht auf der Anmeldeseite und unter „Meine Events“ die englische Fassung; ist sie leer, gilt die deutsche für alle.' },
   { version: '32.18.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Feature', text: 'Admins sehen in Schritt 1 neben „Demo-Vorlage“ den Haken „Einführungsevent“. Damit zeigen Anmeldeseite und „Meine Events“ das animierte DEX-Logo, und die Startseite weist auf die Einführung hin. Bisher wurde das am Titel erkannt.' },
   { version: '32.18.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Feature', text: 'Die Auswahl „Eigenes Event als Vorlage nutzen“ fasst Events mit ähnlichem Namen zusammen (z. B. mehrere Termine derselben Veranstaltung). Ein Klick auf die Gruppe klappt ihre Events auf. Events ohne Bild zeigen das DEX-Logo.' },
