@@ -75,6 +75,10 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // Öffnen schon ein Zusatz-CC, startet er offen — eine getroffene Wahl
         // darf nicht versteckt beginnen.
         const [ccOpen, setCcOpen] = React.useState(inviteCc.length > 0);
+        // v32.26: Empfänger und Kopfbild zugeklappt — wie im Massenmail-Editor
+        // (Nutzer-Ansage 29.09.2026); die Zeile nennt Ziel und Anzahl trotzdem.
+        const [aufAn, setAufAn] = React.useState(false);
+        const [aufBild, setAufBild] = React.useState(false);
         const audienceEmails = (selectedEvent.audienceFilter || [])
           .map(s => (s || '').trim())
           .filter(Boolean);
@@ -407,7 +411,14 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
           <div>
             {/* ---- 1. An wen? ------------------------------------------ */}
             <div className="dex-ui-section">
-              <div className="dex-ui-section-title">{isDe ? 'An wen geht die Mail?' : 'Who receives the email?'}</div>
+              <button type="button" className={cx('dex-ui-disclosure', aufAn && 'is-open')} onClick={() => setAufAn(o => !o)} aria-expanded={aufAn}>
+                <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                {isDe ? 'An wen geht die Mail?' : 'Who receives the email?'}
+                <span className="dex-ui-pill dex-ui-pill--green" style={{ marginLeft: 8 }}>{targetEmails.length}</span>
+                <span className="dex-ui-muted" style={{ marginLeft: 6, fontWeight: 400, fontSize: '0.8rem' }}>{recipientLabel}</span>
+              </button>
+              {aufAn && (
+              <div className="dex-ui-disclosure-body">
               <div className="dex-ui-grid-2" role="radiogroup" aria-label={isDe ? 'Empfänger' : 'Recipients'}>
                 {/* v31.2: „Nur an mich" ist die Vorgabe (inviteTarget-Default
                     'organizer') und steht deshalb oben links — die Blickführung
@@ -631,12 +642,19 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                   </div>
                 )}
               </div>
+              </div>
+              )}
             </div>
 
             {/* ---- 2. Wie sieht die Mail aus? --------------------------- */}
             {/* v30.52: dieselbe Auswahl wie in Massen- und QR-Mail. */}
             <div className="dex-ui-section">
-              <div className="dex-ui-section-title">{isDe ? 'Wie sieht die Mail aus?' : 'What does the email look like?'}</div>
+              <button type="button" className={cx('dex-ui-disclosure', aufBild && 'is-open')} onClick={() => setAufBild(o => !o)} aria-expanded={aufBild}>
+                <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                {isDe ? 'Wie sieht die Mail aus? (Kopfbild)' : 'What does the email look like? (header image)'}
+              </button>
+              {aufBild && (
+              <div className="dex-ui-disclosure-body">
               <MailHeaderImageChooser
                 value={inviteHeaderImage}
                 onChange={setInviteHeaderImage}
@@ -652,6 +670,8 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                   ? 'Die Vorschau zeigt Kopfbild, Überschrift und Text so, wie die Mail ankommt.'
                   : 'The preview shows header image, heading and text as the email will arrive.'}
               </div>
+              </div>
+              )}
             </div>
 
             {/* ---- 3. Was steht drin? — Betreff, Überschrift und Text folgen
