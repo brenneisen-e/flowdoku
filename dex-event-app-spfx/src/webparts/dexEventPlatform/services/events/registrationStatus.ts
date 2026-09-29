@@ -712,7 +712,15 @@ export async function getRegistrationByEmail(
 /**
  * Aktuelle Teilnehmeranzahl ermitteln
  */
+// v32.22: Subsites, deren Teilnehmerliste mit 404/410 antwortete (Löschkonzept
+// nach Event-Ende). Seit v32.20 alle Events gelesen werden, fragte jedes
+// Nachladen die Zähler von rund einem Dutzend gelöschter Subsites erneut an —
+// je 404 eine Konsolen-Zeile samt Stacktrace. Innerhalb der Sitzung reicht
+// eine Antwort; das Ergebnis bleibt dasselbe wie bisher (0/0).
+const geloeschteListen = new Set<string>();
+
 export async function getRegistrationCount(svc: EventService, subsiteUrl: string): Promise<{ registered: number; waitlist: number }> {
+  if (geloeschteListen.has(subsiteUrl)) return { registered: 0, waitlist: 0 };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const allItems: any[] = [];
   // $top=5000 (SP-REST-Maximum) statt 500 — sonst werden bei Events mit
@@ -724,7 +732,10 @@ export async function getRegistrationCount(svc: EventService, subsiteUrl: string
   while (url) {
     try {
       const response = await svc._sp.get(url, SPHttpClient.configurations.v1);
-      if (!response.ok) break;
+      if (!response.ok) {
+        if (response.status === 404 || response.status === 410) geloeschteListen.add(subsiteUrl);
+        break;
+      }
       const data = await response.json();
       allItems.push(...(data.value || data.d?.results || []));
       url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
