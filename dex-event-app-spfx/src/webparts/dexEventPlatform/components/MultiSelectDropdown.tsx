@@ -118,9 +118,9 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
           outline: open ? '2px solid var(--dex-green, #86bc25)' : 'none',
           outlineOffset: -1,
           position: 'relative',
-          overflow: 'hidden',
-          whiteSpace: 'nowrap',
-          textOverflow: 'ellipsis',
+          // v32.34: umbrechen statt abschneiden — wie SingleSelectDropdown.
+          whiteSpace: 'normal',
+          overflowWrap: 'anywhere',
           fontFamily: 'inherit',
           // v11.98: gleicher Chevron-Look wie .form-select (inline SVG
           // als background-image rechts mittig). Vorher Unicode-▾ —

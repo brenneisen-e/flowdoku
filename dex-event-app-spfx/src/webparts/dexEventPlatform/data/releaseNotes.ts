@@ -128,6 +128,7 @@ export function splitReleaseNote(text: string): ReleaseNoteParts {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '32.34.0', date: '2026-09-29', bereich: 'Anmeldung', type: 'Bugfix', text: 'Lange Antworten in Auswahlfeldern werden auf der Anmeldeseite nicht mehr abgeschnitten – das Feld zeigt die ganze Antwort und wird bei Bedarf zweizeilig. Gilt für Einzel- und Mehrfachauswahl und für die Fragen zu einzelnen Terminen.' },
   { version: '32.33.0', date: '2026-09-29', bereich: 'E-Mails', type: 'Bugfix', text: 'Breite Bilder stehen im Mail-Kopf jetzt wieder in voller Breite. Nur runde oder fast runde Bilder bekommen 300 px. Bisher blieb ein Querformat-Bild bei 300 px hängen, sobald diese Größe einmal als Voreinstellung gespeichert war – das gilt jetzt für alle Mails.' },
   { version: '32.33.0', date: '2026-09-29', bereich: 'E-Mails', type: 'Feature', text: 'Die Bildwahl im Mail-Kopf ist klarer: „Event-Bild“ (Standard, sobald das Event ein Bild hat), „DEX-Logo“ oder „Eigenes Bild“ hochladen – jetzt auch in der Einladungsmail. Bisher hieß die erste Kachel „Standard-Logo“ und war je nach Event mal das DEX-Logo, mal das Event-Bild.' },
   { version: '32.33.0', date: '2026-09-29', bereich: 'E-Mails', type: 'Feature', text: 'Der Reminder schlägt jetzt einen freundlichen Standardtext vor: Es gibt das Event, bisher kam keine Rückmeldung, bitte kurz an- oder absagen – mit Link und Anmeldefrist. Er hat einen eigenen Entwurf und überschreibt keine angefangene Info-Mail.' },
