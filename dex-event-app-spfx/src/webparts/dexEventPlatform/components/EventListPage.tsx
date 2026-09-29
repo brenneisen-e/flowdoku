@@ -17,7 +17,7 @@ import { monatKurz } from '../utils/monatKurz';
 import { useLanguage } from '../context/LanguageContext';
 // v11.99: RefreshCw nicht mehr benötigt (Page-Level-Refresh-Button entfernt).
 import { Icon } from '@fluentui/react/lib/Icon';
-import { AlertCircle, Calendar, Pin } from './Icons';
+import { AlertCircle, Calendar, Pin, Search, X } from './Icons';
 import { cx, ensureDexUiStyles } from './dexUi';
 import EventCard from './EventCard';
 import { CachedBg } from './CachedImage';
@@ -211,6 +211,9 @@ export default function EventListPage(): React.ReactElement {
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
   const [onlyActive, setOnlyActive] = React.useState(true);
+  // v32.32: Suche über die Event-Liste (Nutzer-Ansage 29.09.2026), neben dem
+  // Ansichts-Umschalter und mit ihm sticky.
+  const [suche, setSuche] = React.useState('');
   // v31.6: Der Kasten „Event-Liste nicht lesbar" bietet einen zweiten Versuch
   // an — bei Drosselung/Netz ist das die ganze Lösung.
   const [retrying, setRetrying] = React.useState(false);
@@ -361,6 +364,10 @@ export default function EventListPage(): React.ReactElement {
   // Karten überblickt man, ab sechs scrollt man — und in der Liste steht das
   // Datum in einer Spalte untereinander.
   const LISTEN_AB = 6;
+  const sucheLc = suche.trim().toLowerCase();
+  const sichtbareEvents = !sucheLc ? filteredEvents : filteredEvents.filter(e =>
+    [e.title, e.location, String(e.eventNumber || ''), ...(e.organizers || [])]
+      .some(x => (x || '').toLowerCase().indexOf(sucheLc) >= 0));
   const viewMode: 'cards' | 'list' = viewPref || (filteredEvents.length >= LISTEN_AB ? 'list' : 'cards');
 
   if (isEventsLoading) {
@@ -461,7 +468,7 @@ export default function EventListPage(): React.ReactElement {
           Liste darunter zeigt. Der Umschalter ist ein Segment-Reiter
           (Leitfaden 2b: eine von wenigen kurzen Alternativen), kein Paar
           vollflächig grüner Knöpfe — Grün bedeutet hier Auswahl, nicht Fläche. */}
-      <div className="dex-ui-toolbar">
+      <div className="dex-ui-toolbar dex-ui-sticky-bar">
         {/* v15.19: „Nur aktive Events"-Toggle nur für Admin/Organizer.
             Reine User sehen ohnehin nur Events ihres Standorts und brauchen
             den Switch nicht — sie sollen vergangene Events nicht
@@ -503,12 +510,28 @@ export default function EventListPage(): React.ReactElement {
             {isDe ? 'Liste' : 'List'}
           </button>
         </div>
+        <div className="dex-ui-searchbar" style={{ marginLeft: 8 }}>
+          <span className="dex-ui-searchbar-icon" aria-hidden="true"><Search size={15} /></span>
+          <input
+            type="text"
+            className="dex-ui-input"
+            value={suche}
+            onChange={e => setSuche(e.target.value)}
+            placeholder={isDe ? 'Event, Ort, Nummer oder Organizer suchen' : 'Search event, location, number or organizer'}
+            aria-label={isDe ? 'Events durchsuchen' : 'Search events'}
+            style={{ paddingRight: 34 }}
+          />
+          {suche && (
+            <button type="button" className="dex-ui-iconbtn" onClick={() => setSuche('')} aria-label={isDe ? 'Suche leeren' : 'Clear search'}
+              style={{ position: 'absolute', right: 3, top: '50%', transform: 'translateY(-50%)', width: 32, height: 32 }}><X size={14} /></button>
+          )}
+        </div>
       </div>
       {/* v15.21: Zwei klar getrennte Sektionen — eigene Events (Organizer)
           zuerst, danach alle weiteren Events sortiert nach Datum. */}
       {(() => {
-        const ownEvents = filteredEvents.filter(e => isOwnOrganizer(e));
-        const otherEvents = filteredEvents.filter(e => !isOwnOrganizer(e));
+        const ownEvents = sichtbareEvents.filter(e => isOwnOrganizer(e));
+        const otherEvents = sichtbareEvents.filter(e => !isOwnOrganizer(e));
         // v31.9: dieselbe Abschnitts-Überschrift wie überall sonst in der App
         // (`dex-ui-section-title`, mit der Linie nach rechts) statt einer
         // eigenen Schriftgröße nur auf dieser Seite.
@@ -616,6 +639,13 @@ export default function EventListPage(): React.ReactElement {
                 passiert („sobald du eingeladen bist, steht es hier"). Ein
                 leerer Bildschirm ohne Erklärung liest sich sonst wie ein
                 Fehler. */}
+            {filteredEvents.length > 0 && sichtbareEvents.length === 0 && (
+              <div className="dex-ui-empty" style={{ marginTop: 24 }}>
+                <div className="dex-ui-empty-icon"><Search size={20} /></div>
+                <div className="dex-ui-empty-title">{isDe ? `Kein Event zu „${suche.trim()}“` : `No event matching “${suche.trim()}”`}</div>
+                <div className="dex-ui-empty-desc">{isDe ? 'Gesucht wird in Titel, Ort, Event-Nummer und Organizer.' : 'Searches title, location, event number and organizer.'}</div>
+              </div>
+            )}
             {filteredEvents.length === 0 && eventsReadStatus !== 'forbidden' && eventsReadStatus !== 'error' && (
               <div className="dex-ui-empty" style={{ marginTop: 24 }}>
                 <div className="dex-ui-empty-icon"><Calendar size={22} strokeWidth={1.6} /></div>

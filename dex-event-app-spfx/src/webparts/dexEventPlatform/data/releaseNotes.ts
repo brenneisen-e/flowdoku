@@ -128,6 +128,8 @@ export function splitReleaseNote(text: string): ReleaseNoteParts {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '32.32.0', date: '2026-09-29', bereich: 'Organizer Center', type: 'Feature', text: 'Die Suchzeile mit Sortierung und Filtern in der Event-Übersicht des Organizer Centers bleibt beim Scrollen oben stehen.' },
+  { version: '32.32.0', date: '2026-09-29', bereich: 'Anmeldung', type: 'Feature', text: '„Aktuelle Events“ hat jetzt eine Suche rechts neben dem Umschalter Karten/Liste – nach Titel, Ort, Event-Nummer oder Organizer. Die Leiste bleibt beim Scrollen oben stehen.' },
   { version: '32.31.0', date: '2026-09-29', bereich: 'E-Mails', type: 'Feature', text: 'Einladung: Neu ist „Eigene Liste“ – eine Adressliste aus Outlook einfügen, DEX erkennt die Adressen und gleicht sie mit der Sichtbarkeit ab. Wer dort noch fehlt, kannst du mit einem Klick in die Sichtbarkeit aufnehmen – sonst bekäme die Person eine Einladung zu einem Event, das sie nicht sieht.' },
   { version: '32.31.0', date: '2026-09-29', bereich: 'Sichtbarkeit', type: 'Feature', text: '„Sichtbarkeit prüfen“ direkt in der Einladung: alle Personen mit Namen und Standort, nach Nachname sortiert, und ein Suchfeld, das sofort sagt, ob eine Person das Event sieht.' },
   { version: '32.31.0', date: '2026-09-29', bereich: 'E-Mails', type: 'Bugfix', text: 'Eine einzeln ergänzte Adresse in der Einladung schrieb den Verteiler bisher mit seinen aufgelösten Einzeladressen zurück. Jetzt bleiben die eingetragenen Verteiler erhalten. Die beiden Sonderfall-Kacheln in der Empfängerwahl für Info-Mail und Reminder sind entfallen.' },

@@ -438,6 +438,10 @@ input.dex-ui-checkbox:not([hidden]):disabled { opacity: 0.55; cursor: not-allowe
 .dex-ui-kpi.is-active { border-color: ${G}; background: rgba(134,188,37,0.08); }
 .dex-ui-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 12px; }
 .dex-ui-toolbar-spacer { flex: 1 1 auto; }
+/* v32.32: Werkzeugleiste über einer langen Liste, die beim Scrollen oben
+   stehen bleibt (Suche, Sortierung, Filter). Der Scroll-Container ist
+   main-content, darum top 0; der Hintergrund deckt die Karten darunter. */
+.dex-ui-sticky-bar { position: sticky; top: 0; z-index: 20; background: var(--dex-gray-100, #f5f5f5); padding: 10px 0 8px; margin-bottom: 4px; }
 .dex-ui-searchbar { position: relative; flex: 1 1 220px; min-width: 180px; max-width: 420px; }
 .dex-ui-searchbar .dex-ui-input { padding-left: 34px; width: 100%; box-sizing: border-box; }
 .dex-ui-searchbar-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: ${G400}; pointer-events: none; display: inline-flex; }

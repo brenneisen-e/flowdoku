@@ -423,6 +423,10 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
                     ein Event springt. Zwei verschiedene Fragen, deshalb zwei
                     Felder (Leitfaden 2b: Filter vor der Liste, nicht dahinter,
                     wo er unauffindbar waere). */}
+                {/* v32.32: Suche, Sortierung und Filter bleiben beim Scrollen oben
+                    (Nutzer-Ansage 29.09.2026) — bei 30 Events war die Suche nach
+                    dem ersten Wischen weg. */}
+                <div className="dex-ui-sticky-bar">
                 <div className="dex-ui-searchbar" style={{ marginBottom: 10, maxWidth: 420 }}>
                   <span className="dex-ui-searchbar-icon" aria-hidden="true"><Search size={15} /></span>
                   <input
@@ -482,6 +486,7 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
                   )}
                   <span className="dex-ui-toolbar-spacer" />
                   <span className="dex-ui-muted">{isDe ? `${currentEvents.length} angezeigt` : `${currentEvents.length} shown`}</span>
+                </div>
                 </div>
                 {/* v31.3: Farb-Legende entfallen — die Pille je Karte sagt es selbst. */}
                 {currentEvents.length === 0 ? (
