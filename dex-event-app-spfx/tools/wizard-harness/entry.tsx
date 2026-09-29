@@ -29,6 +29,9 @@ import MyEventsPage from '../../src/webparts/dexEventPlatform/components/MyEvent
 // für den Knopf „Entwurf weiter bearbeiten" und seinen Dialog.
 import { EventOverviewScreen } from '../../src/webparts/dexEventPlatform/components/admin/sections/EventOverviewScreen';
 import * as sample from './sampleData';
+// v32.30: Empfängerwahl der Mails (?page=mailpick | invitepick).
+import { MassmailPickModal } from '../../src/webparts/dexEventPlatform/components/admin/modals/MassmailPickModal';
+import { InviteComposerModal } from '../../src/webparts/dexEventPlatform/components/admin/modals/InviteComposerModal';
 // v32.1.0: Mitmach-Tutorial im Harness (?mode=create&coach=1).
 import { TutorialProvider, useTutorial } from '../../src/webparts/dexEventPlatform/components/tutorial/TutorialGuide';
 
@@ -273,8 +276,47 @@ const PageComponent: React.FC = () => {
         />
       );
     }
+    case 'mailpick': return <MailPickDemo />;
+    case 'invitepick': return <InvitePickDemo />;
     default: return coach ? <CoachWizard /> : <EventCreationPage />;
   }
+};
+
+const mailEv: any = {
+  ...sample.topLevelEvents[0],
+  organizerEmails: [me.email, 'anna.schmidt@example.com'], coOrganizerEmails: ['carolin.rettinger@example.com'],
+  testTeamEmails: ['tim.test@example.com', 'tina.test@example.com'],
+  audienceFilter: ['team.koeln@example.com'], audienceResolvedEmails: Array.from({ length: 48 }, (_, i) => `person${i}@example.com`),
+  excludedUsers: [], emailTemplateOverrides: '{}',
+};
+const mailRegs: any[] = [
+  ...Array.from({ length: 23 }, (_, i) => ({ ParticipantEmail: `person${i}@example.com`, Status: i < 15 ? 'Angemeldet' : 'QR versendet' })),
+  ...Array.from({ length: 4 }, (_, i) => ({ ParticipantEmail: `wait${i}@example.com`, Status: 'Warteliste' })),
+  ...Array.from({ length: 3 }, (_, i) => ({ ParticipantEmail: `ab${i}@example.com`, Status: 'Abgemeldet' })),
+];
+const MailPickDemo: React.FC = () => {
+  const [aud, setAud] = React.useState<any>('custom');
+  const [st, setSt] = React.useState<Set<string>>(new Set(['Angemeldet', 'QR versendet', 'Eingecheckt']));
+  const [ex, setEx] = React.useState<Set<any>>(new Set());
+  return (
+    <MassmailPickModal massmailAudience={aud} setMassmailAudience={setAud} massmailStatuses={st} setMassmailStatuses={setSt}
+      registrations={mailRegs} setMassmailMode={() => undefined} setMassmailPasteRaw={() => undefined} setShowEmailModal={() => undefined}
+      massmailOffene={Array.from({ length: 18 }, (_, i) => ({ email: `offen${i}@example.com`, displayName: `Offen ${i}` })) as any}
+      massmailExtras={ex} setMassmailExtras={setEx} selectedEvent={mailEv} myEmail={me.email} />
+  );
+};
+const InvitePickDemo: React.FC = () => {
+  const [target, setTarget] = React.useState<any>('organizer');
+  const [custom, setCustom] = React.useState<any>(null);
+  const props: any = new Proxy({
+    selectedEvent: mailEv, currentUser: me, isDe: true, registrations: mailRegs,
+    invitedLc: new Set(Array.from({ length: 20 }, (_, i) => `person${i}@example.com`)),
+    inviteTarget: target, setInviteTarget: setTarget, inviteCustomEmails: custom, setInviteCustomEmails: setCustom,
+    inviteCc: [], inviteBody: '', inviteSubject: 'Einladung', inviteHeading: '', inviteSubheading: '', inviteAddInput: '',
+    showInviteModal: true, inviteSending: false, inviteAudienceOpen: false, inviteHeaderImage: { hero: 'orb' }, inviteHeaderOpts: {},
+    siteUrl: 'https://x', applyInviteHero: (h: string) => h,
+  }, { get: (t: any, k: string) => (k in t ? t[k] : () => undefined) });
+  return <InviteComposerModal {...props} />;
 };
 
 /* v32.1.0: Coach-Modus — startet das Mitmach-Tutorial einmal beim Laden und

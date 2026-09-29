@@ -4,7 +4,8 @@
  *
  * v31.70: Derselbe Dialog für ZWEI Abgleiche (Nutzer-Ansage 17.09.2026):
  *  - nachruecker: aktive Teilnehmer, die NICHT im Verteiler stehen (bisher)
- *  - reminder:    Personen aus dem Verteiler, die NICHT aktiv angemeldet sind
+ *  - reminder:    Personen aus dem Verteiler, die noch GAR NICHT reagiert haben
+ *                 (keine Zeile in der Liste — weder angemeldet, wartend noch abgemeldet)
  *    — die Erinnerung an alle, die noch nicht reagiert haben. Ihre Namen
  *    kommen aus dem Verteiler (utils/pastedRecipients), nicht aus der Liste.
  */
@@ -61,9 +62,15 @@ const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
  * steht, abgesagt hat oder gar nicht in der Liste ist, bleibt drin.
  */
 export function reminderRecipientsAus(raw: string, registrations: SPRegistration[]): Array<{ ParticipantEmail: string; Vorname: string; Nachname: string; name: string }> {
-  const aktiv = new Set(registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0).map(r => (r.ParticipantEmail || '').toLowerCase()));
+  // v32.30: Jede Zeile zählt als Antwort — auch Abgemeldet, Warteliste,
+  // No-Show (Nutzer-Befund 29.09.2026: „Erinnerung nur an die, die weder
+  // angemeldet noch abgemeldet sind“). Bis v32.29 zählten nur die aktiven
+  // Status, und wer abgesagt hatte, bekam die Erinnerung trotzdem — anders
+  // als der Weg über die bekannten Offenen (berechneOffene), der alle
+  // Antwortenden ausnimmt.
+  const geantwortet = new Set(registrations.map(r => (r.ParticipantEmail || '').trim().toLowerCase()).filter(Boolean));
   return parsePastedRecipients(raw)
-    .filter(p => !aktiv.has(p.email))
+    .filter(p => !geantwortet.has(p.email))
     .map(p => { const n = splitName(p.name); return { ParticipantEmail: p.email, Vorname: n.vorname, Nachname: n.nachname, name: p.name }; });
 }
 
@@ -95,14 +102,14 @@ export const MassmailPasteModal: React.FC<MassmailPasteModalProps> = (p) => {
         const pastedSet = new Set(pasted);
         // Nachrücker: aktive Teilnehmer, die NICHT im Verteiler stehen.
         const missing = active.filter(r => !pastedSet.has((r.ParticipantEmail || '').toLowerCase()));
-        // Erinnerung: Verteiler-Personen, die NICHT aktiv angemeldet sind.
+        // Erinnerung: Verteiler-Personen ohne jede Antwort (v32.30).
         const reminderList = reminder ? reminderRecipientsAus(massmailPasteRaw, registrations) : [];
         const nAlreadyActive = reminder ? pastedAll.length - reminderList.length : 0;
         const count = reminder ? reminderList.length : missing.length;
         const continueAction = (): void => {
           if (count === 0) {
             showAlert(reminder
-              ? (isDe ? 'Alle Personen aus deinem Verteiler sind schon aktiv angemeldet — niemand zu erinnern.' : 'Everyone on your list is already actively registered — nobody to remind.')
+              ? (isDe ? 'Alle Personen aus deinem Verteiler haben schon reagiert (angemeldet, Warteliste oder abgemeldet) — niemand zu erinnern.' : 'Everyone on your list has already responded (registered, waitlisted or cancelled) — nobody to remind.')
               : (isDe ? 'Alle aktiven Teilnehmer stehen bereits in deiner Liste — niemand zum Anschreiben übrig.' : 'All active participants are already on your list — nobody left to write to.'));
             return;
           }
@@ -116,8 +123,8 @@ export const MassmailPasteModal: React.FC<MassmailPasteModalProps> = (p) => {
         const kpis: [number, string, string][] = reminder
           ? [
             [pastedAll.length, isDe ? 'Adressen im Verteiler' : 'addresses on your list', ''],
-            [nAlreadyActive, isDe ? 'davon schon aktiv angemeldet' : 'of them already registered', ''],
-            [reminderList.length, isDe ? 'noch nicht angemeldet — werden erinnert' : 'not registered yet — will be reminded', 'dex-ui-kpi--orange'],
+            [nAlreadyActive, isDe ? 'haben schon reagiert (an- oder abgemeldet)' : 'already responded (registered or cancelled)', ''],
+            [reminderList.length, isDe ? 'ohne Reaktion — werden erinnert' : 'no response yet — will be reminded', 'dex-ui-kpi--orange'],
           ]
           : [
             [pasted.length, isDe ? 'Adressen erkannt' : 'addresses found', ''],
@@ -129,7 +136,7 @@ export const MassmailPasteModal: React.FC<MassmailPasteModalProps> = (p) => {
             ariaLabel={reminder ? (isDe ? 'Erinnerung — Verteiler einfügen' : 'Reminder — paste list') : (isDe ? 'Nachrücker — Liste einfügen' : 'Late joiners — paste list')}
             title={reminder ? (isDe ? 'Wen hast du eingeladen?' : 'Who did you invite?') : (isDe ? 'Wer hat die Mail schon bekommen?' : 'Who already received the mail?')}
             subtitle={reminder
-              ? (isDe ? 'Schritt 2 von 2 — füge deinen Einladungs-Verteiler ein. Erinnert wird, wer dort steht, aber im Event nicht aktiv angemeldet ist.' : 'Step 2 of 2 — paste your invitation list. The reminder goes to everyone on it who is not actively registered.')
+              ? (isDe ? 'Schritt 2 von 2 — füge deinen Einladungs-Verteiler ein. Erinnert wird, wer dort steht und noch gar nicht reagiert hat — weder angemeldet noch abgemeldet.' : 'Step 2 of 2 — paste your invitation list. The reminder goes to everyone on it who has not responded at all — neither registered nor cancelled.')
               : (isDe ? 'Schritt 2 von 2 — füge deine bisherige Empfänger-Liste ein. Angeschrieben wird, wer im Event aktiv ist, aber dort nicht steht.' : 'Step 2 of 2 — paste your existing recipient list. The mail goes to everyone active in the event who is not on it.')}
             icon={<Mail size={20} />}
             footer={<>
@@ -229,7 +236,7 @@ export const MassmailPasteModal: React.FC<MassmailPasteModalProps> = (p) => {
                 <span>{reminder
                   ? (pastedAll.length === 0
                     ? (isDe ? 'Noch keine Adresse erkannt — füge oben deinen Verteiler ein.' : 'No address recognised yet — paste your list above.')
-                    : (isDe ? 'Alle Personen aus deinem Verteiler sind schon aktiv angemeldet — niemand zu erinnern.' : 'Everyone on your list is already actively registered — nobody to remind.'))
+                    : (isDe ? 'Alle Personen aus deinem Verteiler haben schon reagiert (angemeldet, Warteliste oder abgemeldet) — niemand zu erinnern.' : 'Everyone on your list has already responded (registered, waitlisted or cancelled) — nobody to remind.'))
                   : (isDe ? 'Alle aktiven Teilnehmer stehen schon in deiner Liste — es bleibt niemand zum Anschreiben.' : 'All active participants are already on your list — nobody left to write to.')}</span></div>
             )}
           </Modal>
