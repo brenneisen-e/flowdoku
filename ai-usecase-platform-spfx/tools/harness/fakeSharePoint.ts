@@ -20,7 +20,7 @@ import { START_USE_CASES } from '../../src/webparts/aiUseCasePlatform/data/start
 import { LIST } from '../../src/webparts/aiUseCasePlatform/constants';
 
 export type Rolle = 'admin' | 'organizer' | 'user' | 'first';
-export type Zustand = 'ok' | 'forbidden' | 'error' | 'empty' | 'leer' | 'roles403' | 'logerror' | 'fresh';
+export type Zustand = 'ok' | 'forbidden' | 'error' | 'empty' | 'leer' | 'nolog' | 'roles403' | 'logerror' | 'fresh';
 
 export interface Params {
   role: Rolle;
@@ -43,7 +43,7 @@ export function parseParams(search: string): Params {
     role: pick<Rolle>('role', ['admin', 'organizer', 'user', 'first'], 'admin'),
     lang: pick<'de' | 'en'>('lang', ['de', 'en'], 'de'),
     mobile: q.get('mobile') === '1',
-    state: pick<Zustand>('state', ['ok', 'forbidden', 'error', 'empty', 'leer', 'roles403', 'logerror', 'fresh'], 'ok'),
+    state: pick<Zustand>('state', ['ok', 'forbidden', 'error', 'empty', 'leer', 'nolog', 'roles403', 'logerror', 'fresh'], 'ok'),
     delay: Math.max(0, Math.min(20000, parseInt(q.get('delay') || '25', 10) || 0)),
     data: pick<'variety' | 'start'>('data', ['variety', 'start'], 'variety'),
   };
@@ -221,7 +221,7 @@ export function baueListen(p: Params): { lists: Record<string, Liste>; prinzipal
     }
     const merker = (): void => { add(log, { Title: 'erstbefuellung', UseCaseId: 0, Aktion: 'erstbefuellung', Detail: `${START_USE_CASES.length} Start-Use-Cases angelegt`, Wer: 'max.beispiel@deloitte.de', Created: iso(40 * TAG) }); };
     if (p.state === 'leer') merker();
-    if (p.state !== 'empty' && p.state !== 'leer') {
+    if (p.state !== 'empty' && p.state !== 'leer' && p.state !== 'nolog') {
       merker();
       const e = (tage: number, id: number, aktion: string, detail: string, wer: string): void => {
         add(log, { Title: aktion, UseCaseId: id, Aktion: aktion, Detail: detail, Wer: wer, Created: iso(tage * TAG) });

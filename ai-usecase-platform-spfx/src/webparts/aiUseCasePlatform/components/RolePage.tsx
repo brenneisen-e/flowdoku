@@ -124,6 +124,20 @@ function listenName(key: RechteListe, isDe: boolean): string {
   return isDe ? 'Protokoll' : 'Log';
 }
 
+/**
+ * Steht dieselbe Person schon unter einer ANDEREN Adresse in der Liste? Die
+ * Adresse ist der Schlüssel, aber sie ist nicht eindeutig (SMTP gegen
+ * UPN/Alias) — die Suche liefert `julia.klein@…`, die Liste führt vielleicht
+ * `j.klein@…`. Der Name ist kein Schlüssel, aber ein guter Hinweis: gleiche
+ * Wörter in beliebiger Reihenfolge („Klein, Julia" = „Julia Klein").
+ */
+function gleicherName(roles: RoleAssignment[], name: string, email: string): RoleAssignment | undefined {
+  const norm = (s: string): string => (s || '').toLowerCase().replace(/,/g, ' ').split(/\s+/).filter(Boolean).sort().join(' ');
+  const n = norm(name);
+  if (!n) return undefined;
+  return roles.filter(r => !gleich(r.userEmail, email) && norm(r.userName) === n)[0];
+}
+
 function rollePille(rolle: UserRole): string {
   return cx('dex-ui-pill', 'dex-ui-pill--sm', rolle === 'Admin' ? 'dex-ui-pill--orange' : rolle === 'Organizer' ? 'dex-ui-pill--green' : 'dex-ui-pill--gray');
 }
@@ -375,10 +389,21 @@ function RolleVergeben(props: AktionsProps): React.ReactElement {
 
   const bestehende = (mail: string): RoleAssignment | undefined => roles.filter(r => gleich(r.userEmail, mail))[0];
   const bestehend = gewaehlt ? bestehende(gewaehlt.email) : undefined;
+  const anderSchreibweise = gewaehlt && !bestehend ? gleicherName(roles, gewaehlt.displayName, gewaehlt.email) : undefined;
 
   async function vergeben(): Promise<void> {
     if (!gewaehlt || laeuft || bestehend) return;
     const name = gewaehlt.displayName || gewaehlt.email;
+    if (anderSchreibweise) {
+      // Kein Verbot — zwei Personen können gleich heißen —, aber eine Nachfrage:
+      // Ist es dieselbe Person, entsteht eine zweite Zeile, und die erste gilt.
+      const ja = await confirmDialog(
+        t(`Unter dem Namen „${anderSchreibweise.userName}“ ist schon ${anderSchreibweise.userEmail} eingetragen (${rolleLabel(anderSchreibweise.role)}). Ist das dieselbe Person, entsteht ein zweiter Eintrag — und es gilt der erste. Ändere dann lieber die Rolle in der Liste. Trotzdem als neue Person eintragen?`,
+          `Under the name “${anderSchreibweise.userName}” ${anderSchreibweise.userEmail} is already listed (${rolleLabel(anderSchreibweise.role)}). If that is the same person, a second entry is created — and the first one applies. Better change the role in the list then. Add as a new person anyway?`),
+        { confirmLabel: t('Trotzdem eintragen', 'Add anyway'), danger: true },
+      );
+      if (!ja) return;
+    }
     if (rolle === 'Admin') {
       // Admin ist die einzige Rolle, die andere Rollen vergibt — und die auf
       // der Rollenliste Vollzugriff bekommt. Das ist keine Kleinigkeit.
@@ -447,6 +472,15 @@ function RolleVergeben(props: AktionsProps): React.ReactElement {
             </div>
           ) : (
             <>
+              {anderSchreibweise && (
+                <div className="dex-ui-callout dex-ui-callout--warn" role="status">
+                  <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+                  <span className="dex-ui-callout-body">
+                    {t(`Ein Eintrag mit diesem Namen gibt es schon: ${anderSchreibweise.userEmail} (${rolleLabel(anderSchreibweise.role)}). Wenn das dieselbe Person unter einer anderen Schreibweise der Adresse ist, änderst du ihre Rolle besser in der Liste unten, statt sie ein zweites Mal einzutragen.`,
+                      `An entry with this name already exists: ${anderSchreibweise.userEmail} (${rolleLabel(anderSchreibweise.role)}). If that is the same person under a different spelling of the address, better change their role in the list below instead of adding them a second time.`)}
+                  </span>
+                </div>
+              )}
               <div>
                 <div className="dex-ui-label">{t('Welche Rolle bekommt die Person?', 'Which role does the person get?')}</div>
                 <div style={{ display: 'grid', gap: 8 }}>
@@ -525,6 +559,7 @@ function RolleVergeben(props: AktionsProps): React.ReactElement {
               <div className="dex-ui-stack" style={{ gap: 6, opacity: suche.status === 'sucht' ? 0.6 : 1 }}>
                 {suche.treffer.map(h => {
                   const schon = bestehende(h.email);
+                  const gleichnamig = schon ? undefined : gleicherName(roles, h.displayName, h.email);
                   return (
                     <button key={h.email} type="button" className="dex-ui-row dex-ui-row--framed dex-ui-rowbtn" onClick={() => { setGewaehlt(h); setText(''); }}>
                       <Avatar name={h.displayName || h.email} />
@@ -533,6 +568,7 @@ function RolleVergeben(props: AktionsProps): React.ReactElement {
                         <span className="dex-ui-row-sub" style={{ display: 'block' }}>{h.email}{h.jobTitle ? ` · ${h.jobTitle}` : ''}</span>
                       </span>
                       {schon && <span className={rollePille(schon.role)}>{t('hat schon', 'already has')}: {rolleLabel(schon.role, true)}</span>}
+                      {gleichnamig && <span className="dex-ui-pill dex-ui-pill--sm dex-ui-pill--orange" title={gleichnamig.userEmail}>{t('Name schon eingetragen', 'Name already listed')}</span>}
                     </button>
                   );
                 })}
@@ -699,8 +735,11 @@ function RollenListe(props: ListeProps): React.ReactElement {
     <button
       key={wert || 'alle'}
       type="button"
-      className={cx('dex-ui-kpi', 'is-clickable', 'dex-ui-btn-reset', filter === wert && 'is-active')}
-      style={{ textAlign: 'left' }}
+      className={cx('dex-ui-kpi', 'is-clickable', filter === wert && 'is-active')}
+      // Kein `dex-ui-btn-reset`: Er steht im Stylesheet NACH `.dex-ui-kpi` und
+      // nimmt der Kachel Fläche, Rand und Innenabstand. Ein Knopf braucht nur
+      // die Schrift zurück und linksbündigen Text.
+      style={{ textAlign: 'left', font: 'inherit', color: 'inherit', width: '100%' }}
       aria-pressed={filter === wert}
       onClick={() => setFilter(filter === wert ? '' : wert)}
     >
