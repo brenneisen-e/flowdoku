@@ -176,6 +176,23 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
       {isDe ? 'Als Kalender' : 'As calendar'}
     </label>
   );
+  // v32.13: Beispiel-Frage passend zur Feldart — vorher stand bei jeder Art
+  // „Welche T-Shirt-Größe?", auch bei Freitext und Datum (Screenshot 29.09.2026).
+  const fragePlatzhalter = (typ: CustomFieldInput['type']): string => {
+    const bsp: Record<string, [string, string]> = {
+      text: ['Gibt es Allergien, die wir kennen sollten?', 'Any allergies we should know about?'],
+      select: ['Welche T-Shirt-Größe brauchst du?', 'Which T-shirt size do you need?'],
+      number: ['Wie viele Personen bringst du mit?', 'How many people are you bringing?'],
+      checkbox: ['Bringst du eine Begleitung mit?', 'Are you bringing a guest?'],
+      date: ['Wann reist du an?', 'When do you arrive?'],
+      daterange: ['Von wann bis wann brauchst du ein Hotel?', 'From when to when do you need a hotel?'],
+      user: ['Wer soll über deine Anmeldung informiert werden?', 'Who should be notified about your registration?'],
+      roommate: ['Mit wem möchtest du dir ein Zimmer teilen?', 'Who would you like to share a room with?'],
+      document: ['Lade bitte deine Bahnbuchung hoch.', 'Please upload your train booking.'],
+    };
+    const e = bsp[typ] || bsp.text;
+    return isDe ? `Frage eingeben – z. B. „${e[0]}"` : `Enter the question – e.g. “${e[1]}”`;
+  };
   const ROW_GRID: React.CSSProperties = {
     display: 'grid', gridTemplateColumns: '24px 26px 200px minmax(160px, 1fr) 244px 90px 32px',
     columnGap: 10, alignItems: 'center',
@@ -868,13 +885,27 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                 {/* v32.3: Die Profil-Daten als EIN grauer Block mit schmalen
                     Zeilen statt fünf einzelner Karten — sie sind eine Sache
                     (kommt aus dem Profil), keine fünf Fragen. */}
-                <div className="dex-ui-card" style={{ padding: '4px 16px', marginBottom: 12, background: 'var(--dex-gray-50, #fafafa)' }}
+                <div className="dex-ui-card" style={{ padding: '4px 16px', marginBottom: 12, background: 'var(--dex-gray-50, #fafafa)', position: 'relative' }}
                   title={isDe ? 'Wird automatisch aus dem Microsoft-Profil übernommen — nicht änderbar, verschiebbar oder löschbar.' : 'Taken automatically from the Microsoft profile — cannot be changed, moved or deleted.'}>
+                  {/* v32.13: EIN Kasten „Aus dem Profil" über alle Profil-Zeilen in
+                      der Feldart-Spalte (Nutzer-Ansage 29.09.2026) — statt des
+                      Hinweises nur in Zeile 1. Lage aus ROW_GRID: Kartenrand
+                      16 + Griff 24 + Abstand 10 + Nummer 26 + Abstand 10. */}
+                  <div aria-hidden="true" style={{
+                    position: 'absolute', left: 86, width: 200, top: 8, bottom: 8,
+                    background: 'var(--dex-gray-100, #f0f0f0)', border: '2px solid #fff', borderRadius: 10,
+                    boxShadow: '0 0 0 1px var(--dex-gray-200, #e5e5e5)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+                    color: 'var(--dex-gray-600)', textAlign: 'center', pointerEvents: 'none',
+                  }}>
+                    <span style={{ fontSize: '0.84rem', fontWeight: 600 }}>{isDe ? 'Aus dem Profil' : 'From profile'}</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'nicht änderbar' : 'not editable'}</span>
+                  </div>
                   {AUTO_ROWS.map((r, i) => (
                     <div key={r.key} style={{ ...ROW_GRID, padding: '7px 0', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-200, #e5e5e5)' }}>
                       <span />
                       <span style={autoBadge}>{i + 1}</span>
-                      <span className="dex-ui-muted" style={{ fontSize: '0.78rem' }}>{i === 0 ? (isDe ? 'Aus dem Profil' : 'From profile') : ''}</span>
+                      <span />
                       <span style={{ minWidth: 0, fontSize: '0.88rem', color: 'var(--dex-gray-600)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <strong style={{ fontWeight: 600 }}>{r.label}</strong>
                         <span className="dex-ui-muted" style={{ marginLeft: 8, fontSize: '0.8rem' }}>{isDe ? 'z. B. ' : 'e.g. '}{r.example}</span>
@@ -995,7 +1026,7 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                         data-tour={idx === customFields.length - 1 ? 'wizard-question-label' : undefined}
                         value={field.label}
                         rows={1}
-                        placeholder={isDe ? 'Frage eingeben – z. B. „Welche T-Shirt-Größe?"' : 'Enter the question – e.g. “Which T-shirt size?”'}
+                        placeholder={fragePlatzhalter(field.type)}
                         onChange={e => updateCustomField(field.id, { label: e.target.value })}
                         onClick={e => e.stopPropagation()}
                         ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; } }}
