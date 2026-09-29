@@ -19,6 +19,37 @@ export const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-AIUse
 /** Die Seite, auf der das Webpart eingebunden ist — fuer Links von aussen. */
 export const APP_URL = `${SITE_URL}/SitePages/AIUseCases.aspx?env=WebView`;
 
+/**
+ * Der Name des Abfrageparameters, der einen einzelnen Use Case adressiert
+ * (`…AIUseCases.aspx?env=WebView&uc=7`).
+ *
+ * Steht hier und nicht in einer der beiden Stellen, die ihn brauchen: der
+ * NavigationContext LIEST ihn beim Start, der „Link kopieren"-Knopf der
+ * Detailseite SCHREIBT ihn. Ein Tippfehler an nur einer von beiden erzeugt
+ * Links, die auf die Startseite führen — ohne Fehlermeldung.
+ */
+export const DEEPLINK_PARAM = 'uc';
+
+/** Der Link, der direkt auf die Detailseite eines Use Cases führt. */
+export function linkZumUseCase(id: number): string {
+  // `APP_URL` trägt schon ein `?`, deshalb `&`.
+  return `${APP_URL}&${DEEPLINK_PARAM}=${id}`;
+}
+
+/**
+ * Ansprechperson für Fragen zur Plattform — steht im „Hast du Fragen?"-Dialog
+ * und im Dialog „Organizer werden?".
+ *
+ * Die Adresse stammt aus der Galerie im Repo `kiarbeitsplatz`
+ * (`galerie/usecases.js`, `PROFILE.contact`) und ist hier die EINZIGE Stelle.
+ * Ein Postfach der Plattform (Gruppe statt Person) wäre die bessere Adresse,
+ * sobald es eines gibt: Dann ist es eine Änderung an dieser Zeile.
+ */
+export const KONTAKT_EMAIL = 'ebrenneisen@deloitte.de';
+
+/** Wer die Plattform gebaut hat — steht unter der Karte auf dem Startbildschirm. */
+export const ENTWICKLER = 'Eike Brenneisen';
+
 /** Anzeigename der Plattform. Steht im Kopf, im Titel und in Meldungen. */
 export const APP_NAME = 'AI Use Case Platform';
 

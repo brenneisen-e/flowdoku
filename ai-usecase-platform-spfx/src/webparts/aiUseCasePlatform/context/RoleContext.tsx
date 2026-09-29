@@ -3,7 +3,7 @@
  *
  * Drei Rollen, Aufbau wie DEX:
  *   Admin   — alles, inklusive Rollenverwaltung
- *   Kurator — Use Cases anlegen und pflegen
+ *   Use Case Organizer — Use Cases anlegen und pflegen (in der Liste: Kurator)
  *   User    — sehen und aufrufen
  *
  * Die zwei Regeln, die DEX teuer gelernt hat, gelten hier von Anfang an:
@@ -21,9 +21,10 @@
 
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
-import { SharePointService } from '../services/SharePointService';
+import { SharePointService, PersonenSuche, RechteBericht, RechteLuecke, RechteReparatur, RechteUeberschuss } from '../services/SharePointService';
 import { RoleAssignment, UserRole } from '../types';
 import { isCurrentUser } from '../utils/sessionIdentities';
+import { rolleAusSpeicher, rolleRang } from '../utils/rollen';
 
 interface RoleContextType {
   roles: RoleAssignment[];
@@ -32,7 +33,17 @@ interface RoleContextType {
   /** `forbidden` = die Rollenliste ist nicht lesbar. Wer darin steht, ist trotzdem „User". */
   rolesReadStatus: 'loading' | 'ok' | 'forbidden' | 'error';
   isAdmin: boolean;
-  isKurator: boolean;
+  isOrganizer: boolean;
+  /**
+   * Die ECHTE Rolle, unabhängig von der Vorschau „als Nutzer ansehen".
+   *
+   * `isAdmin`/`isOrganizer` sinken in der Vorschau auf „User" — das ist der
+   * Zweck. Das Menü, in dem man die Vorschau wieder verlässt, darf aber nicht
+   * mit verschwinden, sonst kommt man aus der Ansicht nicht mehr heraus
+   * (dieselbe Regel wie `originalIsAdmin` in DEX).
+   */
+  originalIsAdmin: boolean;
+  originalIsOrganizer: boolean;
   /** Vorschau „als Nutzer sehen" — ohne Identitaetswechsel, endet beim Neuladen. */
   previewAsUser: boolean;
   setPreviewAsUser: (on: boolean) => void;
@@ -42,21 +53,43 @@ interface RoleContextType {
   refreshRoles: () => Promise<void>;
   /** Welche Rechte beim letzten Schreiben NICHT gesetzt werden konnten. */
   lastRightsMissing: () => string[];
+  /**
+   * v1.3: Personensuche über den People-Picker von SharePoint (kein Graph).
+   * `null` heißt: Die Suche ging NICHT — das ist etwas anderes als `treffer: []`.
+   * Wer daraus „keine Treffer" macht, sagt einem Admin, die Person gebe es
+   * nicht, weil eine Anfrage gedrosselt war.
+   */
+  searchUsers: (query: string, includeInternational?: boolean) => Promise<PersonenSuche | null>;
+  /** HTTP-Status der letzten Suche — für die Meldung, WARUM sie nicht ging. */
+  lastPersonSearchStatus: () => number;
+  /**
+   * v1.3: „Rechte prüfen". Liest die Rollenliste frisch und danach je Person
+   * nach, ob die Rechte auf den drei Listen wirklich gesetzt sind. Schreibt
+   * nichts. `null` = nicht lesbar (`lastRightsReadError` sagt warum) — kein
+   * „alles in Ordnung".
+   */
+  auditRoleRights: (onProgress?: (done: number, total: number) => void) => Promise<RechteBericht | null>;
+  /** Klartext, woran der letzte Audit beim Lesen scheiterte. */
+  lastRightsReadError: () => string;
+  /** v1.3: Setzt fehlende Rechte nach — mit Wiederholung und Nachlesen, nur additiv. */
+  repairRoleRights: (luecken: RechteLuecke[], onProgress?: (done: number, total: number) => void) => Promise<RechteReparatur>;
+  /**
+   * v1.3: Entzieht überzählige Rechte (früherer Admin mit Vollzugriff auf der
+   * Rollenliste, User mit Restrechten). Prüft die Rolle vorher frisch: Hat sich
+   * die Rolle seit dem Audit geändert, wird nichts angefasst.
+   */
+  revokeExcessRights: (items: RechteUeberschuss[], onProgress?: (done: number, total: number) => void) => Promise<{ erledigt: number; offen: RechteUeberschuss[] }>;
+  /** Ist diese Adresse — in irgendeiner Schreibweise — die angemeldete Person? */
+  isSelf: (email: string) => boolean;
   siteUrl: string;
   service: SharePointService;
 }
 
 const RoleContext = React.createContext<RoleContextType | undefined>(undefined);
 
-function normalizeRole(v: string): UserRole {
-  if (v === 'Admin' || v === 'Kurator' || v === 'User') return v;
-  return 'User';
-}
-
-/** Hoehere Zahl = mehr Rechte. Fuer „nie implizit herabstufen". */
-function roleRank(r: UserRole): number {
-  return r === 'Admin' ? 3 : r === 'Kurator' ? 2 : 1;
-}
+// `Kurator` (Altbestand) und `Organizer` sind dieselbe Rolle — siehe utils/rollen.ts.
+const normalizeRole = rolleAusSpeicher;
+const roleRank = rolleRang;
 
 export function RoleProvider(props: { context: WebPartContext; children: React.ReactNode }): React.ReactElement {
   const [roles, setRoles] = React.useState<RoleAssignment[]>([]);
@@ -158,18 +191,29 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [service]);
 
-  /** Rechte zur Rolle setzen. Rueckgabe: was NICHT gesetzt werden konnte. */
-  async function applyRights(email: string, role: UserRole): Promise<string[]> {
+  /**
+   * Rechte zur Rolle setzen. Rückgabe: was NICHT gesetzt werden konnte.
+   *
+   * `vorher` ist die bisherige Rolle, wenn es eine Änderung ist. Bei
+   * Admin → Organizer reicht es nicht, Read zu vergeben: `addroleassignment`
+   * ist ADDITIV, das Full Control auf der Rollenliste bliebe daneben stehen,
+   * und der frühere Admin könnte die Liste weiter bearbeiten und sich selbst
+   * wieder hochstufen (DEX v30.67). Erst entziehen, dann Read vergeben.
+   */
+  async function applyRights(email: string, role: UserRole, vorher?: UserRole): Promise<string[]> {
     const missing: string[] = [];
     if (role === 'Admin') {
       if (!(await service.grantFullControlOnRolesList(email))) missing.push('Rollenliste (Vollzugriff)');
-      missing.push(...await service.grantCuratorPermissions(email));
-    } else if (role === 'Kurator') {
+      missing.push(...await service.grantOrganizerPermissions(email));
+    } else if (role === 'Organizer') {
+      if (vorher === 'Admin' && !(await service.revokeRolesListAccess(email))) {
+        missing.push('Rollenliste (Vollzugriff bleibt bestehen)');
+      }
       if (!(await service.grantReadOnRolesList(email))) missing.push('Rollenliste (Lesen)');
-      missing.push(...await service.grantCuratorPermissions(email));
+      missing.push(...await service.grantOrganizerPermissions(email));
     } else {
       // Herabstufung auf User: Rechte spiegelbildlich entziehen. Wer das
-      // weglaesst, laesst einen Ex-Kurator weiter schreiben — in DEX war das
+      // weglaesst, laesst einen Ex-Organizer weiter schreiben — in DEX war das
       // der Fall „einmal Organizer, immer Zugriff" (v30.67).
       if (!(await service.revokeAllAccess(email))) missing.push('Entzug unvollstaendig');
     }
@@ -212,7 +256,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     const before = roles.filter(r => r.id === itemId)[0];
     const ok = await service.updateRole(itemId, role);
     if (ok && before) {
-      rightsMissingRef.current = await applyRights(before.userEmail, role);
+      rightsMissingRef.current = await applyRights(before.userEmail, role, before.role);
       await refreshRoles();
     }
     return ok;
@@ -233,19 +277,81 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roles, service, refreshRoles]);
 
+  // ---- v1.3: Personensuche und Rechte-Prüfung (Durchreichen an die Rollenverwaltung) ----
+
+  const searchUsers = React.useCallback(
+    (query: string, includeInternational?: boolean): Promise<PersonenSuche | null> => service.searchUsers(query, !!includeInternational),
+    [service],
+  );
+
+  const auditRoleRights = React.useCallback(async (onProgress?: (done: number, total: number) => void): Promise<RechteBericht | null> => {
+    // Die Rollenliste FRISCH lesen, nicht aus dem State nehmen: Der Audit soll
+    // sagen, was JETZT gilt, und der State kann veraltet sein (ein früheres
+    // Nachladen ist gescheitert und hat den alten Stand stehen lassen).
+    const rows = await service.getRoles();
+    if (rows === null) {
+      service.lastRightsReadError = `Rollenliste: HTTP ${service.lastRolesReadStatus || 'keine Antwort'}`;
+      return null;
+    }
+    return service.auditRoleRights(mapRows(rows).map(r => ({ email: r.userEmail, name: r.userName, rolle: r.role })), onProgress);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service]);
+
+  const repairRoleRights = React.useCallback(
+    (luecken: RechteLuecke[], onProgress?: (done: number, total: number) => void): Promise<RechteReparatur> => service.repairRoleRights(luecken, onProgress),
+    [service],
+  );
+
+  const revokeExcessRights = React.useCallback(async (
+    items: RechteUeberschuss[],
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<{ erledigt: number; offen: RechteUeberschuss[] }> => {
+    // Die Rollen frisch lesen: Der Bericht kann alt sein. Wurde aus dem
+    // Organizer inzwischen ein Admin, würde „Vollzugriff entziehen, Lesen
+    // zurückgeben" ihn auf der Rollenliste HERABSTUFEN. Nicht lesbar heißt hier
+    // nichts anfassen — unbekannt sperrt.
+    const rows = await service.getRoles();
+    if (rows === null) return { erledigt: 0, offen: items };
+    const aktuell = mapRows(rows);
+    const offen: RechteUeberschuss[] = [];
+    let erledigt = 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const lc = (it.email || '').trim().toLowerCase();
+      const jetzt = aktuell.filter(r => (r.userEmail || '').trim().toLowerCase() === lc)[0];
+      if (!jetzt || jetzt.role !== it.rolle) {
+        offen.push(it);
+      } else {
+        const fehler = await service.entzieheUeberschuss(it.email, it.rolle, it.listen);
+        if (fehler.length === 0) erledigt++;
+        else offen.push({ ...it, listen: fehler });
+      }
+      if (onProgress) onProgress(i + 1, items.length);
+    }
+    return { erledigt, offen };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [service]);
+
+  const isSelf = React.useCallback((email: string): boolean => isCurrentUser(props.context, email), []);
+
   const effectiveRole: UserRole = previewAsUser ? 'User' : currentUserRole;
   const isAdmin = effectiveRole === 'Admin';
-  const isKurator = effectiveRole === 'Kurator' || isAdmin;
+  const isOrganizer = effectiveRole === 'Organizer' || isAdmin;
 
   const value = React.useMemo<RoleContextType>(() => ({
     roles, currentUserRole, isRolesLoading, rolesReadStatus,
-    isAdmin, isKurator, previewAsUser, setPreviewAsUser,
+    isAdmin, isOrganizer, previewAsUser, setPreviewAsUser,
+    originalIsAdmin: currentUserRole === 'Admin',
+    originalIsOrganizer: currentUserRole === 'Organizer' || currentUserRole === 'Admin',
     addRole, updateRole, removeRole, refreshRoles,
     lastRightsMissing: () => rightsMissingRef.current,
+    searchUsers, lastPersonSearchStatus: () => service.lastPersonSearchStatus,
+    auditRoleRights, lastRightsReadError: () => service.lastRightsReadError,
+    repairRoleRights, revokeExcessRights, isSelf,
     siteUrl: props.context.pageContext.web.absoluteUrl,
     service,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [roles, currentUserRole, isRolesLoading, rolesReadStatus, previewAsUser, addRole, updateRole, removeRole, refreshRoles, service]);
+  }), [roles, currentUserRole, isRolesLoading, rolesReadStatus, previewAsUser, addRole, updateRole, removeRole, refreshRoles, service, searchUsers, auditRoleRights, repairRoleRights, revokeExcessRights, isSelf]);
 
   return React.createElement(RoleContext.Provider, { value }, props.children);
 }

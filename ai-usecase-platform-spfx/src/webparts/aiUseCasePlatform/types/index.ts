@@ -7,8 +7,14 @@
  * dazu die drei Bewertungsdimensionen der Use-Case-Analyse.
  */
 
-/** Rollen. Aufbau wie DEX: eine Zeile je Person in der Rollenliste. */
-export type UserRole = 'Admin' | 'Kurator' | 'User';
+/**
+ * Rollen. Aufbau wie DEX: eine Zeile je Person in der Rollenliste.
+ *
+ * `Organizer` ist der „Use Case Organizer": legt Use Cases an und pflegt sie.
+ * In der Liste steht dafür weiterhin `Kurator` (Altbestand) — die Umsetzung in
+ * beide Richtungen steht in `utils/rollen.ts` und nirgends sonst.
+ */
+export type UserRole = 'Admin' | 'Organizer' | 'User';
 
 export interface RoleAssignment {
   id: number;
@@ -107,9 +113,33 @@ export interface UseCase {
 /** Ein Eintrag im Aenderungsprotokoll. */
 export interface LogEintrag {
   id: number;
+  /** 0 = gehört zu keinem einzelnen Use Case (z. B. die Erstbefüllung). */
   useCaseId: number;
   aktion: string;
   detail: string;
   wer: string;
   wann: string;
+}
+
+/**
+ * Was beim Speichern mit dem Kachelbild passieren soll.
+ *
+ * Ein eigener Typ statt zweier Flags, weil die Kombinationen sich
+ * widersprechen können („neues Bild" UND „Bild entfernen"): Der Typ lässt
+ * genau eine Absicht zu.
+ */
+export type BildAenderung =
+  | { art: 'unveraendert' }
+  | { art: 'neu'; datei: File }
+  | { art: 'entfernen' };
+
+/** Ergebnis von `saveUseCase` — der Grund steht dabei, damit die Meldung ihn nennen kann. */
+export interface SpeicherErgebnis {
+  ok: boolean;
+  /** Id des gespeicherten Use Cases (bei „neu" erst nach dem Anlegen bekannt). */
+  id: number | null;
+  /** Der Use Case ist gespeichert, aber das Bild nicht angekommen. */
+  bildFehler: boolean;
+  /** Warum `ok` false ist. */
+  grund?: 'rechte' | 'speichern' | 'bild';
 }

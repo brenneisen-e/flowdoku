@@ -9,12 +9,13 @@
 import * as React from 'react';
 import { cx, ensureDexUiStyles } from './dexUi';
 import { bewertungPunkte } from './UseCaseCard';
-import { ChevronLeft, ExternalLink, Link2 as LinkIcon, FileText, Book, Video, AlertCircle, Pencil } from './Icons';
+import { ChevronLeft, ExternalLink, Link2 as LinkIcon, FileText, Book, Video, AlertCircle, Pencil, Copy, Check } from './Icons';
 import { useUseCases } from '../context/UseCaseContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
 import { UseCase } from '../types';
+import { linkZumUseCase } from '../constants';
 
 interface RessourceZeile {
   key: string;
@@ -27,17 +28,25 @@ interface RessourceZeile {
 export default function UseCaseDetailPage(props: { useCaseId?: number }): React.ReactElement {
   ensureDexUiStyles();
 
-  const { useCases, ladeStatus } = useUseCases();
+  const { useCases, ladeStatus, letzterStatus, reload } = useUseCases();
   const { t, isDe } = useLanguage();
   const { navigate, goBack, canGoBack } = useNavigation();
-  const { isKurator } = useRoles();
+  const { isOrganizer } = useRoles();
 
   // ALLE Hooks stehen vor dem ersten frühen Return. In DEX hat ein Hook
   // hinter einem Return die Hook-Reihenfolge zerrissen und nach jeder
   // Anmeldung einen weissen Bildschirm erzeugt (React #300, v30.3).
   const [eingebettetOffen, setEingebettetOffen] = React.useState(false);
+  // Link kopieren: '' = noch nichts, 'kopiert' = in der Zwischenablage,
+  // 'manuell' = die Zwischenablage ging nicht, der Link steht zum Markieren da.
+  const [linkStatus, setLinkStatus] = React.useState<'' | 'kopiert' | 'manuell'>('');
 
-  const uc: UseCase | undefined = useCases.filter(u => u.id === props.useCaseId)[0];
+  const gefunden: UseCase | undefined = useCases.filter(u => u.id === props.useCaseId)[0];
+  // Archiviertes sehen nur Organizer — wie auf der Kachelwand. Die Kachel ist
+  // dort ausgeblendet, aber ein Deep-Link (`?uc=`) oder ein Merker im Browser
+  // führt trotzdem hierher, und „Nur für Organizer sichtbar" (Pflegeseite)
+  // gilt sonst nur für die Wand.
+  const uc: UseCase | undefined = gefunden && (gefunden.status !== 'Archiviert' || isOrganizer) ? gefunden : undefined;
 
   if (ladeStatus === 'laedt') {
     return (
@@ -47,15 +56,38 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
     );
   }
 
+  // Ein Lesefehler ist keine Aussage über den Use Case. Bei einem Deep-Link
+  // ist diese Seite oft die ERSTE, die lädt — schlägt das Lesen fehl, ist die
+  // Liste leer, und „nicht (mehr) da" wäre eine Behauptung über Daten, die
+  // niemand gelesen hat.
+  if (!uc && ladeStatus === 'fehler') {
+    return (
+      <div className="dex-ui-callout dex-ui-callout--danger" role="alert">
+        <span>
+          <strong>{t('Der Use Case konnte nicht geladen werden.', 'The use case could not be loaded.')}</strong>
+          <br />
+          {letzterStatus === 403
+            ? t('Dir fehlt das Leserecht auf der Liste — bitte melde dich bei einem Admin der Plattform.', 'You do not have read access to the list — please contact a platform admin.')
+            : t('Das ist ein Lesefehler, kein gelöschter Use Case. Versuch es gleich noch einmal.', 'This is a read error, not a deleted use case. Please try again shortly.')}
+          {letzterStatus > 0 && <span className="dex-ui-muted"> (HTTP {letzterStatus})</span>}
+          <br />
+          <button type="button" className="dex-ui-textbtn" style={{ marginTop: 8 }} onClick={() => { void reload(); }}>{t('Erneut versuchen', 'Try again')}</button>
+          {' '}
+          <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" style={{ marginTop: 8 }} onClick={() => navigate('usecases')}>{t('Zur Übersicht', 'Back to overview')}</button>
+        </span>
+      </div>
+    );
+  }
+
   if (!uc) {
     return (
       <div className="dex-ui-empty">
         <div className="dex-ui-empty-title">{t('Dieser Use Case ist nicht (mehr) da', 'This use case is not (or no longer) here')}</div>
         <div className="dex-ui-empty-desc">
-          {t('Er wurde gelöscht, oder der Link zeigt auf eine Nummer, die es nicht gibt.',
-            'It was deleted, or the link points to an id that does not exist.')}
+          {t('Er wurde gelöscht oder archiviert, oder der Link zeigt auf eine Nummer, die es nicht gibt.',
+            'It was deleted or archived, or the link points to an id that does not exist.')}
         </div>
-        <button type="button" className="dex-ui-empty-action" onClick={() => navigate('start')}>
+        <button type="button" className="dex-ui-empty-action" onClick={() => navigate('usecases')}>
           {t('Zur Übersicht', 'Back to overview')}
         </button>
       </div>
@@ -81,6 +113,16 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
     window.open(start, '_blank', 'noopener,noreferrer');
   };
 
+  const link = linkZumUseCase(uc.id);
+  const kopiereLink = (): void => {
+    try {
+      // Fehlt in der SharePoint-Handy-App (Permissions Policy reicht Rechte
+      // nur abwärts durch) — dann bleibt der Link zum Markieren stehen, statt
+      // dass der Knopf stumm nichts tut.
+      void navigator.clipboard.writeText(link).then(() => setLinkStatus('kopiert'), () => setLinkStatus('manuell'));
+    } catch { setLinkStatus('manuell'); }
+  };
+
   return (
     <div>
       <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" style={{ marginBottom: 12 }} onClick={() => (canGoBack ? goBack() : navigate('start'))}>
@@ -93,13 +135,52 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
           <h1 className="dex-ui-page-head-title">{uc.titel}</h1>
         </div>
         <div className="dex-ui-page-head-actions">
-          {isKurator && (
-            <button type="button" className="dex-ui-textbtn" onClick={() => navigate('verwaltung', uc.id)}>
+          <button type="button" className="dex-ui-textbtn" onClick={kopiereLink} title={t('Link zu diesem Use Case kopieren', 'Copy the link to this use case')}>
+            {linkStatus === 'kopiert' ? <><Check size={14} /> {t('Link kopiert', 'Link copied')}</> : <><Copy size={14} /> {t('Link kopieren', 'Copy link')}</>}
+          </button>
+          {isOrganizer && (
+            <button type="button" className="dex-ui-textbtn" onClick={() => navigate('protokoll', uc.id)}>
+              {t('Verlauf', 'History')}
+            </button>
+          )}
+          {isOrganizer && (
+            <button type="button" className="dex-ui-textbtn" onClick={() => navigate('studio', uc.id)}>
               <Pencil size={14} /> {t('Bearbeiten', 'Edit')}
             </button>
           )}
         </div>
       </div>
+
+      {linkStatus === 'manuell' && (
+        <div className="dex-ui-callout dex-ui-callout--neutral dex-ui-callout--sm" style={{ marginBottom: 12 }}>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            {t('Die Zwischenablage ist hier nicht erreichbar — markier den Link und kopier ihn von Hand:', 'The clipboard is not available here — select the link and copy it by hand:')}
+            <input
+              type="text"
+              readOnly
+              className="dex-ui-input dex-ui-input--sm"
+              style={{ marginTop: 6 }}
+              value={link}
+              aria-label={t('Link zu diesem Use Case', 'Link to this use case')}
+              onFocus={e => e.target.select()}
+            />
+          </span>
+        </div>
+      )}
+
+      {/* Das Kachelbild, groß. Nur wenn eines hochgeladen ist — ohne Bild
+          würde ein leerer Kasten nach Ladefehler aussehen. */}
+      {uc.bildUrl && (
+        <div
+          role="img"
+          aria-label={uc.titel}
+          style={{
+            width: '100%', maxWidth: 560, aspectRatio: '16 / 9', borderRadius: 12, marginBottom: 16,
+            border: '1px solid var(--dex-gray-200, #e8e8e8)',
+            background: `#fff center/cover no-repeat url("${uc.bildUrl.replace(/"/g, '%22')}")`,
+          }}
+        />
+      )}
 
       {/* Die Handlung, derentwegen jemand hier ist. */}
       <div className="dex-ui-section">
@@ -123,7 +204,7 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
               {uc.status === 'Geplant' && t('Dieser Use Case ist geplant — es gibt noch keine Demo zum Starten.', 'This use case is planned — there is no demo to start yet.')}
               {uc.status === 'InArbeit' && t('Die Demo wird gerade gebaut. Sobald sie steht, erscheint hier der Start-Knopf.', 'The demo is being built. The start button appears here as soon as it is ready.')}
               {uc.status === 'Archiviert' && t('Dieser Use Case ist archiviert.', 'This use case is archived.')}
-              {uc.status === 'Live' && !start && t('Der Use Case steht auf „Live", aber es ist kein Deployment-Link hinterlegt. Das ist ein Pflegefehler — ein Kurator kann ihn nachtragen.', 'The use case is marked "Live", but no deployment link is stored. A curator can add it.')}
+              {uc.status === 'Live' && !start && t('Der Use Case steht auf „Live", aber es ist kein Deployment-Link hinterlegt. Das ist ein Pflegefehler — ein Organizer kann ihn nachtragen.', 'The use case is marked "Live", but no deployment link is stored. An organizer can add it.')}
             </span>
           </div>
         )}
@@ -169,7 +250,7 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
             <div
               style={{ marginTop: 12 }}
               // Der Text kommt aus der eigenen SharePoint-Liste und wird nur
-              // von Kuratoren gepflegt — dieselbe Vertrauensstellung wie die
+              // von Organizern gepflegt — dieselbe Vertrauensstellung wie die
               // Event-Beschreibung in DEX.
               dangerouslySetInnerHTML={{ __html: uc.beschreibung }}
             />
@@ -227,9 +308,20 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
         )}
       </div>
 
-      {(uc.betreuerNamen.length > 0 || uc.geaendertVon) && (
+      {(uc.betreuerEmails.length > 0 || uc.geaendertVon) && (
         <p className="dex-ui-help">
-          {uc.betreuerNamen.length > 0 && <>{t('Betreut von', 'Maintained by')} {uc.betreuerNamen.join(', ')}. </>}
+          {uc.betreuerEmails.length > 0 && (
+            <>
+              {t('Betreut von', 'Maintained by')}{' '}
+              {uc.betreuerEmails.map((mail, i) => (
+                <React.Fragment key={mail}>
+                  {i > 0 && ', '}
+                  <a href={`mailto:${mail}`} style={{ color: 'inherit' }}>{uc.betreuerNamen[i] || mail}</a>
+                </React.Fragment>
+              ))}
+              {'. '}
+            </>
+          )}
           {uc.geaendertVon && <>{t('Zuletzt geändert von', 'Last changed by')} {uc.geaendertVon}.</>}
         </p>
       )}

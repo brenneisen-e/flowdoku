@@ -62,8 +62,11 @@ export default function UseCaseCard(props: UseCaseCardProps): React.ReactElement
       <span
         style={{
           display: 'block', width: '100%', aspectRatio: '16 / 9', maxWidth: '100%',
+          // Anführungszeichen in der Adresse würden den `url("…")`-Wert
+          // aufbrechen; seit dem Upload (v1.3) kommt die Adresse zwar von uns,
+          // ältere Einträge tragen aber eine von Hand getippte URL.
           background: uc.bildUrl
-            ? `center/cover no-repeat url("${uc.bildUrl}")`
+            ? `center/cover no-repeat url("${uc.bildUrl.replace(/"/g, '%22')}")`
             : 'linear-gradient(135deg, rgba(134,188,37,0.16), rgba(134,188,37,0.05))',
           position: 'relative', flexShrink: 0,
         }}
