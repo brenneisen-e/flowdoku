@@ -1233,17 +1233,19 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                       />
                       {/* v17.20: EN-Variante der Beschreibung. */}
                       {bilingualFields && (
-                        <div className="dex-ui-inline" style={{ flexWrap: 'nowrap', marginTop: 6 }} title={isDe ? 'Beschreibung auf Englisch' : 'Description in English'}>
-                          {enBadge}
-                          <input
-                            className="dex-ui-input dex-ui-input--sm"
-                            value={field.helpTextEn || ''}
-                            placeholder={isDe
-                              ? 'Englische Beschreibung (optional)'
-                              : 'English description (optional)'}
-                            onChange={e => updateCustomField(field.id, { helpTextEn: e.target.value })}
-                            style={{ flex: 1, width: 'auto' }}
-                          />
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8 }}>
+                          <span style={{ paddingTop: 6 }}>{enBadge}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {/* v32.16: gleicher Editor wie Deutsch — die englische
+                                Beschreibung läuft durch denselben Umwandler
+                                (pickFieldHelp → renderFieldDescHtml). */}
+                            <FieldDescEditor
+                              value={field.helpTextEn || ''}
+                              onChange={text => updateCustomField(field.id, { helpTextEn: text })}
+                              isDe={isDe}
+                              placeholder={isDe ? 'Beschreibung auf Englisch (optional)' : 'Description in English (optional)'}
+                            />
+                          </div>
                         </div>
                       )}
                       {field.helpText && field.helpText.trim() && (

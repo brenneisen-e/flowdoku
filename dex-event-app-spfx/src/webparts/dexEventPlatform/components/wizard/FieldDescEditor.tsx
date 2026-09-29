@@ -3,11 +3,14 @@
  * Beschreibung eines Abfragefelds.
  */
 import * as React from 'react';
+import { Link2 } from '../Icons';
 
 // v27.4: Kompakter Beschreibungs-Editor mit DAUERHAFT sichtbarer Mini-Leiste
 // (Fett + Link). Die Buttons formatieren die Markierung (kein Markdown-Tippen);
 // gespeichert wird ein kleines Markdown-Subset, das die Anmeldeseite rendert.
-export function FieldDescEditor({ value, onChange, isDe }: { value: string; onChange: (v: string) => void; isDe: boolean }): React.ReactElement {
+// v32.16: Kursiv (*…*) und Unterstrichen (++…++) dazu (Nutzer-Ansage 29.09.2026);
+// `placeholder` für die englische Beschreibung, die denselben Editor nutzt.
+export function FieldDescEditor({ value, onChange, isDe, placeholder }: { value: string; onChange: (v: string) => void; isDe: boolean; placeholder?: string }): React.ReactElement {
   const ref = React.useRef<HTMLTextAreaElement>(null);
   const applyWrap = (before: string, after: string, ph: string): void => {
     const ta = ref.current; if (!ta) return;
@@ -32,14 +35,16 @@ export function FieldDescEditor({ value, onChange, isDe }: { value: string; onCh
     <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, background: '#fff' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderBottom: '1px solid var(--dex-gray-200)' }}>
         <button type="button" title={isDe ? 'Fett' : 'Bold'} onMouseDown={e => e.preventDefault()} onClick={() => applyWrap('**', '**', isDe ? 'fetter Text' : 'bold text')} style={{ ...btn, fontWeight: 800 }}>F</button>
-        <button type="button" title={isDe ? 'Link einfügen' : 'Insert link'} onMouseDown={e => e.preventDefault()} onClick={insertLink} style={{ ...btn, display: 'inline-flex', alignItems: 'center', gap: 5 }}>🔗 {isDe ? 'Link' : 'Link'}</button>
+        <button type="button" title={isDe ? 'Kursiv' : 'Italic'} onMouseDown={e => e.preventDefault()} onClick={() => applyWrap('*', '*', isDe ? 'kursiver Text' : 'italic text')} style={{ ...btn, fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>K</button>
+        <button type="button" title={isDe ? 'Unterstrichen' : 'Underline'} onMouseDown={e => e.preventDefault()} onClick={() => applyWrap('++', '++', isDe ? 'unterstrichener Text' : 'underlined text')} style={{ ...btn, textDecoration: 'underline' }}>U</button>
+        <button type="button" title={isDe ? 'Link einfügen' : 'Insert link'} onMouseDown={e => e.preventDefault()} onClick={insertLink} style={{ ...btn, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Link2 size={13} /> {isDe ? 'Link' : 'Link'}</button>
         <span style={{ marginLeft: 'auto', fontSize: '0.66rem', color: 'var(--dex-gray-400)' }}>{isDe ? 'Text markieren, dann Button' : 'Select text, then button'}</span>
       </div>
       <textarea
         ref={ref}
         value={value}
         onChange={e => onChange(e.target.value)}
-        placeholder={isDe ? 'Beschreibung (optional)' : 'Description (optional)'}
+        placeholder={placeholder || (isDe ? 'Beschreibung (optional)' : 'Description (optional)')}
         rows={2}
         style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', resize: 'vertical', fontSize: '0.85rem', lineHeight: 1.45, padding: '8px 10px', fontFamily: 'inherit', background: 'transparent', color: 'var(--dex-gray-800)' }}
       />
