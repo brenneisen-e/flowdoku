@@ -1811,7 +1811,7 @@ export default function EventCreationPage(): React.ReactElement {
     excludedCount: number
   ): React.ReactElement => {
     return renderVisibilitySummaryBoxImpl({
-      isDe,
+      isDe, isFictive, activeFrom,
     }, locList, audienceStr, mode, excludedCount);
   };
 

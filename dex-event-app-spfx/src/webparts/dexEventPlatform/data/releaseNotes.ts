@@ -128,6 +128,7 @@ export function splitReleaseNote(text: string): ReleaseNoteParts {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '32.37.0', date: '2026-09-29', bereich: 'Sichtbarkeit', type: 'Feature', text: 'Der Kasten „So ist es eingestellt“ in der Sichtbarkeit sagt jetzt auch, dass der eingestellte Kreis das Event erst sieht, wenn es aktiv ist – im Entwurf bzw. vor „Aktiv ab“ sehen es nur Organizer und Test-Team. Außerdem hat der Kasten jetzt Abstand zur Karte darunter.' },
   { version: '32.36.0', date: '2026-09-29', bereich: 'E-Mails', type: 'Feature', text: 'Info-Mail und Reminder: Neu ist „Eigene Liste“ als Empfänger – eine Adressliste aus Outlook einfügen, wahlweise nur an Personen, die noch nicht reagiert haben. Kennt DEX die Eingeladenen nicht (Sichtbarkeit nur über Standorte), sagt der Reminder das und bietet genau diesen Weg an. Der Knopf „Testmail an Organizer“ entfällt – dafür gibt es oben die Chips „An mich“ und „Organizer“.' },
   { version: '32.36.0', date: '2026-09-29', bereich: 'Allgemein', type: 'Bugfix', text: 'Auf der Startseite zeigt die Kachel „Du bist angemeldet“ ohne Event-Foto jetzt das DEX-Logo statt eines grün-blauen Verlaufs – beim Einführungs-Event das Uni-Symbol.' },
   { version: '32.35.0', date: '2026-09-29', bereich: 'Allgemein', type: 'Feature', text: 'Im Kopf der App steht der Seitentitel jetzt ganz links und „Zurück“ direkt neben der Suche. Auf dem Handy bleibt es wie bisher.' },

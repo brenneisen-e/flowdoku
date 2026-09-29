@@ -557,10 +557,13 @@ export function renderGlobalScopeBarImpl(ctx: RenderGlobalScopeBarCtx): React.Re
  * laufenden Renders, wie die Closure vorher auch. */
 export interface RenderVisibilitySummaryBoxCtx {
   isDe: boolean;
+  /** v32.37: Entwurf bzw. „Aktiv ab" in der Zukunft — dann sieht den Kreis noch niemand. */
+  isFictive?: boolean;
+  activeFrom?: string;
 }
 
 export function renderVisibilitySummaryBoxImpl(ctx: RenderVisibilitySummaryBoxCtx, locList: string[], audienceStr: string, mode: "AND" | "OR", excludedCount: number): React.ReactElement {
-  const { isDe } = ctx;
+  const { isDe, isFictive, activeFrom } = ctx;
     const locs = (locList || []).filter(Boolean);
     const auds = (audienceStr || '').split(',').map(s => s.trim()).filter(Boolean);
     // v28.76: Klartext statt Stichworten. Vorher stand hier „Sichtbar für
@@ -592,7 +595,9 @@ export function renderVisibilitySummaryBoxImpl(ctx: RenderVisibilitySummaryBoxCt
     // v31.2: Info-Callout statt grüner Fläche — der Kasten fasst zusammen, er
     // bestätigt nichts. Grün bleibt der aktiven Auswahl darüber vorbehalten.
     return (
-      <div className="dex-ui-callout dex-ui-callout--info" style={{ marginTop: 10 }}>
+      // v32.37: Abstand nach unten — der Kasten klebte an der Standortfilter-
+      // Karte darunter (Nutzer-Befund 29.09.2026).
+      <div className="dex-ui-callout dex-ui-callout--info" style={{ margin: '10px 0 16px' }}>
         <span className="dex-ui-callout-icon"><Users size={16} /></span>
         <div>
           <strong>{isDe ? 'So ist es eingestellt: ' : 'Current setting: '}</strong>
@@ -602,6 +607,25 @@ export function renderVisibilitySummaryBoxImpl(ctx: RenderVisibilitySummaryBoxCt
               ? `${excludedCount} Person${excludedCount === 1 ? ' ist' : 'en sind'} ausgeschlossen.`
               : `${excludedCount} ${excludedCount === 1 ? 'person is' : 'people are'} excluded.`}</>
           )}
+          {/* v32.37: Der Kreis gilt erst, wenn das Event aktiv ist (Nutzer-Ansage
+              29.09.2026) — im Entwurf sehen es nur Organizer und Test-Team. */}
+          {(() => {
+            const ab = activeFrom ? new Date(activeFrom) : null;
+            const abZukunft = !!ab && !isNaN(ab.getTime()) && ab.getTime() > Date.now();
+            if (!isFictive && !abZukunft) return null;
+            const abText = abZukunft ? (ab as Date).toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+            return (
+              <div style={{ marginTop: 6 }}>
+                {isFictive
+                  ? (isDe
+                    ? 'Das Event ist aktuell noch ein Entwurf — diese Personen sehen es erst, sobald du es aktivierst. Bis dahin sehen es nur Organizer und Test-Team.'
+                    : 'The event is still a draft — these people will see it once you activate it. Until then only organizers and the test team can see it.')
+                  : (isDe
+                    ? `Sichtbar wird es für diese Personen ab ${abText} (Aktiv ab). Bis dahin sehen es nur Organizer und Test-Team.`
+                    : `It becomes visible to these people from ${abText} (active from). Until then only organizers and the test team can see it.`)}
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
