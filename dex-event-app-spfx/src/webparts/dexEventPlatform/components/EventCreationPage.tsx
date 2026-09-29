@@ -1168,11 +1168,26 @@ export default function EventCreationPage(): React.ReactElement {
   // Laden und überschrieb die frischen Demo-Kommunikationswerte mit dem
   // Snapshot von vor dem Variantenwechsel. setScope(0) VOR dem Laden räumt
   // beides aus (der Aufruf läuft erst beim Klick, nach der Deklaration).
+  // v32.23: Die Art der Sub-Events (Kalender, nur Sub-Events, Einzelauswahl,
+  // Serie, Programmpunkte) setzten die Demo-Vorlagen nicht zurück — die Demo
+  // übernahm den Stand, der zuvor im Assistenten eingestellt war. So stand das
+  // Networking-Dinner der Demo als Kalendertermin auf der Anmeldeseite
+  // (Nutzer-Befund 29.09.2026). Alle Demos sind Listen-Sub-Events bzw. ohne.
+  // Der Aufruf läuft erst beim Klick — die Setter unten sind dann deklariert.
+  const demoSubEventArtZuruecksetzen = (mitSubEvents: boolean): void => {
+    setSubEventCalendar(false);
+    setSubEventsOnlyMode(false);
+    setSubEventSingleChoice(false);
+    setSeriesRuleState(null);
+    setSeriesOn(false);
+    setAgendaCheckIn(false);
+    setSubEventsOptIn(mitSubEvents);
+  };
   const DEMO_VARIANTS: Record<'standard' | 'groups' | 'subevent' | 'subeventTeam', () => void> = {
-    standard: () => { setScope(0); loadDemoStandard(); },
-    groups: () => { setScope(0); loadDemoGroups(); },
-    subevent: () => { setScope(0); loadDemoSubEvent(); },
-    subeventTeam: () => { setScope(0); loadDemoSubEventTeam(); },
+    standard: () => { setScope(0); demoSubEventArtZuruecksetzen(false); loadDemoStandard(); },
+    groups: () => { setScope(0); demoSubEventArtZuruecksetzen(false); loadDemoGroups(); },
+    subevent: () => { setScope(0); demoSubEventArtZuruecksetzen(true); loadDemoSubEvent(); },
+    subeventTeam: () => { setScope(0); demoSubEventArtZuruecksetzen(true); loadDemoSubEventTeam(); },
   };
 
 

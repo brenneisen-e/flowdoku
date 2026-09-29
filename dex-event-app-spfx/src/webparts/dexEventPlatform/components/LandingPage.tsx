@@ -27,6 +27,7 @@ import { INACTIVE_SUMMARY_CACHE_KEY } from '../utils/accountCheckCache';
 import { cx, ensureDexUiStyles } from './dexUi';
 import { AUTO_MAINTENANCE_DONE_EVENT, AUTO_MAINTENANCE_STATE_EVENT, AutoMaintenanceState, autoMaintenanceZustand } from './AdminAutoMaintenance';
 import { useDemoEinfuehrung } from '../utils/demoIntro';
+import { DEX_ORB_PNG } from '../data/brandLogos';
 
 export default function LandingPage(): React.ReactElement {
   // v31.4 (Review): Der Hinweiskasten „Code nicht ladbar" unten nutzt
@@ -1101,14 +1102,11 @@ export default function LandingPage(): React.ReactElement {
               }}
               title={locale === 'de' ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event'}
             >
-              <span style={{
-                position: 'relative', flexShrink: 0, width: 38, height: 38, borderRadius: '50%',
-                background: 'conic-gradient(from 0deg, #86bc25, #0076a8 90deg, #00bcd4 150deg, #4caf50 210deg, #8bc34a 270deg, #ffeb3b 320deg, #86bc25 360deg)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 0 0 2px rgba(255,255,255,0.45)',
-              }}>
-                <span style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff' }} />
-              </span>
+              {/* v32.22: das aktuelle DEX-Logo (Höhenlinien-Kugel) statt des alten
+                  Farbrings aus v24.19 (Nutzer-Befund 29.09.2026). Statisches Bild,
+                  keine zweite Canvas-Animation neben der großen Kugel. */}
+              <img src={DEX_ORB_PNG} alt="" aria-hidden="true"
+                style={{ flexShrink: 0, width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
               <span style={{ minWidth: 0 }}>
                 <span style={{ display: 'block', fontWeight: 800, fontSize: '0.98rem', lineHeight: 1.25, color: 'var(--dex-gray-800)' }}>
                   {locale === 'de' ? 'DEX für dein Event nutzen' : 'Use DEX for your event'}

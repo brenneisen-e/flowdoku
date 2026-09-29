@@ -233,15 +233,8 @@ export const WizardFormShell: React.FC<WizardFormShellProps> = (p) => {
         {/* v32.2.2: nur beim frisch geöffneten neuen Event in Schritt 1
             (Nutzer-Ansage 28.09.2026) — mitten im Ausfüllen wäre der Knopf
             ein Angebot, das den eigenen Stand verlässt. */}
-        {!isEditMode && tutorial.canCoach && !tutorial.coachActive && currentStep === 0 && draftSavedAt === null && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-            <button type="button" className="dex-ui-chip" onClick={tutorial.startCoach}
-              title={isDe ? 'Wir legen zusammen ein Test-Event an — du tippst und klickst selbst. Nur du siehst es, am Ende löschst du es mit einem Klick.' : 'We create a test event together — you type and click yourself. Only you see it; delete it with one click at the end.'}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-              <GraduationCap size={14} /> {isDe ? 'Tutorial: Test-Event gemeinsam anlegen' : 'Tutorial: create a test event together'}
-            </button>
-          </div>
-        )}
+        {/* v32.22: Der Tutorial-Knopf steht jetzt im Kopf von Schritt 1 neben
+            „Demo-Vorlage“ (BasicsStep, Nutzer-Ansage 29.09.2026). */}
         {!isEditMode && tutorial.coachActive && (
           <div className="dex-ui-callout dex-ui-callout--info" style={{ marginBottom: 10, alignItems: 'center' }}>
             <span className="dex-ui-callout-icon"><GraduationCap size={16} /></span>
