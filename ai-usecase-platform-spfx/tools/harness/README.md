@@ -36,8 +36,9 @@ nimmt sonst das von Playwright installierte; `PLAYWRIGHT_CHROMIUM=<Pfad>`
 `node sicher-test.js` bündelt `utils/sicher.ts` und wirft Angriffsbeispiele
 (`<img onerror>`, `javascript:`-Links mit Tabulator und Großschreibung,
 `mailto:`-Anhängsel, SVG-`onload`, `<form>`) durch `bereinigeHtml`, `sichereUrl`
-und `sichereMail` — im echten Chromium, mit Ausführung im DOM. Exit 1, wenn
-ein Fall durchrutscht. Das Produkt hat keine Tests; diese Datei ist der Ersatz
+und `sichereMail` — im echten Chromium, mit Ausführung im DOM —, dazu die
+Suche (`ue`/`oe`/`ae` findet Umlaute, und die Faltung verliert nichts). Exit 1,
+wenn ein Fall durchrutscht. Das Produkt hat keine Tests; diese Datei ist der Ersatz
 für genau die Stelle, an der ein Fehler ein gespeichertes XSS wäre.
 
 ## Was `shot.js` tut

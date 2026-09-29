@@ -26,6 +26,9 @@ const HTML_FAELLE = [
   ['<img src=x onerror="window.__xss=1">', ''],
   ['<script>window.__xss=1</script>Text', 'Text'],
   ['<a href="javascript:alert(1)">klick</a>', 'klick'],
+  ['<div>A</div><div>B</div>', 'A<br>B'],
+  ['<h1>Titel</h1><h2>Zwei</h2>x', 'Titel<br>Zwei<br>x'],
+  ['<table><tr><td>A</td><td>B</td></tr></table>', 'A B'],
   ['<a href="  JaVaScRiPt:alert(1)">bös</a>', 'bös'],
   ['<a href="java\tscript:alert(1)">tab</a>', 'tab'],
   ['<a href="https://ok.example/x?a=1&b=2" onclick="evil()">gut</a>', '<a href="https://ok.example/x?a=1&amp;b=2" target="_blank" rel="noopener noreferrer">gut</a>'],
@@ -90,6 +93,21 @@ const MAIL_FAELLE = [
   });
   if (xss !== undefined) { fehler++; console.log('FEHLER: Es lief ein Skript (window.__xss gesetzt).'); }
   console.log(`Ausführung im DOM: ${xss === undefined ? 'nichts gelaufen' : 'SKRIPT GELAUFEN'}`);
+
+  // Suche: Ersatzschreibweise findet, und die Faltung verliert dabei nichts (Gegenprüfung 29.09.2026:
+  // „Data Engineering" wurde zu „datangineering", „engineering" fand es nicht mehr).
+  const suche = await esbuild.build({ entryPoints: [path.resolve(__dirname, '../../src/webparts/aiUseCasePlatform/utils/suche.ts')], bundle: true, format: 'iife', globalName: 'Q', write: false });
+  await page.addScriptTag({ content: suche.outputFiles[0].text });
+  const SUCHE_FAELLE = [
+    ['Data Engineering', 'engineering', true], ['Data Engineering', 'data eng', true], ['Menu Editor', 'edit', true],
+    ['Vergütungswerk', 'verguetung', true], ['Bestandsübertragung', 'uebertragung', true], ['Abrechnungsprüfung', 'pruefung', true],
+    ['KI-Kreditanalyse', 'ki kredit', true], ['Vergütungswerk', 'ueberweisung', false], ['Data Engineering', 'xyz', false],
+  ];
+  for (const [titel, q, soll] of SUCHE_FAELLE) {
+    const ist = await page.evaluate(([t, query]) => window.Q.passtZurSuche({ titel: t, kurzbeschreibung: '', bereich: '', schlagworte: [] }, window.Q.suchTokens(query)), [titel, q]);
+    if (ist !== soll) { fehler++; console.log(`FEHLER suche: „${titel}" mit „${q}" — erwartet ${soll}, erhalten ${ist}`); }
+  }
+  console.log(`suche: ${SUCHE_FAELLE.length} Fälle`);
 
   await browser.close();
   console.log(fehler === 0 ? 'ALLE FÄLLE BESTANDEN' : `${fehler} FEHLER`);

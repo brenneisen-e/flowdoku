@@ -15,20 +15,25 @@
 
 import { UseCase } from '../types';
 
-/**
- * Klein, ohne Umlaute, ohne alles außer Buchstaben und Ziffern.
- *
- * Auch die Ersatzschreibweise wird gefaltet: Wer „verguetung" tippt (Tastatur
- * ohne Umlaute, Handy), muss „Vergütungswerk" finden. Suchtext UND Titel gehen
- * durch dieselbe Funktion; die Faltung verschiebt also nur beide gleich und
- * erzeugt höchstens einen Zufallstreffer, nie einen verpassten.
- */
+/** Klein, ohne Umlaute, ohne alles außer Buchstaben und Ziffern. */
 export function normSuche(s: string): string {
   return (s || '')
     .toLowerCase()
     .replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u').replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9]/g, '')
-    .replace(/ae/g, 'a').replace(/oe/g, 'o').replace(/ue/g, 'u');
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Die Ersatzschreibweise gefaltet: Wer „verguetung" tippt (Tastatur ohne Umlaute, Handy),
+ * muss „Vergütungswerk" finden.
+ *
+ * Gefaltet wird NUR zusätzlich: Ein Treffer im ungefalteten Text zählt immer. Die Faltung
+ * verschluckt sonst das `e` eines Worts, das hinter einem Wort auf a, o oder u steht —
+ * „Data Engineering" wurde zu `datangineering`, und „engineering" fand es nicht mehr
+ * (Gegenprüfung 29.09.2026). Vergleich also gegen beide Fassungen.
+ */
+function faltErsatz(s: string): string {
+  return s.replace(/ae/g, 'a').replace(/oe/g, 'o').replace(/ue/g, 'u');
 }
 
 /** Die Suchbegriffe: ein Wort je Begriff, alle müssen passen. */
@@ -40,5 +45,6 @@ export function suchTokens(suche: string): string[] {
 export function passtZurSuche(uc: UseCase, tokens: string[]): boolean {
   if (tokens.length === 0) return true;
   const heu = normSuche(uc.titel) + ' ' + normSuche(uc.kurzbeschreibung) + ' ' + normSuche(uc.bereich) + ' ' + normSuche(uc.schlagworte.join(' '));
-  return tokens.every(tok => heu.indexOf(tok) >= 0);
+  const heuGefaltet = faltErsatz(heu);
+  return tokens.every(tok => heu.indexOf(tok) >= 0 || heuGefaltet.indexOf(faltErsatz(tok)) >= 0);
 }

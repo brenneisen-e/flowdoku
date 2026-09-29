@@ -51,7 +51,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
           <br />
           {de
             ? 'Meist hilft es, die Seite neu zu laden — etwa wenn die App gerade aktualisiert wurde. Bleibt es dabei, melde dich über „Hast du Fragen?".'
-            : 'Reloading the page usually helps — for example right after the app was updated. If it stays this way, use "Questions?" in the header.'}
+            : 'Reloading the page usually helps — for example right after the app was updated. If it stays this way, use the questions button in the header.'}
           <br />
           <button type="button" className="btn btn-primary" style={{ marginTop: 10 }} onClick={() => window.location.reload()}>
             {de ? 'Seite neu laden' : 'Reload page'}

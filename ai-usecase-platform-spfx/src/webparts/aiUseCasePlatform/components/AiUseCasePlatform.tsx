@@ -213,6 +213,20 @@ function AppContent(): React.ReactElement {
   );
 }
 
+/**
+ * Die äußere Fehlergrenze: fängt auch Fehler, die NICHT auf einer Seite entstehen (Kopfzeile,
+ * Kontakt- und Info-Dialog). Die Grenze um die Seiten in `AppContent` fängt nur deren Inhalt —
+ * ein Fehler in der Kopfzeile ließ die ganze Seite weiß (Gegenprüfung 29.09.2026).
+ */
+function AppMitGrenze(): React.ReactElement {
+  const { isDe } = useLanguage();
+  return (
+    <ErrorBoundary isDe={isDe} resetKey="app">
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
+
 export default function AiUseCasePlatform(props: IAiUseCasePlatformProps): React.ReactElement {
   // Bis v1.3 stand hier der SPFx-Context als Fenster-Merker (`window.__aiucSpfxContext`,
   // wie `__dexSpfxContext` in DEX). Niemand las ihn — aber jedes Skript auf der Seite
@@ -227,7 +241,7 @@ export default function AiUseCasePlatform(props: IAiUseCasePlatformProps): React
               <UseCaseProvider context={props.context}>
                 <SucheProvider>
                   <HilfeProvider>
-                    <AppContent />
+                    <AppMitGrenze />
                   </HilfeProvider>
                 </SucheProvider>
               </UseCaseProvider>

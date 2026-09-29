@@ -121,6 +121,13 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
     { key: 'video', url: sichereUrl(uc.ressourcen.video), titel: t('Use-Case-Video', 'Use case video'), beschreibung: t('Aufzeichnung — falls die Live-Demo mal klemmt.', 'Recording — in case the live demo fails.'), icon: <Video size={16} /> },
   ];
   const vorhandene = ressourcen.filter(r => !!r.url);
+  // Werte, die in der Liste stehen, aber keine gültige Adresse sind (früher nahm die Pflegeseite alles an):
+  // Sie fallen aus der Anzeige — Organizer erfahren wenigstens hier, welche und warum.
+  const rohLinks: Array<{ name: string; wert: string }> = [
+    { name: 'Source Code', wert: uc.ressourcen.sourceCode }, { name: 'Deployment-Guide', wert: uc.ressourcen.deploymentGuide },
+    { name: 'Wiki', wert: uc.ressourcen.wiki }, { name: 'Video', wert: uc.ressourcen.video },
+  ];
+  const ungueltigeLinks = rohLinks.filter(r => !!r.wert && !sichereUrl(r.wert)).map(r => r.name);
 
   const starte = (): void => {
     if (!kannStarten) return;
@@ -306,6 +313,15 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
 
       <div className="dex-ui-section">
         <div className="dex-ui-section-title">{t('Ressourcen', 'Resources')}</div>
+        {isOrganizer && ungueltigeLinks.length > 0 && (
+          <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" style={{ marginBottom: 10 }}>
+            <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+            <span className="dex-ui-callout-body">
+              {t(`Nicht angezeigt, weil keine gültige Adresse (sie muss mit https:// beginnen): ${ungueltigeLinks.join(', ')}. Im Use Case Studio korrigieren.`,
+                `Not shown because it is not a valid address (it must start with https://): ${ungueltigeLinks.join(', ')}. Correct it in the Use Case Studio.`)}
+            </span>
+          </div>
+        )}
         {vorhandene.length === 0 ? (
           <p className="dex-ui-help" style={{ margin: 0 }}>
             {isDe

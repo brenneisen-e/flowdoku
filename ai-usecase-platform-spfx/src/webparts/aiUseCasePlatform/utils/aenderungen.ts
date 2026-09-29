@@ -60,11 +60,13 @@ export function geaendertText(alt: UseCase | undefined, neu: Partial<UseCase>): 
   if (neu.demoTauglichkeit !== undefined) wechsel('Demo-Tauglichkeit', alt.demoTauglichkeit, neu.demoTauglichkeit);
   if (neu.aufrufArt !== undefined) wechsel('Aufruf', alt.aufrufArt, neu.aufrufArt);
   if (neu.ressourcen) {
-    nur('Deployment-Link', alt.ressourcen.deployment, neu.ressourcen.deployment);
-    nur('Source Code', alt.ressourcen.sourceCode, neu.ressourcen.sourceCode);
-    nur('Deployment-Guide', alt.ressourcen.deploymentGuide, neu.ressourcen.deploymentGuide);
-    nur('Wiki', alt.ressourcen.wiki, neu.ressourcen.wiki);
-    nur('Video', alt.ressourcen.video, neu.ressourcen.video);
+    // Kommt nur ein Teil der Links mit (`nurGeaendertes`), gilt der Rest als unverändert.
+    const r = neu.ressourcen;
+    if (r.deployment !== undefined) nur('Deployment-Link', alt.ressourcen.deployment, r.deployment);
+    if (r.sourceCode !== undefined) nur('Source Code', alt.ressourcen.sourceCode, r.sourceCode);
+    if (r.deploymentGuide !== undefined) nur('Deployment-Guide', alt.ressourcen.deploymentGuide, r.deploymentGuide);
+    if (r.wiki !== undefined) nur('Wiki', alt.ressourcen.wiki, r.wiki);
+    if (r.video !== undefined) nur('Video', alt.ressourcen.video, r.video);
   }
   if (neu.bildUrl !== undefined) nur('Bild', alt.bildUrl, neu.bildUrl);
   if (neu.reihenfolge !== undefined) wechsel('Reihenfolge', alt.reihenfolge, neu.reihenfolge);
@@ -99,6 +101,7 @@ export function nurGeaendertes(alt: UseCase | undefined, neu: Partial<UseCase>):
   };
   // Nur, was `toRow` überhaupt schreibt — sonst zählte auch ein anderer `geaendertAm` des
   // Entwurfs als Änderung, und es ginge ein leerer MERGE hinaus.
+  // Gegenstück zu `toRow` im Service — ein neues Feld dort gehört auch hierher.
   const SCHREIBBAR = ['titel', 'kurzbeschreibung', 'beschreibung', 'bereich', 'status', 'salesRelevanz', 'machbarkeit',
     'demoTauglichkeit', 'aufrufArt', 'reihenfolge', 'betreuerEmails', 'betreuerNamen', 'schlagworte'];
   SCHREIBBAR.forEach(k => {
@@ -107,12 +110,17 @@ export function nurGeaendertes(alt: UseCase | undefined, neu: Partial<UseCase>):
     if (!gleich((alt as unknown as { [k: string]: unknown })[k], n)) aus[k] = n;
   });
   if (roh.ressourcen) {
+    // Nur die geänderten Link-Schlüssel — `toRow` schreibt je Schlüssel, der mitkommt. Sonst ginge
+    // mit einem geänderten Link auch der Stand der anderen vier zurück (Lost Update, Gegenprüfung).
     const r = roh.ressourcen;
     const a = alt.ressourcen;
-    if (!gleich(a.sourceCode, r.sourceCode) || !gleich(a.deployment, r.deployment) || !gleich(a.deploymentGuide, r.deploymentGuide)
-      || !gleich(a.wiki, r.wiki) || !gleich(a.video, r.video)) {
-      aus.ressourcen = r;
-    }
+    const teil: { [k: string]: string } = {};
+    if (!gleich(a.sourceCode, r.sourceCode)) teil.sourceCode = r.sourceCode;
+    if (!gleich(a.deployment, r.deployment)) teil.deployment = r.deployment;
+    if (!gleich(a.deploymentGuide, r.deploymentGuide)) teil.deploymentGuide = r.deploymentGuide;
+    if (!gleich(a.wiki, r.wiki)) teil.wiki = r.wiki;
+    if (!gleich(a.video, r.video)) teil.video = r.video;
+    if (Object.keys(teil).length > 0) aus.ressourcen = teil;
   }
   return aus as Partial<UseCase>;
 }

@@ -205,7 +205,10 @@ ersten Start eines Organizers oder Admins, per Knopf auf der Kachelwand und im
 Studio. Sie läuft automatisch nur bei leerem Katalog und nur, wenn der Merker
 „schon befüllt" im Protokoll fehlt; sie legt nur Titel an, die es noch nicht
 gibt, und meldet einen Teilerfolg mit Zahl und Grund („Nur 7 von 18 angelegt"),
-mit einem Knopf „Fehlende anlegen". Wer eine bestehende Installation hat,
+mit einem Knopf „Fehlende anlegen". Der Hinweis hängt an der Sitzung und überlebt
+kein Neuladen; deshalb steht im Studio dauerhaft „Startbestand ergänzen" (idempotent:
+legt nur an, was fehlt — auch Titel, die jemand absichtlich gelöscht hat, kommen dann
+zurück). Wer eine bestehende Installation hat,
 bekommt die Textkorrekturen der Startliste (v1.3: 43 belegte Änderungen gegen den
 aktuellen Stand des Arbeitsplatzes) deshalb NICHT automatisch — die Einträge im
 Studio öffnen und ändern, oder die Liste leeren und neu einspielen.
@@ -237,6 +240,13 @@ das Paket ohne Nutzen blockieren.
   Adresse von Hand einträgt (nur `http(s)` wird geprüft) — jeder Betrachter
   löst dann einen Aufruf dorthin aus. Bilder, die die App selbst hochlädt,
   liegen als Anhang auf der Site.
+- **Rollenliste: Vererbung zurückholen.** Lässt sich Full Control der anlegenden
+  Person beim Sperren der Rollenliste nicht bestätigen, holt die App die
+  Vererbung zurück, statt eine unlesbare Liste zu hinterlassen. Ist das Ergebnis
+  nur nicht *lesbar* (Drosselung beim Nachlesen), steht die Liste kurz wieder für
+  alle mit Schreibrecht auf der Site offen. „Rechte prüfen" zeigt es, der nächste
+  Start einer Person mit „Manage Permissions" sperrt sie erneut. Die Abwägung ist
+  bewusst: Eine gesperrte Liste, die niemand lesen kann, hilft nur ein Site Owner.
 - **Gleichzeitige Erstaufrufe.** Öffnen zwei Organizer die leere Plattform in
   derselben Sekunde, können sie den Startbestand doppelt anlegen (es gibt keine
   serverseitige Sperre); zwei Admins, die sich im selben Moment gegenseitig

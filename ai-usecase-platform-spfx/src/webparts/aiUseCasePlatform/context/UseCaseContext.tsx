@@ -79,11 +79,16 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
   const [aktualisierungFehler, setAktualisierungFehler] = React.useState('');
   const [startbestandTeilweise, setStartbestandTeilweise] = React.useState<StartbestandErgebnis | null>(null);
 
-  // Zähler: Jeder Ladevorgang bekommt eine Nummer, und nur der ZULETZT gestartete
-  // darf den State setzen. Parallele Nachladevorgänge (nach jedem Speichern, „Erneut
-  // versuchen", Startbestand) überholen sich sonst — zwei schnelle Löschungen, und
-  // die ältere Antwort (nur A gelöscht) kam zuletzt und ließ B wieder auftauchen.
+  // Zähler: Jeder Ladevorgang bekommt eine Nummer. Parallele Nachladevorgänge (nach jedem
+  // Speichern, „Erneut versuchen", Startbestand) überholen sich sonst — zwei schnelle
+  // Löschungen, und die ältere Antwort (nur A gelöscht) kam zuletzt und ließ B wieder auftauchen.
+  //
+  // Regel: Eine ERFOLGREICHE Antwort gilt, wenn sie neuer ist als die zuletzt angewendete. Ein
+  // FEHLSCHLAG gilt nur, wenn er vom zuletzt gestarteten Lauf kommt und keine neuere Antwort
+  // schon angewendet ist. Nur „der zuletzt gestartete gewinnt" warf eine brauchbare ältere
+  // Antwort weg, sobald der neuere Lauf mit 429 scheiterte (Gegenprüfung 29.09.2026).
   const reloadNr = React.useRef(0);
+  const erfolgNr = React.useRef(0);
   const hatteDaten = React.useRef(false);
 
   const reload = React.useCallback(async (): Promise<void> => {
@@ -93,7 +98,7 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
     // nächsten Lesen überschrieben.
     const status = service.lastUseCasesReadStatus;
     const fehler = service.lastReadError;
-    if (nr !== reloadNr.current) return;
+    if (rows !== null ? nr < erfolgNr.current : (nr < erfolgNr.current || nr !== reloadNr.current)) return;
     setLetzterStatus(status);
     setLetzterFehler(fehler);
     if (rows === null) {
@@ -106,6 +111,7 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
       else setLadeStatus('fehler');
       return;
     }
+    erfolgNr.current = nr;
     hatteDaten.current = true;
     setAktualisierungFehler('');
     setUseCases(rows);
@@ -143,7 +149,9 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
       }
       const merker = angelegt > 0 ? await service.merkeErstbefuellung(angelegt) : true;
       const erg: StartbestandErgebnis = { angelegt, fehlend: offen.length, fehler, merker };
-      setStartbestandTeilweise(angelegt < offen.length ? erg : null);
+      // Auch ein fehlender Merker bleibt sichtbar (nicht nur ein Teilerfolg): Sonst erfährt es niemand,
+      // und der Startbestand kommt nach dem Leeren der Liste beim nächsten Start zurück.
+      setStartbestandTeilweise(angelegt < offen.length || !merker ? erg : null);
       await reload();
       return erg;
     } finally {
@@ -170,9 +178,18 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
    * Installation las die Erstbefüllung, bevor die Liste angelegt war.
    */
   const startRef = React.useRef(false);
+  const alsOrganizerRef = React.useRef(false);
   React.useEffect(() => {
-    if (isRolesLoading || startRef.current) return;
+    if (isRolesLoading) return;
+    // Zwei Anlässe: der erste Start (egal welche Rolle) — und das NACHHOLEN, wenn die Person erst
+    // danach Organizer wird („Erneut prüfen" nach einem Lesefehler der Rollenliste, Erstinstallation,
+    // die im ersten Anlauf nicht speicherte). Ohne das blieb die Kachelwand auf „nicht lesbar", weil
+    // die Listen nie angelegt wurden, und der Startbestand kam nie (Gegenprüfung 29.09.2026).
+    const ersterStart = !startRef.current;
+    const nachholen = isOrganizer && !alsOrganizerRef.current;
+    if (!ersterStart && !nachholen) return;
     startRef.current = true;
+    if (isOrganizer) alsOrganizerRef.current = true;
     (async (): Promise<void> => {
       if (isOrganizer) {
         try {

@@ -109,6 +109,7 @@ const RECHTE_TEXTE: Record<RechteCode, { de: string; en: string }> = {
   'roles:read': { de: 'Rollenliste (Lesen)', en: 'Roles list (read)' },
   'roles:full': { de: 'Rollenliste (Vollzugriff)', en: 'Roles list (full control)' },
   'useCases:edit': { de: 'Use-Case-Liste (Bearbeiten)', en: 'Use case list (edit)' },
+  'useCases:contribute': { de: 'Use-Case-Liste (Beitragen)', en: 'Use case list (contribute)' },
   'useCases:full': { de: 'Use-Case-Liste (Vollzugriff)', en: 'Use case list (full control)' },
   'log:contribute': { de: 'Protokoll (Beitragen)', en: 'Log (contribute)' },
   'log:full': { de: 'Protokoll (Vollzugriff)', en: 'Log (full control)' },
@@ -139,7 +140,7 @@ function listeMitRecht(key: RechteListe, rolle: UserRole, isDe: boolean): string
   // verwalten), ein Organizer nur, was er zum Pflegen braucht.
   const admin = rolle === 'Admin';
   if (key === 'roles') return rechteText(admin ? 'roles:full' : 'roles:read', isDe);
-  if (key === 'useCases') return rechteText(admin ? 'useCases:full' : 'useCases:edit', isDe);
+  if (key === 'useCases') return rechteText(admin ? 'useCases:full' : 'useCases:contribute', isDe);
   return rechteText(admin ? 'log:full' : 'log:contribute', isDe);
 }
 

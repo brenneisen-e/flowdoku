@@ -278,8 +278,7 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
     try {
       const erg = await seedStartUseCases();
       const m = startbestandMeldung(erg, t);
-      showAlert(m.art === 'ok' ? `${m.text} ${t('Trag jetzt die Links nach, sobald die Demos stehen.', 'Add the links once the demos exist.')}` : m.text,
-        { variant: m.art === 'ok' ? 'success' : m.art === 'info' ? 'info' : 'error' });
+      showAlert(m.text, { variant: m.art === 'ok' ? 'success' : m.art === 'info' ? 'info' : 'error' });
     } finally {
       setSpeichert(false);
     }
@@ -308,6 +307,20 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
           <button type="button" className="dex-ui-textbtn" onClick={() => navigate('protokoll')}>
             {t('Protokoll', 'Log')}
           </button>
+          {/* Dauerhaft, nicht nur bei leerer Liste: Ein Teilerfolg (7 von 18 angelegt, 429) überlebt kein
+              Neuladen — der Hinweis hängt an einem State. Der Lauf ist idempotent: Er legt nur Start-Use-Cases
+              an, deren Titel es noch nicht gibt (Gegenprüfung 29.09.2026). */}
+          {useCases.length > 0 && (
+            <button
+              type="button"
+              className="dex-ui-textbtn"
+              disabled={speichert || ladeStatus !== 'ok'}
+              title={t('Legt die Start-Use-Cases an, die es noch nicht gibt — vorhandene bleiben unberührt.', 'Creates the starter use cases that do not exist yet — existing ones stay untouched.')}
+              onClick={() => { void startbestand(); }}
+            >
+              {t('Startbestand ergänzen', 'Complete starter set')}
+            </button>
+          )}
           {/* Bei einem Lesefehler kennt niemand den Bestand — ein neuer Eintrag könnte
               eine Dublette sein. Erst wieder anbieten, wenn die Liste gelesen ist. */}
           <button type="button" className="btn btn-primary" disabled={ladeStatus !== 'ok'} onClick={() => oeffne()}>
@@ -334,9 +347,11 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
         <div className="dex-ui-callout dex-ui-callout--warn" role="status" style={{ marginBottom: 12 }}>
           <span className="dex-ui-callout-body">
             {startbestandMeldung(startbestandTeilweise, t).text}{' '}
-            <button type="button" className="dex-ui-textbtn" disabled={speichert} onClick={() => { void startbestand(); }}>
-              {speichert ? t('Wird angelegt …', 'Creating …') : t('Fehlende anlegen', 'Add missing ones')}
-            </button>
+            {startbestandTeilweise.angelegt < startbestandTeilweise.fehlend && (
+              <button type="button" className="dex-ui-textbtn" disabled={speichert} onClick={() => { void startbestand(); }}>
+                {speichert ? t('Wird angelegt …', 'Creating …') : t('Fehlende anlegen', 'Add missing ones')}
+              </button>
+            )}
           </span>
         </div>
       )}

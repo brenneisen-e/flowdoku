@@ -52,9 +52,13 @@ export default function StartPage(): React.ReactElement {
 
   const isMobile = useIsMobile();
   const { navigate } = useNavigation();
-  const { isAdmin, isOrganizer, isRolesLoading, rolesReadStatus, erstinstallation, refreshRoles } = useRoles();
+  const { isAdmin, isOrganizer, isRolesLoading, rolesReadStatus, erstinstallation, refreshRoles, service } = useRoles();
   const { t } = useLanguage();
   const { openKontakt } = useHilfe();
+  // Erneut prüfen: Bis zur Antwort gesperrt (Doppelklick = zwei Lesevorgänge), und bleibt es beim Fehler,
+  // sagt ein Satz es — sonst wirkte der Knopf tot (Gegenprüfung 29.09.2026).
+  const [pruefLaeuft, setPruefLaeuft] = React.useState(false);
+  const [pruefFehlt, setPruefFehlt] = React.useState(false);
 
   // Ein 403 auf der Rollenliste heißt „nicht lesbar", nicht „kein Organizer".
   // Ohne den Satz sieht jemand, der Organizer IST, nur „Organizer werden?" —
@@ -103,9 +107,20 @@ export default function StartPage(): React.ReactElement {
     // ist: ausgegraut, aber ohne Angebot — sonst blitzt „Organizer werden?"
     // bei jedem Organizer kurz auf.
     anfrage: !isRolesLoading,
-    cta: rolleUnbekannt ? t('Erneut prüfen', 'Check again') : t('Organizer werden?', 'Become an organizer?'),
-    ctaAktion: rolleUnbekannt ? () => { void refreshRoles(); } : undefined,
-    note: rechteHinweis,
+    cta: rolleUnbekannt ? (pruefLaeuft ? t('Prüfe …', 'Checking …') : t('Erneut prüfen', 'Check again')) : t('Organizer werden?', 'Become an organizer?'),
+    ctaAktion: rolleUnbekannt ? () => {
+      if (pruefLaeuft) return;
+      setPruefLaeuft(true);
+      setPruefFehlt(false);
+      void refreshRoles().then(() => {
+        const st = service.lastRolesReadStatus;
+        setPruefFehlt(!(st >= 200 && st < 300) && st !== 403);
+        setPruefLaeuft(false);
+      }, () => { setPruefFehlt(true); setPruefLaeuft(false); });
+    } : undefined,
+    note: pruefFehlt && rolleUnbekannt
+      ? `${rechteHinweis || ''} ${t('Weiterhin nicht lesbar — versuch es gleich noch einmal.', 'Still not readable — please try again shortly.')}`.trim()
+      : rechteHinweis,
   };
 
   const itemProtokoll: MenuItem = {

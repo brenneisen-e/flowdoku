@@ -157,7 +157,7 @@ const RECHTE_SOLL: RechteSoll[] = [
  */
 export type RechteCode =
   | 'roles:read' | 'roles:full'
-  | 'useCases:edit' | 'useCases:full'
+  | 'useCases:edit' | 'useCases:contribute' | 'useCases:full'
   | 'log:contribute' | 'log:full'
   | 'konto';
 
@@ -656,7 +656,19 @@ export class SharePointService {
       // noch als fehlend melden: Ein Anlegeversuch auf eine vorhandene Spalte scheitert bei
       // SharePoint mit 400/500 (Lehre 4 im Kopfkommentar), und „Spalte fehlt" behauptete
       // bei normalen Nutzern etwas Unbelegtes (Review 29.09.2026).
-      if (probe.status === 403 || probe.status === 429) return true;
+      if (probe.status === 403) return true;
+      if (probe.status === 429) {
+        // Gedrosselt: EIN neuer Versuch nach kurzer Pause. Ohne ihn galt die Spalte als „vorhanden",
+        // obwohl niemand es wusste — fehlte sie, scheiterten später Anlegen und Protokoll mit 400
+        // (Gegenprüfung 29.09.2026). Bleibt es bei 429, zählt sie als vorhanden: nichts anlegen,
+        // nichts Unbelegtes melden; der nächste Start eines Organizers prüft erneut.
+        await new Promise<void>(res => setTimeout(res, 1500));
+        const zweite = await this._sp.get(
+          `${this.list(listName)}/fields/getbytitle('${encodeURIComponent(internalName)}')`,
+          SPHttpClient.configurations.v1,
+        );
+        if (zweite.ok || zweite.status === 429 || zweite.status === 403) return true;
+      }
     } catch { /* nicht lesbar -> Anlegen versuchen */ }
 
     // v1.3 (Fund 11): Wer keine Listen verwalten darf, bekommt auf das Anlegen
@@ -868,6 +880,13 @@ export class SharePointService {
         // Nicht gesetzt oder nicht nachlesbar: die Vererbung zurückholen, statt eine Liste
         // ohne Zugriff zu hinterlassen. Das Zurücksetzen darf nur, wer noch Rechte hat —
         // scheitert es, steht die Warnung in der Konsole, und der Audit meldet die Lücke.
+        //
+        // Bewusste Abwägung (Gegenprüfung 29.09.2026): Bei einem nur nicht LESBAREN Ergebnis
+        // (429 beim Nachlesen) öffnet das die Liste kurz wieder für alle mit Schreibrecht auf der
+        // Site. Die Alternative — geschlossen lassen — kann eine Liste hinterlassen, die niemand
+        // mehr lesen kann (alle „User", keine Erstinstallation, nur ein Site-Collection-Admin hilft).
+        // Das Öffnen ist sichtbar („Rechte prüfen": Rollenliste erbt) und heilt sich beim nächsten
+        // Start einer Person mit „Manage Permissions" von selbst; die Aussperrung nicht.
         console.warn('[AIUC] Rollenliste: Full Control der anlegenden Person ließ sich nicht bestätigen — die Vererbung wird zurückgeholt.');
         await this._post(`${this.list(listName)}/resetroleinheritance`, {}).catch(() => undefined);
       }
@@ -1801,7 +1820,7 @@ export class SharePointService {
           auffaellig = true;
         }
         // Ein Organizer soll die Rollenliste LESEN, nicht bearbeiten — und auf den
-        // anderen zwei Listen nicht mehr als Bearbeiten bzw. Beitragen. Mehr ist
+        // anderen zwei Listen nicht mehr als Beitragen (seit v1.3; früher Edit). Mehr ist
         // meist der Rest einer früheren Admin-Rolle — und damit der Weg, sich
         // selbst wieder hochzustufen.
         if (z.rolle === 'Organizer') {
@@ -1828,7 +1847,7 @@ export class SharePointService {
    *
    * Vor der Vergabe bekommt die Liste eigene Berechtigungen, falls sie noch
    * erbt (Use-Case-Liste, Protokoll: mit Kopie — Nebenwirkung siehe
-   * `grantOrganizerPermissions`; Rollenliste: ohne — sie ist ausdrücklich nur
+   * `ensureListeEigeneRechte`; Rollenliste: ohne — sie ist ausdrücklich nur
    * für die Owners gedacht).
    *
    * Nur additiv. Was zu VIEL da ist, fasst dieser Schritt nicht an. Ob die
@@ -2075,6 +2094,7 @@ export class SharePointService {
         ((d.value || []) as SpUseCaseRow[]).forEach(z => alle.push(z));
         url = d['odata.nextLink'] || d['@odata.nextLink'] || null;
         if (url && (alle.length >= 5000 || seiten >= 10)) {
+          this.lastUseCasesReadStatus = 0;
           this.lastReadError = `Mehr als ${alle.length} Use Cases — der Lesepfad ist gekappt.`;
           console.warn(`[AIUC] ${this.lastReadError}`);
           return null;
@@ -2084,11 +2104,18 @@ export class SharePointService {
       rows.sort((a, b) => (a.reihenfolge - b.reihenfolge) || a.titel.localeCompare(b.titel, 'de'));
       return rows;
     } catch (e) {
+      // Status 0: Ein Fehler nach einer angenommenen Seite (200) soll nicht als „HTTP 200" neben
+      // der Fehlermeldung stehen.
+      this.lastUseCasesReadStatus = 0;
       this.lastReadError = String(e);
       return null;
     }
   }
 
+  /**
+   * Ein neues Feld hier heißt: auch in `SCHREIBBAR` in `utils/aenderungen.ts` eintragen — sonst
+   * schreibt `saveUseCase` es beim Ändern nie (dort wird nur Geändertes aus dieser Liste gesendet).
+   */
   private toRow(uc: Partial<UseCase>): Record<string, unknown> {
     // Kein `__metadata` mehr: Den Typ setzen `_postItem`/`_mergeItem`, und
     // zwar den, den die Liste selbst nennt (s. `entityType`).
@@ -2104,12 +2131,16 @@ export class SharePointService {
     if (uc.machbarkeit !== undefined) body.Machbarkeit = uc.machbarkeit === 'unbewertet' ? null : uc.machbarkeit;
     if (uc.demoTauglichkeit !== undefined) body.DemoTauglichkeit = uc.demoTauglichkeit === 'unbewertet' ? null : uc.demoTauglichkeit;
     if (uc.aufrufArt !== undefined) body.AufrufArt = uc.aufrufArt;
+    // Je Link nur, was mitkommt: `nurGeaendertes` schickt beim Ändern nur die geänderten Schlüssel.
+    // Alle fünf ungefragt zu schreiben löschte den Link, den eine andere Person inzwischen nachgetragen
+    // hatte (Gegenprüfung 29.09.2026).
     if (uc.ressourcen) {
-      body.LinkSourceCode = uc.ressourcen.sourceCode || '';
-      body.LinkDeployment = uc.ressourcen.deployment || '';
-      body.LinkGuide = uc.ressourcen.deploymentGuide || '';
-      body.LinkWiki = uc.ressourcen.wiki || '';
-      body.LinkVideo = uc.ressourcen.video || '';
+      const r = uc.ressourcen;
+      if (r.sourceCode !== undefined) body.LinkSourceCode = r.sourceCode || '';
+      if (r.deployment !== undefined) body.LinkDeployment = r.deployment || '';
+      if (r.deploymentGuide !== undefined) body.LinkGuide = r.deploymentGuide || '';
+      if (r.wiki !== undefined) body.LinkWiki = r.wiki || '';
+      if (r.video !== undefined) body.LinkVideo = r.video || '';
     }
     if (uc.bildUrl !== undefined) body.BildUrl = uc.bildUrl;
     if (uc.reihenfolge !== undefined) body.Reihenfolge = uc.reihenfolge;

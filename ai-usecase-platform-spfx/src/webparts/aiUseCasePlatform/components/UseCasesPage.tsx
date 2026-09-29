@@ -179,10 +179,22 @@ export default function UseCasesPage(): React.ReactElement {
         <div className="dex-ui-callout dex-ui-callout--warn" role="status" style={{ marginBottom: 12 }}>
           <span className="dex-ui-callout-body">
             {startbestandMeldung(startbestandTeilweise, t).text}{' '}
-            <button type="button" className="dex-ui-textbtn" disabled={seedBusy} onClick={() => { void seedJetzt(); }}>
-              {seedBusy ? t('Wird angelegt …', 'Creating …') : t('Fehlende anlegen', 'Add missing ones')}
-            </button>
+            {/* Der Knopf nur, wo etwas fehlt: Bei „vollständig, aber Merker nicht gespeichert" gäbe es
+                nichts nachzulegen. */}
+            {startbestandTeilweise.angelegt < startbestandTeilweise.fehlend && (
+              <button type="button" className="dex-ui-textbtn" disabled={seedBusy} onClick={() => { void seedJetzt(); }}>
+                {seedBusy ? t('Wird angelegt …', 'Creating …') : t('Fehlende anlegen', 'Add missing ones')}
+              </button>
+            )}
           </span>
+        </div>
+      )}
+
+      {/* Die Antwort auf einen Klick auf „Fehlende anlegen" bzw. den Knopf im Leerzustand. Sie stand
+          nur im Leerzustand — beim Klick im Banner (Kacheln vorhanden) blieb der Knopf ohne Rückmeldung. */}
+      {isOrganizer && seedMeldung && (
+        <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" role="status" style={{ marginBottom: 12 }}>
+          <span className="dex-ui-callout-body">{seedMeldung}</span>
         </div>
       )}
 
@@ -271,11 +283,6 @@ export default function UseCasesPage(): React.ReactElement {
               <button type="button" className="btn btn-secondary" onClick={() => navigate('studio')}>
                 {t('Eigenen Use Case anlegen', 'Create my own use case')}
               </button>
-            </div>
-          )}
-          {seedMeldung && (
-            <div className="dex-ui-callout dex-ui-callout--warn" role="status" style={{ marginTop: 12, textAlign: 'left' }}>
-              <span className="dex-ui-callout-body">{seedMeldung}</span>
             </div>
           )}
         </div>

@@ -281,7 +281,7 @@ export const RECHTE_MATRIX: MatrixKategorie[] = [
         en: 'AIUC_UseCases (use case list)',
         descDe: 'Für User vergibt die App nichts — sie lesen über die normalen Rechte der Site. Ein Admin braucht Vollzugriff, weil Rechte vergeben, entziehen und lesen auf dieser Liste „Berechtigungen verwalten“ verlangt. ACHTUNG: Die erste Vergabe kappt die Vererbung dieser Liste von der Site (die bisherigen Zuweisungen bleiben als Kopie). Rechte, die später am Web vergeben werden — eine neue Gruppe, „Everyone except external users“ —, wirken hier nicht mehr; neue Leser müssen dann auf der Liste selbst eingetragen werden.',
         descEn: 'The app grants nothing to users — they read through the normal rights of the site. An admin needs full control because granting, revoking and reading rights on this list requires “manage permissions”. NOTE: the first grant breaks this list’s inheritance from the site (the existing assignments stay as a copy). Rights granted on the web later — a new group, “Everyone except external users” — no longer reach it; new readers must then be added on the list itself.',
-        user: { de: 'Lesen über die Site', en: 'Read via the site' }, organizer: { de: 'Bearbeiten', en: 'Edit' }, admin: { de: 'Vollzugriff', en: 'Full control' },
+        user: { de: 'Lesen über die Site', en: 'Read via the site' }, organizer: { de: 'Beitragen', en: 'Contribute' }, admin: { de: 'Vollzugriff', en: 'Full control' },
       },
       {
         key: 'sp-log',

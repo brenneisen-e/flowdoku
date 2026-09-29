@@ -67,6 +67,13 @@ const VERWERFEN: { [tag: string]: boolean } = {
   frameset: true, applet: true, title: true, head: true,
 };
 
+/** Ausgepackte Blockelemente enden mit einem Zeilenumbruch — sonst klebt `<div>A</div><div>B</div>` zu „AB". */
+const BLOCK_UMBRUCH: { [tag: string]: boolean } = {
+  div: true, section: true, article: true, header: true, footer: true, main: true, nav: true, aside: true,
+  h1: true, h2: true, h5: true, h6: true, pre: true, dt: true, dd: true, tr: true, table: true, figure: true,
+  figcaption: true, address: true, fieldset: true, hr: true, dl: true, tbody: true, thead: true,
+};
+
 /**
  * HTML auf eine kleine Liste von Auszeichnungen zurückführen.
  *
@@ -104,7 +111,7 @@ export function bereinigeHtml(html: string | undefined | null): string {
       const el = k as Element;
       const tag = el.tagName.toLowerCase();
       if (VERWERFEN[tag]) continue;
-      if (!ERLAUBT[tag]) { out += baue(el); continue; }
+      if (!ERLAUBT[tag]) { out += baue(el) + (BLOCK_UMBRUCH[tag] ? '<br>' : (tag === 'td' || tag === 'th' ? ' ' : '')); continue; }
       if (tag === 'br') { out += '<br>'; continue; }
       if (tag === 'a') {
         const href = sichereUrl(el.getAttribute('href'));
@@ -119,5 +126,6 @@ export function bereinigeHtml(html: string | undefined | null): string {
     return out;
   };
 
-  return doc.body ? baue(doc.body) : '';
+  // Ein Umbruch am Ende (von einem ausgepackten letzten Block) ist nur Leerraum.
+  return doc.body ? baue(doc.body).replace(/(<br>|\s)+$/, '') : '';
 }
