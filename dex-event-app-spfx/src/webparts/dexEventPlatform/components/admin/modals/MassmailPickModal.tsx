@@ -50,18 +50,6 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
     if (empfaenger.length === 0) return;
     setShowEmailModal(true); setMassmailMode('editor');
   };
-  const Row = (props: { value: MassmailAudience; label: string; desc: string }): React.ReactElement => {
-    const on = massmailAudience === props.value;
-    return (
-      <label className={cx('dex-ui-toggle-row', on && 'is-active')}>
-        <input type="radio" name="massmail-target" checked={on} onChange={() => setMassmailAudience(props.value)} />
-        <span className="dex-ui-toggle-row-body">
-          <span className="dex-ui-toggle-row-title">{props.label}</span>
-          <span className="dex-ui-toggle-row-desc">{props.desc}</span>
-        </span>
-      </label>
-    );
-  };
   return (
     <Modal open={true} onClose={closeAll} maxWidth={860}
       ariaLabel={isDe ? 'Empfänger wählen' : 'Choose recipients'}
@@ -89,18 +77,6 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
             {empfaenger.length === 0 && <span className="dex-ui-help" style={{ margin: 0 }}>{isDe ? 'Wähle mindestens eine Gruppe mit Personen.' : 'Pick at least one group with people in it.'}</span>}
           </div>
         )}
-      </div>
-      <div className="dex-ui-section">
-        <div className="dex-ui-section-title">{isDe ? 'Sonderfälle: mit eingefügter Liste' : 'Special cases: with a pasted list'}</div>
-        <div className="dex-ui-help" style={{ marginTop: 0, marginBottom: 8 }}>
-          {isDe ? 'Nur nötig, wenn die Gruppen oben nicht passen. Im nächsten Schritt fügst du eine Adressliste ein (aus Outlook kopiert, beliebig formatiert).' : 'Only needed when the groups above do not fit. In the next step you paste a list of addresses (copied from Outlook, any format).'}
-        </div>
-        <div className="dex-ui-grid-2" style={{ gap: 10, alignItems: 'stretch' }}>
-          <Row value="nachruecker" label={isDe ? 'Neu Angemeldete nachinformieren' : 'Catch up new registrations'}
-            desc={isDe ? 'Du hast schon eine Info-Mail verschickt, seitdem sind Leute dazugekommen. Füge die Empfänger der alten Mail ein — DEX schreibt nur die angemeldeten Teilnehmer an, die dort fehlen.' : 'You already sent an info mail and people have registered since. Paste the old mail’s recipients — DEX only writes to registered participants missing from it.'} />
-          <Row value="reminder" label={isDe ? 'Erinnerung an deine eigene Einladungsliste' : 'Reminder to your own invitation list'}
-            desc={isDe ? 'Wenn DEX die Eingeladenen nicht kennt (Sichtbarkeit nur nach Standort). Füge deine Einladungsliste ein — DEX erinnert nur, wer noch gar nicht reagiert hat: weder angemeldet noch abgemeldet.' : 'When DEX does not know the invitees (location-only visibility). Paste your invitation list — DEX only reminds people who have not responded at all: neither registered nor cancelled.'} />
-        </div>
       </div>
     </Modal>
   );

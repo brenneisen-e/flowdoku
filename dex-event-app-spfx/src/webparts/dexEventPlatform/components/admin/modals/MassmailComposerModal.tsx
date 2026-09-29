@@ -334,9 +334,6 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                         extras={massmailExtras} setExtras={setMassmailExtras} offene={massmailOffene}
                         disabled={emailSending}
                       />
-                      <button type="button" className="dex-ui-textbtn" onClick={zurueck} disabled={emailSending}>
-                        {isDe ? 'Sonderfälle mit eingefügter Liste …' : 'Special cases with a pasted list …'}
-                      </button>
                     </div>
                   )}
                   <div className="dex-ui-inline">

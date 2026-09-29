@@ -315,6 +315,8 @@ const InvitePickDemo: React.FC = () => {
     inviteCc: [], inviteBody: '', inviteSubject: 'Einladung', inviteHeading: '', inviteSubheading: '', inviteAddInput: '',
     showInviteModal: true, inviteSending: false, inviteAudienceOpen: false, inviteHeaderImage: { hero: 'orb' }, inviteHeaderOpts: {},
     siteUrl: 'https://x', applyInviteHero: (h: string) => h,
+    getGroupMembers: async () => ({ groupName: 'Team Köln', members: [['Zimmer','Anna'],['Adler','Ben'],['Müller','Clara'],['Becker','Dirk'],['Özdemir','Elif']].map(([l,f]) => ({ email: `${f.toLowerCase()}.${l.toLowerCase()}@example.com`, displayName: `${l}, ${f}`, firstName: f, lastName: l, location: 'Köln' })) }),
+    searchUser: async () => ({ displayName: '', location: '', jobTitle: '' }),
   }, { get: (t: any, k: string) => (k in t ? t[k] : () => undefined) });
   return <InviteComposerModal {...props} />;
 };
