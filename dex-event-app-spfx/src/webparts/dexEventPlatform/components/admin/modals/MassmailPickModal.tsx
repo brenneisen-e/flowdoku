@@ -15,6 +15,8 @@ import { MassmailZielChips, MassmailExtra, massmailEmpfaenger, massmailZielLabel
 export interface MassmailPickModalProps {
   massmailAudience: MassmailAudience;
   massmailStatuses: Set<string>;
+  /** v32.36: eingefügte eigene Liste (auch für „Eigene Liste" in den Chips). */
+  massmailPasteRaw: string;
   registrations: SPRegistration[];
   setMassmailAudience: React.Dispatch<React.SetStateAction<MassmailAudience>>;
   setMassmailMode: React.Dispatch<React.SetStateAction<"closed" | "pick" | "paste" | "editor">>;
@@ -34,7 +36,7 @@ export interface MassmailPickModalProps {
 }
 
 export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
-  const { massmailAudience, massmailStatuses, registrations, setMassmailAudience, setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal, massmailOffene, massmailExtras, setMassmailExtras, selectedEvent, myEmail, onZurueckZurArt } = p;
+  const { massmailAudience, massmailPasteRaw, massmailStatuses, registrations, setMassmailAudience, setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal, massmailOffene, massmailExtras, setMassmailExtras, selectedEvent, myEmail, onZurueckZurArt } = p;
   // v31.2: Die Props kennen kein isDe (Schnittstelle bleibt) — die Sprache
   // kommt wie in Modal.tsx aus dem Kontext.
   const isDe = useLocaleSafe() === 'de';
@@ -45,7 +47,7 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
   const einfuegen = massmailAudience === 'nachruecker' || massmailAudience === 'reminder';
   const empfaenger = einfuegen ? [] : massmailEmpfaenger({
     audience: massmailAudience, statuses: massmailStatuses, extras: massmailExtras, registrations,
-    offene: massmailOffene, pasteRaw: '', ev: selectedEvent, myEmail,
+    offene: massmailOffene, pasteRaw: massmailPasteRaw, ev: selectedEvent, myEmail,
   });
   const proceed = (): void => {
     if (einfuegen) { setMassmailMode('paste'); return; }
@@ -76,6 +78,7 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
           audience={massmailAudience} setAudience={setMassmailAudience}
           statuses={massmailStatuses} setStatuses={setMassmailStatuses}
           extras={massmailExtras} setExtras={setMassmailExtras} offene={massmailOffene}
+          pasteRaw={massmailPasteRaw} setPasteRaw={setMassmailPasteRaw}
         />
         {!einfuegen && (
           <div className="dex-ui-inline" style={{ gap: 6 }}>
