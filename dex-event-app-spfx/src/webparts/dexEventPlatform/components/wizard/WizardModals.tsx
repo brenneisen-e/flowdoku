@@ -1402,9 +1402,13 @@ export const WizardModals: React.FC<WizardModalsProps> = (p) => {
                 {!neu && ab && ab.outlookAktualisiert === 0 && zeile(<Info size={16} />, isDe
                   ? 'Der Outlook-Termin bleibt unverändert.'
                   : 'The Outlook appointment stays unchanged.', 'info')}
-                {neu && mails.length > 0 && zeile(<Send size={16} />, isDe
-                  ? 'Eine Mail mit allen Infos und dem Link ist an das Organizer-Team gegangen.'
-                  : 'An email with all details and the link has gone to the organizer team.')}
+                {neu && mails.length > 0 && ab && ab.organizerMailOk !== false && zeile(<Send size={16} />, isDe
+                  ? 'Eine Mail mit allen Infos und dem Link ist in den Versand gegangen (an ' + mails.join(', ') + ').'
+                  : 'An email with all details and the link has been queued (to ' + mails.join(', ') + ').')}
+                {/* v32.21: ehrlich melden, wenn die Zeile nicht geschrieben wurde. */}
+                {neu && ab && ab.organizerMailOk === false && zeile(<AlertCircle size={16} />, isDe
+                  ? <>Die Mail <strong>&bdquo;Event angelegt&ldquo;</strong> konnte <strong>nicht</strong> in die Versand-Warteschlange (DEX_Emails) geschrieben werden. Den Grund zeigt die Browser-Konsole (F12) unter <code>[DEX] queueEmail</code>.</>
+                  : <>The <strong>&ldquo;Event created&rdquo;</strong> email could <strong>not</strong> be written to the send queue (DEX_Emails). The browser console (F12) shows the reason under <code>[DEX] queueEmail</code>.</>, 'warn')}
               </div>
               {neu && (
                 <div className="dex-ui-callout dex-ui-callout--info">

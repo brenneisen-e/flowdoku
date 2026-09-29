@@ -157,6 +157,10 @@ export interface AbschlussInfo {
   outlookFehler: string[];
   /** Anlegen: Adressen, an die die Mail „Event angelegt" in die Warteschlange ging. */
   organizerMails: string[];
+  /** v32.21: Wurde die Mail wirklich in DEX_Emails geschrieben? undefined =
+   *  nicht versucht. Bis v32.20 meldete der Dialog Erfolg, sobald es
+   *  Empfänger gab — auch wenn SharePoint die Zeile abgelehnt hatte. */
+  organizerMailOk?: boolean;
   /** Event steht als Entwurf (noch nicht sichtbar). */
   entwurf: boolean;
 }
