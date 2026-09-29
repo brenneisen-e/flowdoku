@@ -33,6 +33,11 @@ function aktionLabel(aktion: string, isDe: boolean): string {
     case 'geloescht': return isDe ? 'Gelöscht' : 'Deleted';
     case 'loeschen-fehlgeschlagen': return isDe ? 'Löschen fehlgeschlagen' : 'Delete failed';
     case 'erstbefuellung': return isDe ? 'Erstbefüllung' : 'Initial fill';
+    // Rollenänderungen (v1.3): Sie gehören keinem Use Case, stehen aber im selben
+    // Protokoll — wer wann jemanden zum Admin gemacht hat, muss auffindbar sein.
+    case 'rolle-vergeben': return isDe ? 'Rolle vergeben' : 'Role assigned';
+    case 'rolle-geaendert': return isDe ? 'Rolle geändert' : 'Role changed';
+    case 'rolle-entfernt': return isDe ? 'Rolle entfernt' : 'Role removed';
     // Eine Aktion, die diese Version nicht kennt (aus einer späteren oder von
     // Hand geschrieben): roh anzeigen, nie verschlucken.
     default: return aktion || '—';
@@ -40,9 +45,9 @@ function aktionLabel(aktion: string, isDe: boolean): string {
 }
 
 function aktionFarbe(aktion: string): string {
-  if (aktion === 'angelegt' || aktion === 'erstbefuellung') return 'dex-ui-pill--green';
-  if (aktion === 'geloescht' || aktion === 'loeschen-fehlgeschlagen') return 'dex-ui-pill--red';
-  if (aktion === 'geaendert') return 'dex-ui-pill--blue';
+  if (aktion === 'angelegt' || aktion === 'erstbefuellung' || aktion === 'rolle-vergeben') return 'dex-ui-pill--green';
+  if (aktion === 'geloescht' || aktion === 'loeschen-fehlgeschlagen' || aktion === 'rolle-entfernt') return 'dex-ui-pill--red';
+  if (aktion === 'geaendert' || aktion === 'rolle-geaendert') return 'dex-ui-pill--blue';
   return 'dex-ui-pill--gray';
 }
 

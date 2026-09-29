@@ -51,8 +51,10 @@ const TEXTE = {
     bearbeiten: 'Bearbeiten', loeschen: 'Löschen', verlauf: 'Verlauf', mehr: 'Betreuer, Bewertung, Aufruf und Reihenfolge',
     vergeben: 'Rolle vergeben', allesKlar: 'Alles klar', menue: 'Menü', fragen: 'Hast du Fragen?', ueber: 'Über die App',
     userAnsicht: 'User-Ansicht', userZurueck: 'User-Ansicht · zurück', organizerWerden: 'Organizer werden?',
-    suche: 'Use Cases durchsuchen', entfernen: 'Entfernen', rechtePruefen: /Rechte prüfen|Alle prüfen|Prüfen/i,
+    suche: 'Use Cases durchsuchen', entfernen: 'Entfernen', rechtePruefen: /^Rechte prüfen$/,
     neuLaden: 'Neu laden', bereich: 'Backoffice-Prozesse',
+    tabPersonen: 'Personen', tabRechte: 'Rechte je Rolle', eintragen: /^Als .* eintragen$/, geprueft: /Einträge geprüft/,
+    nachsetzen: /Fehlende Rechte nachsetzen/, jetztNachsetzen: 'Jetzt nachsetzen', entziehen: /Überzählige Rechte entziehen/, jetztEntziehen: 'Jetzt entziehen',
   },
   en: {
     kUseCases: 'Use Cases', kStudio: 'Use Case Studio', kProtokoll: 'Log', kRollen: 'Role management',
@@ -60,8 +62,10 @@ const TEXTE = {
     bearbeiten: 'Edit', loeschen: 'Delete', verlauf: 'History', mehr: 'Maintainers, assessment, launch and order',
     vergeben: 'Assign role', allesKlar: 'Got it', menue: 'Menu', fragen: 'Any questions?', ueber: 'About the app',
     userAnsicht: 'User view', userZurueck: 'User view · back', organizerWerden: 'Become an organizer?',
-    suche: 'Search use cases', entfernen: 'Remove', rechtePruefen: /Check rights|Check all|Check/i,
+    suche: 'Search use cases', entfernen: 'Remove', rechtePruefen: /^Check rights$/,
     neuLaden: 'Reload', bereich: 'Backoffice-Prozesse',
+    tabPersonen: 'People', tabRechte: 'Rights per role', eintragen: /^Add as /, geprueft: /entries checked/,
+    nachsetzen: /Re-grant missing rights/, jetztNachsetzen: 'Re-grant now', entziehen: /Revoke surplus rights/, jetztEntziehen: 'Revoke now',
   },
 };
 
@@ -82,12 +86,13 @@ class Lauf {
       id: spec.id, rolle: spec.role, geraet: spec.device, sprache: spec.lang, zustand: spec.state,
       shots: [], befunde: [], schritte: [], uebersprungen: [],
       konsole: { fehler: [], warnungen: [], pageerrors: [], anfragenGescheitert: [], harnessUnbehandelt: [] },
-      requests: 0, dauerMs: 0,
+      requests: 0, dauerMs: 0, breiten: {},
     };
     bericht.laeufe.push(this.rec);
     this.abbruch = false;
     this.aktSchritt = '';
     this.ueberlaufGemeldet = new Set();
+    this.optikGemeldet = new Set();
   }
 
   get mobil() { return this.spec.device === 'mobile'; }
@@ -101,6 +106,8 @@ class Lauf {
       hasTouch: m,
       locale: this.spec.lang === 'en' ? 'en-GB' : 'de-DE',
       timezoneId: 'Europe/Berlin',
+      // „Link kopieren" schreibt in die Zwischenablage; ohne Freigabe zeigt die Seite den Ausweichweg.
+      permissions: ['clipboard-read', 'clipboard-write'],
     });
     // Ohne SharePoint gibt es kein userphoto.aspx — der Harness antwortet selbst.
     await this.ctx.route('https://harness.local/**', route => {
@@ -111,7 +118,9 @@ class Lauf {
     this.page = await this.ctx.newPage();
     // Feste Uhrzeit: Die Begrüßung („Guten Morgen/Tag/Abend") hängt an der Stunde,
     // und die Bilder sollen an jedem Tag gleich aussehen. Timer laufen weiter.
-    try { await this.page.clock.setFixedTime(new Date('2026-09-29T13:00:00+02:00')); } catch { /* ältere Playwright-Version */ }
+    if (this.spec.uhr !== false) {
+      try { await this.page.clock.setFixedTime(new Date('2026-09-29T13:00:00+02:00')); } catch { /* ältere Playwright-Version */ }
+    }
     const k = this.rec.konsole;
     this.page.on('console', msg => {
       const txt = `[${this.aktSchritt || '-'}] ${msg.text().slice(0, 400)}`;
@@ -189,6 +198,31 @@ class Lauf {
     }
     if (s.text < 15) this.befund(seite, 'Der Seiteninhalt (.main-content) ist praktisch leer.', `${s.text} Zeichen sichtbarer Text`);
 
+    // Zwei Aussehens-Prüfungen, die sich aus Bildern ergaben und sonst niemand nachzählt:
+    const optik = await this.page.evaluate(() => {
+      const sichtbar = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+      // 1) Zeilentitel und -untertitel als <span> ohne display:block: Die Texte laufen ineinander („…entfernterika.muster@…").
+      const inline = [...document.querySelectorAll('.dex-ui-row-title, .dex-ui-row-sub')].filter(el => sichtbar(el) && getComputedStyle(el).display === 'inline');
+      // 2) Ein <button> im Browser-Standard (2px outset) ist ein Knopf, dem seine Klasse fehlt.
+      const nackt = [...document.querySelectorAll('button')].filter(b => sichtbar(b) && getComputedStyle(b).borderTopStyle === 'outset');
+      const page = document.querySelector('.page-container');
+      return {
+        inline: inline.slice(0, 2).map(e => `${e.className}: „${(e.textContent || '').trim().slice(0, 40)}"`), inlineN: inline.length,
+        nackt: nackt.slice(0, 2).map(b => `button.${b.className || '(ohne Klasse)'}: „${(b.textContent || '').trim().slice(0, 40)}"`), nacktN: nackt.length,
+        breite: page ? Math.round(page.getBoundingClientRect().width) : 0,
+      };
+    });
+    // Je Lauf einmal je Beispiel: dieselbe Zeile steht auf jedem Bild derselben Seite.
+    if (optik.inlineN > 0 && !this.optikGemeldet.has('inline:' + optik.inline[0])) {
+      this.optikGemeldet.add('inline:' + optik.inline[0]);
+      this.befund(seite, `Zeilentitel/-untertitel (.dex-ui-row-title/-sub) sind inline (${optik.inlineN} Stück): Text und Nachbartext laufen ineinander.`, optik.inline.join(' | '));
+    }
+    if (optik.nacktN > 0 && !this.optikGemeldet.has('nackt:' + optik.nackt[0])) {
+      this.optikGemeldet.add('nackt:' + optik.nackt[0]);
+      this.befund(seite, `Ein Knopf erscheint im Browser-Standard-Aussehen (ohne Stil, ${optik.nacktN} Stück).`, optik.nackt.join(' | '));
+    }
+    this.rec.breiten[seite] = optik.breite;
+
     // Horizontaler Überlauf: ragt etwas rechts aus dem Fenster, ohne dass ein Vorfahr es beschneidet/scrollt?
     const ueber = await this.page.evaluate(() => {
       const w = window.innerWidth;
@@ -211,8 +245,8 @@ class Lauf {
       });
       return raus;
     });
-    if (ueber.length && !this.ueberlaufGemeldet.has(seite)) {
-      this.ueberlaufGemeldet.add(seite);
+    if (ueber.length && !this.ueberlaufGemeldet.has(ueber[0])) {
+      this.ueberlaufGemeldet.add(ueber[0]);
       this.befund(seite, 'Inhalt ragt rechts aus dem Fenster (horizontaler Überlauf).', ueber.join(' | '));
     }
   }
@@ -297,6 +331,36 @@ class Lauf {
     await this.page.waitForTimeout(250);
   }
 
+  /** Die Use Cases der Attrappe — damit die Reise keine Titel festverdrahtet (die Startliste ändert sich) und die Erwartungen aus den Daten kommen. */
+  async daten() {
+    if (this._d) return this._d;
+    await this.page.waitForFunction(() => window.__harness && window.__harness.lists.useCases.items.length > 0, null, { timeout: 30000 });
+    this._d = await this.page.evaluate(() => {
+      const it = window.__harness.lists.useCases.items.slice().sort((a, b) => a.Id - b.Id);
+      const finde = f => { const z = it.filter(f)[0]; return z ? z.Id : 0; };
+      const titel = {}; it.forEach(z => { titel[z.Id] = z.Title; });
+      return {
+        titel, total: it.length,
+        archiviert: it.filter(z => z.UcStatus === 'Archiviert').length,
+        erste: it[0].Id, drei: (it[2] || it[0]).Id, such: (it[3] || it[0]).Title, bereich: (it[9] || it[0]).Bereich || '',
+        inArbeit: finde(z => z.UcStatus === 'InArbeit'),
+        ohneLink: finde(z => z.UcStatus === 'Live' && !z.LinkDeployment),
+        eingebettet: finde(z => z.AufrufArt === 'eingebettet'),
+        archiv: finde(z => z.UcStatus === 'Archiviert'),
+        ohneBild: finde(z => !z.BildUrl && z.UcStatus === 'Live'),
+      };
+    });
+    return this._d;
+  }
+
+  /** Wartet, bis die Seite Text zeigt und nichts mehr lädt — ein leerer Ladekasten zählt nicht als Inhalt. */
+  async wartInhalt() {
+    await this.page.waitForFunction(() => {
+      const t = ((document.querySelector('.page-container') || {}).innerText || '').trim();
+      return t.length > 20 && !/wird geladen|werden geladen|is loading|Loading/.test(t);
+    }, null, { timeout: 25000 });
+  }
+
   /** Was die Attrappe nach einer Aktion tatsächlich hält — der Beleg, dass Schreiben WIRKLICH durchlief. */
   async harness(fn) { return this.page.evaluate(fn); }
 
@@ -305,7 +369,14 @@ class Lauf {
     const k = this.rec.konsole;
     k.pageerrors.forEach(e => this.befund('console', 'pageerror — der React-Baum oder ein Handler ist gestorben.', e));
     // Im Normalzustand ist jeder console.error unerwartet; in Fehlerzuständen melden die Seiten ihre Lesefehler selbst.
-    if (this.spec.state === 'ok' || !this.spec.state) k.fehler.forEach(e => this.befund('console', 'console.error im Normalzustand.', e));
+    if ((this.spec.state === 'ok' || !this.spec.state) && !this.spec.ohneFoto) k.fehler.forEach(e => this.befund('console', 'console.error im Normalzustand.', e));
+    // Breite der Inhaltsspalte je Seite (nur am Rechner aussagekräftig): Sie soll nicht vom Inhalt abhängen.
+    const br = this.rec.breiten;
+    const namen = Object.keys(br).filter(n => /^(usecases|detail|studio|protokoll|rollen)$/.test(n) && br[n] > 0);
+    if (!this.mobil && namen.length >= 3) {
+      const w = namen.map(n => br[n]);
+      if (Math.max.apply(null, w) - Math.min.apply(null, w) > 150) this.befund('layout', 'Die Breite der Inhaltsspalte hängt vom Inhalt ab: Die Seiten sind unterschiedlich breit.', namen.map(n => `${n} ${br[n]} px`).join(', '));
+    }
     k.harnessUnbehandelt.forEach(u => this.befund('rest', 'Die App ruft SharePoint-REST auf, den die Attrappe nicht kennt (entweder fehlt er im Harness oder die App ruft etwas Falsches).', u));
     const log = [];
     Object.keys(k).forEach(key => { if (k[key].length) { log.push(`## ${key}`); k[key].forEach(x => log.push(x)); } });
@@ -326,10 +397,13 @@ const STARTBEZUG = {
 /** Die lange Reise: Landing → Start → Wand → Detail → … je nach Rolle Studio, Protokoll, Rollen. */
 async function reise(l) {
   const t = l.t; const R = l.spec.role; const istOrg = R === 'admin' || R === 'organizer';
+  let D = null;
+  const T = id => (D && D.titel[id]) || '';
   await l.gehe();
 
   await l.schritt('landing', async () => {
     await l.wartLanding();
+    D = await l.daten();
     await l.shot('landing', `Landing Page als ${ROLLEN_TEXT[R]}: Orb, Begrüßung mit Vorname, Hinweiskarte mit Zahl der Use Cases, Start-Knopf${R === 'user' && !l.mobil ? ', Einladung „Eigenen Use Case einstellen"' : ''}.`);
   });
 
@@ -342,7 +416,7 @@ async function reise(l) {
     await l.kachel(t.kUseCases).click();
     await l.wartWand();
     const n = await l.page.getByRole('button', { name: / — / }).count();
-    const soll = R === 'user' ? 17 : 18;
+    const soll = R === 'user' ? D.total - D.archiviert : D.total;
     if (n !== soll) l.befund('usecases', `Die Wand zeigt ${n} Kacheln, erwartet ${soll} (${R === 'user' ? 'archivierte sind für User unsichtbar' : 'Organizer/Admin sehen auch archivierte'}).`, `${n} Buttons mit „ — " im Namen`);
     await l.shot('usecases', `Kachelwand als ${ROLLEN_TEXT[R]}: ${soll} Use Cases als Kacheln mit Bild oder Kürzel, Status, Bewertung; Filterleiste (Bereich, „${t.nurLive}").`, { voll: true });
   });
@@ -352,43 +426,52 @@ async function reise(l) {
     await l.page.waitForTimeout(250);
     await l.shot('usecases-aufrufbar', 'Kachelwand mit gesetztem Filter „Nur aufrufbare": nur Use Cases mit Status Live.');
     await l.page.getByRole('button', { name: t.nurLive }).click();
-    await l.page.locator('#uc-bereich').selectOption({ label: t.bereich });
+    await l.page.locator('#uc-bereich').selectOption({ label: D.bereich });
     await l.page.waitForTimeout(250);
-    await l.shot('usecases-bereich', `Kachelwand gefiltert auf den Bereich „${t.bereich}".`);
+    await l.shot('usecases-bereich', `Kachelwand gefiltert auf den Bereich „${D.bereich}".`);
     await l.page.locator('#uc-bereich').selectOption({ value: '' });
   });
 
   await l.schritt('detail', async () => {
-    await l.karte('KI-Vertriebsarbeitsplatz').click();
-    await l.page.getByRole('heading', { level: 1, name: 'KI-Vertriebsarbeitsplatz' }).waitFor({ timeout: 10000 });
+    await l.karte(T(D.erste)).click();
+    await l.page.getByRole('heading', { level: 1, name: T(D.erste) }).waitFor({ timeout: 10000 });
     await l.shot('detail', 'Detailseite eines Live-Use-Cases mit Kachelbild: Kopf, Start-Knopf, Beschreibung, Bewertung, Ressourcen.' + (istOrg ? ' Organizer sehen zusätzlich „Verlauf" und „Bearbeiten".' : ''), { voll: true });
+    // „Link kopieren": Die Zwischenablage ist freigegeben — der Text muss der Deep-Link dieses Use Cases sein.
+    await l.page.getByRole('button', { name: /Link kopieren|Copy link/ }).click();
+    await l.page.getByText(/Link kopiert|Link copied/).waitFor({ timeout: 5000 });
+    const kopiert = await l.page.evaluate(() => navigator.clipboard.readText());
+    if (!new RegExp('[?&]uc=' + D.erste + '$').test(kopiert)) l.befund('detail', 'Der kopierte Link führt nicht auf diesen Use Case.', `Zwischenablage: ${kopiert}`);
+    await l.shot('detail-link-kopiert', 'Detailseite nach „Link kopieren": Knopf zeigt „Link kopiert" (der Link steht in der Zwischenablage).');
     await l.zurueckSeite();
     await l.wartWand();
   });
 
   await l.schritt('detail-varianten', async () => {
     const faelle = [
-      ['HR Pipeline', 'detail-inarbeit', 'Detailseite eines Use Cases „In Arbeit": statt Start-Knopf der Hinweis, dass die Demo gebaut wird.'],
-      ['Provisionsvalidierung', 'detail-ohne-link', 'Detailseite eines Use Cases auf „Live" ohne Deployment-Link: Hinweis auf den Pflegefehler statt Start-Knopf.'],
-      ['Vermittler-Scoring', 'detail-eingebettet', 'Detailseite eines Use Cases mit Aufruf „eingebettet": Knopf „Demo hier öffnen" (nicht geklickt — das iframe würde ins Netz laden).'],
+      [D.inArbeit, 'detail-inarbeit', 'Detailseite eines Use Cases „In Arbeit": statt Start-Knopf der Hinweis, dass die Demo gebaut wird.'],
+      [D.ohneLink, 'detail-ohne-link', 'Detailseite eines Use Cases auf „Live" ohne Deployment-Link: Hinweis auf den Pflegefehler statt Start-Knopf.'],
+      [D.eingebettet, 'detail-eingebettet', 'Detailseite eines Use Cases mit Aufruf „eingebettet": Knopf „Demo hier öffnen" (nicht geklickt — das iframe würde ins Netz laden).'],
     ];
-    for (const [titel, seite, was] of faelle) {
-      await l.karte(titel).click();
-      await l.page.getByRole('heading', { level: 1, name: titel }).waitFor({ timeout: 10000 });
+    for (const [id, seite, was] of faelle) {
+      if (!id) { l.rec.uebersprungen.push(`${seite} (die Daten enthalten diesen Fall nicht)`); continue; }
+      await l.karte(T(id)).click();
+      await l.page.getByRole('heading', { level: 1, name: T(id) }).waitFor({ timeout: 10000 });
       await l.shot(seite, was);
       await l.zurueckSeite();
       await l.wartWand();
     }
     // Archivierte Use Cases sehen nur Organizer und Admins.
-    const archiv = l.karte('PDF-Editor');
-    if (istOrg) {
-      await archiv.click();
-      await l.page.getByRole('heading', { level: 1, name: 'PDF-Editor' }).waitFor({ timeout: 10000 });
-      await l.shot('detail-archiviert', 'Detailseite eines archivierten Use Cases (nur für Organizer/Admin erreichbar): Hinweis „archiviert".');
-      await l.zurueckSeite();
-      await l.wartWand();
-    } else if ((await archiv.count()) > 0) {
-      l.befund('usecases', 'Ein archivierter Use Case („PDF-Editor") steht für die Rolle User auf der Wand.', 'karte(PDF-Editor).count() > 0');
+    if (D.archiv) {
+      const archiv = l.karte(T(D.archiv));
+      if (istOrg) {
+        await archiv.click();
+        await l.page.getByRole('heading', { level: 1, name: T(D.archiv) }).waitFor({ timeout: 10000 });
+        await l.shot('detail-archiviert', 'Detailseite eines archivierten Use Cases (nur für Organizer/Admin erreichbar): Hinweis „archiviert".');
+        await l.zurueckSeite();
+        await l.wartWand();
+      } else if ((await archiv.count()) > 0) {
+        l.befund('usecases', `Ein archivierter Use Case („${T(D.archiv)}") steht für die Rolle User auf der Wand.`, 'Karte vorhanden');
+      }
     }
   });
 
@@ -435,9 +518,9 @@ async function reise(l) {
     });
 
     await l.schritt('studio-bearbeiten', async () => {
-      await l.page.locator('.dex-ui-row', { hasText: 'KI-Vertriebsarbeitsplatz' }).getByRole('button', { name: t.bearbeiten }).click();
+      await l.page.locator('.dex-ui-row', { hasText: T(D.erste) }).getByRole('button', { name: t.bearbeiten }).click();
       await l.wartDialog();
-      await l.shot('studio-dialog-bearbeiten', 'Use Case Studio, Dialog „Use Case bearbeiten" für „KI-Vertriebsarbeitsplatz": alle Felder mit den gespeicherten Werten, Kachelbild sichtbar.');
+      await l.shot('studio-dialog-bearbeiten', 'Use Case Studio, Dialog „Use Case bearbeiten" für den ersten Use Case: alle Felder mit den gespeicherten Werten, Kachelbild sichtbar.');
       await l.dialog().getByRole('button', { name: t.abbrechen }).click();
       await l.page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 10000 });
     });
@@ -465,8 +548,8 @@ async function reise(l) {
       await l.zurueckHeader();  // → Start
       await l.kachel(t.kUseCases).click();
       await l.wartWand();
-      await l.karte('KI-Vertriebsarbeitsplatz').click();
-      await l.page.getByRole('heading', { level: 1, name: 'KI-Vertriebsarbeitsplatz' }).waitFor({ timeout: 10000 });
+      await l.karte(T(D.erste)).click();
+      await l.page.getByRole('heading', { level: 1, name: T(D.erste) }).waitFor({ timeout: 10000 });
       await l.shot('detail-organizer', 'Detailseite als Organizer/Admin: Kopfzeile der Seite mit „Link kopieren", „Verlauf" und „Bearbeiten".');
       await l.page.getByRole('button', { name: t.verlauf }).click();
       await l.wartSeite();
@@ -491,50 +574,78 @@ async function reise(l) {
     await l.schritt('rollen', async () => {
       await l.kachel(t.kRollen).click();
       await l.wartSeite();
-      await l.shot('rollen', 'Rollenverwaltung: Formular „Wer soll dazukommen?", darunter die vergebenen Rollen (Admin, Use Case Organizer, User).', { voll: true });
+      await l.page.getByRole('tab', { name: t.tabPersonen }).waitFor({ timeout: 10000 });
+      await l.shot('rollen', 'Rollenverwaltung, Reiter „Personen": Suche nach einer Person, darunter Kennzahlen, Filter und die Tabelle der vergebenen Rollen (Admin, Use Case Organizer, User) mit Spalte „SharePoint-Rechte".', { voll: true });
+    });
+
+    await l.schritt('rollen-suche', async () => {
+      await l.page.locator('#rolle-suche').click();
+      await l.page.keyboard.type('wagner', { delay: 40 });
+      await l.page.locator('.dex-ui-row--framed.dex-ui-rowbtn').first().waitFor({ timeout: 15000 });
+      await l.shot('rollen-suche', 'Rollenverwaltung: Personensuche mit „wagner" — Trefferliste (Name, Adresse, Position) aus dem People-Picker.');
     });
 
     await l.schritt('rollen-vergeben', async () => {
-      await l.page.locator('#rolle-mail').fill('neu.person@deloitte.de');
-      await l.page.locator('#rolle-name').fill('Person, Neue');
-      await l.page.getByRole('button', { name: t.vergeben }).click();
-      await l.wartDialog();
-      const meldung = await l.dialog().innerText();
+      await l.page.locator('.dex-ui-row--framed.dex-ui-rowbtn', { hasText: 'Wagner, Sophie' }).click();
+      const eintragen = l.page.getByRole('button', { name: t.eintragen });
+      await eintragen.waitFor({ timeout: 10000 });
+      await l.shot('rollen-person-gewaehlt', 'Rollenverwaltung: Person aus der Suche gewählt — Rollenauswahl als Kacheln und Knopf „Als Use Case Organizer eintragen".');
+      await eintragen.click();
+      const banner = l.page.locator('.page-container .dex-ui-callout[role]').first();
+      await banner.waitFor({ timeout: 45000 });
+      const text = (await banner.innerText()).replace(/\n/g, ' ');
+      const ton = await banner.getAttribute('class');
+      if (!/callout--success/.test(ton || '')) l.befund('rollen-vergeben', 'Die Rollenvergabe meldet keinen Erfolg.', `${ton} — ${text.slice(0, 250)}`);
       const h = await l.harness(() => {
-        const z = window.__harness.lists.roles.items.filter(r => r.Title === 'neu.person@deloitte.de')[0];
-        const pr = window.__harness.prinzipale.filter(p => p.Email === 'neu.person@deloitte.de')[0];
+        const z = window.__harness.lists.roles.items.filter(r => r.Title === 'sophie.wagner@deloitte.de')[0];
+        const pr = window.__harness.prinzipale.filter(p => p.Email === 'sophie.wagner@deloitte.de')[0];
         const rechte = pr ? ['roles', 'useCases', 'log'].map(k => `${k}:${Array.from(window.__harness.lists[k].assign.get(pr.Id) || []).join('+')}`).join(' ') : 'kein Konto';
         return { rolle: z ? z.Role : null, rechte };
       });
       if (h.rolle !== 'Kurator') l.befund('rollen-vergeben', 'Die vergebene Rolle „Organizer" steht nicht als „Kurator" in der Rollenliste.', JSON.stringify(h));
-      if (!/roles:1073741826/.test(h.rechte) || !/useCases:1073741830/.test(h.rechte) || !/log:1073741827/.test(h.rechte)) l.befund('rollen-vergeben', 'Nach der Rollenvergabe fehlen Rechte auf den Listen (erwartet: Rollenliste Read, Use Cases Edit, Protokoll Contribute).', h.rechte + ' — Dialog: ' + meldung.replace(/\n/g, ' ').slice(0, 200));
-      await l.shot('rollen-vergeben', 'Rollenverwaltung: Rückmeldung nach „Rolle vergeben" (Meldung, ob alle Rechte gesetzt werden konnten).');
-      await l.dialog().getByRole('button', { name: t.allesKlar }).click();
-      await l.page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 5000 });
+      if (!/roles:1073741826/.test(h.rechte) || !/useCases:1073741830/.test(h.rechte) || !/log:1073741827/.test(h.rechte)) l.befund('rollen-vergeben', 'Nach der Rollenvergabe fehlen Rechte auf den Listen (erwartet: Rollenliste Read, Use Cases Edit, Protokoll Contribute).', h.rechte);
+      await l.shot('rollen-vergeben', 'Rollenverwaltung nach „Als Use Case Organizer eintragen": grüne Rückmeldung, die Person steht in der Tabelle.', { voll: true });
     });
 
     await l.schritt('rollen-entfernen', async () => {
-      const zeile = l.page.locator('.dex-ui-row', { hasText: 'Testmann' }).first();
-      await zeile.getByRole('button', { name: t.entfernen }).click();
+      await l.page.locator('tr', { hasText: 'Testmann' }).getByRole('button', { name: /Rolle entfernen|Remove role/ }).click();
       await l.wartDialog();
       await l.shot('rollen-entfernen-bestaetigen', 'Rollenverwaltung: Bestätigung beim Entfernen einer Rolle (die Person verliert auch die Rechte auf den Listen).');
       await l.dialog().getByRole('button', { name: t.abbrechen }).click();
       await l.page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 5000 });
     });
 
-    // „Rechte prüfen" ist Sache der Rollenseite und kam erst in v1.3 — fehlt der Knopf, gilt der Schritt als übersprungen, nicht als Fehler.
     await l.schritt('rollen-rechte', async () => {
-      const knopf = l.page.getByRole('button', { name: t.rechtePruefen }).first();
-      if (!(await l.vorhanden(knopf))) { l.rec.uebersprungen.push('rollen-rechte (kein „Rechte prüfen"-Knopf auf der Seite)'); return; }
-      await knopf.click();
-      await l.page.waitForFunction(() => !document.querySelector('.dex-ui-progress--indeterminate'), null, { timeout: 30000 }).catch(() => undefined);
-      await l.shot('rollen-rechte-pruefen', 'Rollenverwaltung nach „Rechte prüfen": Bericht über Lücken, Überschuss und Alias-Schreibweisen.', { warte: 800, voll: true });
-      const nachsetzen = l.page.getByRole('button', { name: /nachsetzen|Nachsetzen|Add missing|Repair/i }).first();
+      await l.page.getByRole('button', { name: t.rechtePruefen }).click();
+      await l.page.getByText(t.geprueft).waitFor({ timeout: 60000 });
+      await l.shot('rollen-rechte-pruefen', 'Rollenverwaltung nach „Rechte prüfen": Bericht über Lücken (Tim Testmann, ausgeschiedene Person), Überschuss (Sabine Schulz) und Alias-Schreibweise (j.klein@) — Spalte „SharePoint-Rechte" gefüllt.', { warte: 600, voll: true });
+      const nachsetzen = l.page.getByRole('button', { name: t.nachsetzen });
       if (await l.vorhanden(nachsetzen)) {
         await nachsetzen.click();
-        await l.page.waitForFunction(() => !document.querySelector('.dex-ui-progress--indeterminate'), null, { timeout: 30000 }).catch(() => undefined);
-        await l.shot('rollen-rechte-nachgesetzt', 'Rollenverwaltung nach „Fehlende Rechte nachsetzen": Ergebnis der Reparatur.', { warte: 800, voll: true });
+        await l.wartDialog();
+        await l.shot('rollen-nachsetzen-bestaetigen', 'Rollenverwaltung: Bestätigung „Fehlende Rechte nachsetzen".');
+        await l.dialog().getByRole('button', { name: t.jetztNachsetzen }).click();
+        await l.page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 5000 });
+        await l.page.locator('.page-container .dex-ui-callout--success, .page-container .dex-ui-callout--warn').filter({ hasText: /nachgesetzt|re-granted|Nachsetzen|Re-grant|Rechte/i }).last().waitFor({ timeout: 60000 });
+        await l.shot('rollen-rechte-nachgesetzt', 'Rollenverwaltung nach „Fehlende Rechte nachsetzen": Ergebnis (behoben / weiterhin offen, z. B. ausgeschiedene Person).', { warte: 600, voll: true });
+      } else {
+        l.befund('rollen-rechte', 'Der Bericht meldet keine Lücken, obwohl die Attrappe eine Person mit fehlenden Rechten (Tim Testmann) führt.', 'kein Knopf „Fehlende Rechte nachsetzen"');
       }
+      const entziehen = l.page.getByRole('button', { name: t.entziehen });
+      if (await l.vorhanden(entziehen)) {
+        await entziehen.click();
+        await l.wartDialog();
+        await l.dialog().getByRole('button', { name: t.jetztEntziehen }).click();
+        await l.page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 5000 });
+        await l.page.waitForFunction(() => !document.querySelector('.dex-ui-progress'), null, { timeout: 60000 }).catch(() => undefined);
+        await l.shot('rollen-rechte-entzogen', 'Rollenverwaltung nach „Überzählige Rechte entziehen": Ergebnis für Sabine Schulz (User mit Rest-Rechten).', { warte: 600, voll: true });
+      }
+    });
+
+    await l.schritt('rollen-matrix', async () => {
+      await l.page.getByRole('tab', { name: t.tabRechte }).click();
+      await l.page.waitForTimeout(400);
+      await l.shot('rollen-matrix', 'Rollenverwaltung, Reiter „Rechte je Rolle": Matrix, was Admin, Use Case Organizer und User dürfen (nur Ansicht), die eigene Rolle hervorgehoben.', { voll: true });
     });
   }
 
@@ -552,8 +663,11 @@ async function reise(l) {
 /** Kopfzeile und Dialoge: Suche, Menü, Profil, „Hast du Fragen?", „Über die App", Sprache. */
 async function kopf(l) {
   const t = l.t; const R = l.spec.role;
+  let D = null;
   await l.gehe();
-  await l.schritt('start', async () => { await l.wartLanding(); await l.start(); });
+  await l.schritt('start', async () => { await l.wartLanding(); D = await l.daten(); await l.start(); });
+  // Ein Suchwort, das es sicher gibt: das letzte Wort eines Titels, sechs Buchstaben.
+  const wort = () => D.such.split(/[\s-]+/).pop().slice(0, 6).toLowerCase();
 
   await l.schritt('suche', async () => {
     if (l.mobil) {
@@ -561,20 +675,20 @@ async function kopf(l) {
       await l.kachel(t.kUseCases).click();
       await l.wartWand();
       await l.page.locator('#uc-suche').click();
-      await l.page.keyboard.type('kredit', { delay: 40 });
+      await l.page.keyboard.type(wort(), { delay: 40 });
       await l.page.waitForTimeout(300);
-      await l.shot('suche', 'Handy: Kachelwand mit Suchfeld (steht dort statt in der Kopfzeile), „kredit" eingetippt, Wand auf die Treffer gefiltert.');
+      await l.shot('suche', `Handy: Kachelwand mit Suchfeld (steht dort statt in der Kopfzeile), „${wort()}" eingetippt, Wand auf die Treffer gefiltert.`);
       await l.page.locator('#uc-suche').fill('');
       await l.zurueckHeader();
     } else {
       const feld = l.page.getByRole('textbox', { name: t.suche });
       await feld.click();
-      await l.page.keyboard.type('kredit', { delay: 40 });
+      await l.page.keyboard.type(wort(), { delay: 40 });
       await l.page.locator('[role="listbox"]').waitFor({ timeout: 5000 });
-      await l.shot('suche', 'Kopfzeilen-Suche: „kredit" eingetippt, Ergebnisfenster mit den besten Treffern (Titel, Bereich, Status).');
+      await l.shot('suche', `Kopfzeilen-Suche: „${wort()}" eingetippt, Ergebnisfenster mit den besten Treffern (Titel, Bereich, Status).`);
       await l.page.keyboard.press('Enter');
       await l.wartWand();
-      await l.shot('suche-wand', 'Nach Enter: Kachelwand auf „kredit" gefiltert, Chip „Suche: …" zeigt, wonach gefiltert ist.');
+      await l.shot('suche-wand', `Nach Enter: Kachelwand auf „${wort()}" gefiltert, Chip „Suche: …" zeigt, wonach gefiltert ist.`);
       await feld.fill('');
       await l.zurueckHeader();
     }
@@ -600,7 +714,7 @@ async function kopf(l) {
   await l.schritt('fragen', async () => {
     await l.page.getByRole('button', { name: t.fragen }).first().click();
     await l.wartDialog();
-    await l.dialog().locator('textarea').fill('Wie starte ich die Demo „Vermittler-Scoring" für einen Kundentermin?');
+    await l.dialog().locator('textarea').fill(`Wie starte ich die Demo „${D.titel[D.erste]}" für einen Kundentermin?`);
     await l.shot('fragen', 'Dialog „Hast du Fragen?": Anlass zur Auswahl, Textfeld ausgefüllt, „E-Mail schreiben" und Ausweichadresse.');
     await l.dialog().getByRole('button', { name: t.abbrechen }).click();
     await l.page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 5000 });
@@ -625,13 +739,98 @@ async function kopf(l) {
   });
 }
 
+/** Kachelbild: hochladen, zuschneiden, speichern, wieder entfernen — der Schreibweg mit den meisten Schritten (Anhang an der Zeile, Reihenfolge „erst hochladen, dann speichern, dann altes Bild entfernen"). */
+async function bild(l) {
+  const t = l.t;
+  let D = null;
+  const zeile = () => l.page.locator('.dex-ui-row', { hasText: D.titel[D.ohneBild] });
+  const oeffneBearbeiten = async () => {
+    await zeile().getByRole('button', { name: t.bearbeiten }).click();
+    await l.wartDialog();
+  };
+  await l.gehe();
+  await l.schritt('bild-studio', async () => {
+    await l.wartLanding();
+    D = await l.daten();
+    if (!D.ohneBild) throw new Error('kein Use Case ohne Bild in den Daten');
+    await l.start();
+    await l.kachel(t.kStudio).click();
+    await l.page.locator('.page-container h1', { hasText: 'Use Case Studio' }).waitFor({ timeout: 10000 });
+  });
+
+  await l.schritt('bild-zuschnitt', async () => {
+    await oeffneBearbeiten();
+    // Ein Bild im Seitenverhältnis 4:3 — die Kachel ist 16:9, der Zuschnitt hat also etwas zu tun.
+    const b64 = await l.page.evaluate(() => {
+      const c = document.createElement('canvas'); c.width = 800; c.height = 600;
+      const x = c.getContext('2d');
+      const g = x.createLinearGradient(0, 0, 800, 600); g.addColorStop(0, '#0076a8'); g.addColorStop(1, '#86bc25');
+      x.fillStyle = g; x.fillRect(0, 0, 800, 600);
+      x.strokeStyle = 'rgba(255,255,255,.7)'; x.lineWidth = 6; x.strokeRect(20, 20, 760, 560);
+      x.fillStyle = '#fff'; x.font = 'bold 96px Arial'; x.fillText('HARNESS', 150, 330);
+      return c.toDataURL('image/png').split(',')[1];
+    });
+    await l.dialog().locator('input[type="file"]').setInputFiles({ name: 'kachel.png', mimeType: 'image/png', buffer: Buffer.from(b64, 'base64') });
+    await l.page.locator('[role="dialog"]').last().getByRole('button', { name: /Übernehmen|Apply/ }).waitFor({ timeout: 10000 });
+    await l.shot('studio-zuschnitt', 'Kachelbild gewählt: Dialog „Bild zuschneiden" über dem Bearbeiten-Dialog — Vorschau im Format der Kachel (16:9), Regler zum Zoomen.');
+    await l.page.locator('[role="dialog"]').last().getByRole('button', { name: /Übernehmen|Apply/ }).click();
+    await l.page.locator('[role="dialog"]').nth(1).waitFor({ state: 'detached', timeout: 10000 });
+    await l.page.waitForTimeout(300);
+    await l.shot('studio-bild-gewaehlt', 'Bearbeiten-Dialog nach „Übernehmen": die Vorschau zeigt den Zuschnitt, darunter der Hinweis „Das neue Bild wird beim Speichern hochgeladen".');
+  });
+
+  await l.schritt('bild-speichern', async () => {
+    await l.dialog().getByRole('button', { name: t.speichern }).click();
+    await l.page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 20000 });
+    await l.page.waitForTimeout(500);
+    const h = await l.page.evaluate(id => {
+      const z = window.__harness.lists.useCases.items.filter(x => x.Id === id)[0];
+      return { url: z ? z.BildUrl : null, anhaenge: (window.__harness.lists.useCases.anhaenge[id] || []).map(a => a.FileName) };
+    }, D.ohneBild);
+    if (!h.url || h.anhaenge.length !== 1) l.befund('bild-speichern', 'Nach dem Speichern mit neuem Bild stimmt Zeile oder Anhang nicht (erwartet: BildUrl gesetzt, genau ein Anhang).', JSON.stringify(h));
+    else {
+      const geladen = await l.page.evaluate(async u => { try { const r = await fetch(u); return { ok: r.ok, typ: r.headers.get('content-type') }; } catch (e) { return { ok: false, typ: String(e) }; } }, h.url);
+      if (!geladen.ok || !/^image\//.test(geladen.typ || '')) l.befund('bild-speichern', 'Die gespeicherte Bild-Adresse liefert kein Bild.', `${h.url} → ${JSON.stringify(geladen)}`);
+    }
+    await l.shot('studio-nach-bild', 'Use Case Studio nach dem Speichern mit neuem Kachelbild.');
+    // Auf der Kachelwand muss die Kachel das Bild tragen.
+    await l.zurueckHeader();
+    await l.kachel(t.kUseCases).click();
+    await l.wartWand();
+    const karte = l.karte(D.titel[D.ohneBild]);
+    await karte.scrollIntoViewIfNeeded();
+    const hat = await karte.locator('span').first().evaluate(el => /url\(/.test(el.style.background || getComputedStyle(el).backgroundImage));
+    if (!hat) l.befund('bild-speichern', 'Die Kachel trägt nach dem Speichern kein Hintergrundbild.', 'style.background ohne url(...)');
+    await l.shot('usecases-neues-bild', 'Kachelwand, zur Kachel mit dem eben hochgeladenen Bild gescrollt.');
+  });
+
+  await l.schritt('bild-entfernen', async () => {
+    await l.zurueckHeader();
+    await l.kachel(t.kStudio).click();
+    await l.page.locator('.page-container h1', { hasText: 'Use Case Studio' }).waitFor({ timeout: 10000 });
+    await oeffneBearbeiten();
+    await l.dialog().getByRole('button', { name: /Bild entfernen|Remove image/ }).click();
+    await l.dialog().getByRole('button', { name: t.speichern }).click();
+    await l.page.locator('[role="dialog"]').waitFor({ state: 'detached', timeout: 20000 });
+    await l.page.waitForTimeout(500);
+    const h = await l.page.evaluate(id => {
+      const z = window.__harness.lists.useCases.items.filter(x => x.Id === id)[0];
+      return { url: z ? z.BildUrl : null, anhaenge: (window.__harness.lists.useCases.anhaenge[id] || []).length };
+    }, D.ohneBild);
+    if (h.url || h.anhaenge !== 0) l.befund('bild-entfernen', 'Nach „Bild entfernen" und Speichern stehen Adresse oder Anhang noch.', JSON.stringify(h));
+  });
+}
+
 /** Deep-Links — eine echte Prüfung der App: sie liest `?uc=` selbst beim Start. */
 async function deeplink(l) {
   const t = l.t; const R = l.spec.role;
+  let D = null;
+  // Die Id 3 ist stabil (Id = Reihenfolge der Startliste); den Titel dazu liest der Lauf aus den Daten.
   await l.schritt('deeplink', async () => {
     await l.gehe({ uc: 3 });
-    await l.page.getByRole('heading', { level: 1, name: 'Vergütungswerk' }).waitFor({ timeout: 15000 });
-    await l.shot('deeplink', 'Deep-Link ?uc=3: die App startet direkt auf der Detailseite von „Vergütungswerk" (ohne Landing Page).', { voll: true });
+    D = await l.daten();
+    await l.page.getByRole('heading', { level: 1, name: D.titel[3] }).waitFor({ timeout: 15000 });
+    await l.shot('deeplink', `Deep-Link ?uc=3: die App startet direkt auf der Detailseite von „${D.titel[3]}" (ohne Landing Page).`, { voll: true });
     // Ohne Verlauf gibt „Zurück" nichts her — die App muss dann eine Ebene höher gehen, statt tot zu sein.
     await l.zurueckSeite();
     await l.page.locator('.dex-cluster-grid, .dex-start-rows, .page-container h1.dex-ui-page-head-title').first().waitFor({ timeout: 10000 });
@@ -639,7 +838,7 @@ async function deeplink(l) {
     await l.shot('deeplink-zurueck', `Deep-Link, dann „Zurück" IN der Seite: ${ziel1} (es gibt keinen Verlauf, die App geht eine Ebene höher).`);
     // Dasselbe mit dem „Zurück" der Kopfzeile.
     await l.gehe({ uc: 3 });
-    await l.page.getByRole('heading', { level: 1, name: 'Vergütungswerk' }).waitFor({ timeout: 15000 });
+    await l.page.getByRole('heading', { level: 1, name: D.titel[3] }).waitFor({ timeout: 15000 });
     await l.zurueckHeader();
     await l.page.locator('.dex-cluster-grid, .dex-start-rows, .page-container h1.dex-ui-page-head-title').first().waitFor({ timeout: 10000 });
     const ziel2 = (await l.page.locator('.dex-cluster-grid, .dex-start-rows').count()) > 0 ? 'Start-Übersicht' : 'Kachelwand';
@@ -648,17 +847,18 @@ async function deeplink(l) {
 
   await l.schritt('deeplink-unbekannt', async () => {
     await l.gehe({ uc: 9999 });
-    await l.page.locator('.page-container .dex-ui-empty').waitFor({ timeout: 15000 });
+    await l.page.locator('.page-container .dex-ui-empty-title').waitFor({ timeout: 15000 });
     await l.shot('deeplink-unbekannt', 'Deep-Link auf eine Nummer, die es nicht gibt (?uc=9999): Leerzustand „nicht (mehr) da" mit Weg zur Übersicht.');
   }, { trotzdem: true });
 
   await l.schritt('deeplink-archiviert', async () => {
-    await l.gehe({ uc: 14 });
+    if (!D || !D.archiv) { l.rec.uebersprungen.push('deeplink-archiviert (kein archivierter Use Case in den Daten)'); return; }
+    await l.gehe({ uc: D.archiv });
     if (R === 'user') {
-      await l.page.locator('.page-container .dex-ui-empty').waitFor({ timeout: 15000 });
+      await l.page.locator('.page-container .dex-ui-empty-title').waitFor({ timeout: 15000 });
       await l.shot('deeplink-archiviert', 'Deep-Link auf einen archivierten Use Case als User: Leerzustand — archivierte sind nur für Organizer/Admin sichtbar.');
     } else {
-      await l.page.getByRole('heading', { level: 1, name: 'PDF-Editor' }).waitFor({ timeout: 15000 });
+      await l.page.getByRole('heading', { level: 1, name: D.titel[D.archiv] }).waitFor({ timeout: 15000 });
       await l.shot('deeplink-archiviert', 'Deep-Link auf einen archivierten Use Case als Organizer/Admin: die Detailseite ist erreichbar.');
     }
   }, { trotzdem: true });
@@ -674,11 +874,19 @@ async function zustand(l, opt) {
   const t = l.t; const R = l.spec.role; const istOrg = R === 'admin' || R === 'organizer';
   const o = opt || {};
   const z = o.tag || l.spec.state;
+  // Ein Lesefehler ist keine Null: In diesen Zuständen darf die Seite nicht „leer", „0" oder „nicht gefunden" sagen.
+  const pruefeText = async (seite, sel, regex) => {
+    if (!regex) return;
+    const txt = await l.page.locator(sel).first().innerText();
+    const m = txt.match(regex);
+    if (m) l.befund(seite, 'Die Seite stellt einen Lesefehler als leere Liste / „0" / „nicht gefunden" dar — eine Aussage über Daten, die niemand lesen konnte.', `Text enthält „${m[0]}" (Zustand ${l.spec.state}) — ${txt.replace(/\s+/g, ' ').slice(0, 160)}`);
+  };
   await l.gehe(o.extra);
   await l.schritt('landing', async () => {
     if (o.sofort) await l.page.locator('.landing h1').waitFor({ timeout: 20000 });
     else await l.wartLanding();
     await l.shot(`landing-${z}`, o.was.landing, { warte: o.sofort ? 100 : 350 });
+    await pruefeText(`landing-${z}`, '.landing', o.nichtSagen);
   });
   await l.schritt('start', async () => {
     await l.start();
@@ -686,16 +894,18 @@ async function zustand(l, opt) {
   });
   await l.schritt('usecases', async () => {
     await l.kachel(t.kUseCases).click();
-    if (o.sofort) await l.page.locator('.page-container h1.dex-ui-page-head-title').waitFor({ timeout: 10000 });
-    else await l.page.locator('.page-container h1.dex-ui-page-head-title').waitFor({ timeout: 10000 }).then(() => l.page.waitForFunction(() => !/werden geladen|Loading use cases/.test((document.querySelector('.page-container') || {}).innerText || ''), null, { timeout: 25000 }));
+    await l.page.locator('.page-container h1.dex-ui-page-head-title').waitFor({ timeout: 10000 });
+    if (!o.sofort) await l.page.waitForFunction(() => !/werden geladen|Loading use cases/.test((document.querySelector('.page-container') || {}).innerText || ''), null, { timeout: 25000 });
     await l.shot(`usecases-${z}`, o.was.usecases, { voll: true, warte: o.sofort ? 100 : 350 });
+    await pruefeText(`usecases-${z}`, '.page-container', o.nichtSagen);
   });
   if (o.deeplink !== false) {
     await l.schritt('deeplink', async () => {
       await l.gehe({ ...(o.extra || {}), uc: 3 });
-      await l.page.locator('.page-container h1, .page-container .dex-ui-empty, .page-container [role="alert"]').first().waitFor({ timeout: 15000 });
-      await l.page.waitForFunction(() => !/wird geladen|is loading/.test((document.querySelector('.page-container') || {}).innerText || ''), null, { timeout: 20000 });
-      await l.shot(`deeplink-${z}`, o.was.deeplink);
+      if (o.sofort) await l.page.locator('.page-container').waitFor({ timeout: 15000 });
+      else await l.wartInhalt();
+      await l.shot(`deeplink-${z}`, o.was.deeplink, { warte: o.sofort ? 100 : 350 });
+      await pruefeText(`deeplink-${z}`, '.page-container', o.nichtSagen);
     });
   }
   if (istOrg && o.studio) {
@@ -705,6 +915,7 @@ async function zustand(l, opt) {
       await l.page.locator('.page-container h1', { hasText: 'Use Case Studio' }).waitFor({ timeout: 10000 });
       await l.page.waitForTimeout(400);
       await l.shot(`studio-${z}`, o.was.studio, { voll: true });
+      await pruefeText(`studio-${z}`, '.page-container', o.nichtSagen);
     });
   }
   if (istOrg && o.protokoll) {
@@ -713,12 +924,16 @@ async function zustand(l, opt) {
       await l.kachel(t.kProtokoll).click();
       await l.wartSeite();
       await l.shot(`protokoll-${z}`, o.was.protokoll, { voll: true });
+      await pruefeText(`protokoll-${z}`, '.page-container', o.nichtSagenProtokoll);
     });
   }
   if (o.nachher) await o.nachher(l);
 }
 
 /* --------------------------------------------------------- Lauf-Planung ---- */
+
+/* Was eine Seite bei einem LESEFEHLER nicht sagen darf: leer, „0", „nicht (mehr) da". */
+const LESEFEHLER_TEXTE = /Noch keine Use Cases|No use cases yet|Noch nichts angelegt|Nothing here yet|\b0 Einträge|\b0 entries|\b0 Demos|nicht \(mehr\) da|not \(or no longer\) here/;
 
 function plane() {
   const laeufe = [];
@@ -731,6 +946,9 @@ function plane() {
       add(`${role}-${device}-deeplink`, { role, device }, deeplink);
     }
   }
+  // Kachelbild hochladen/zuschneiden/entfernen: Organizer-Weg, am Rechner und am Handy. Echte Uhr: Der Anhang-Name trägt einen Zeitstempel.
+  if (ROLLEN.indexOf('admin') >= 0 && GERAETE.indexOf('desktop') >= 0) add('admin-desktop-bild', { role: 'admin', device: 'desktop', uhr: false }, bild);
+  if (ROLLEN.indexOf('organizer') >= 0 && GERAETE.indexOf('mobile') >= 0) add('organizer-mobile-bild', { role: 'organizer', device: 'mobile', uhr: false }, bild);
   // Ohne Foto: die Initialen der Kopfzeile (der Zustand einer Person ohne Profilbild).
   if (ROLLEN.indexOf('user') >= 0 && GERAETE.indexOf('desktop') >= 0) {
     add('user-desktop-ohnefoto', { role: 'user', device: 'desktop', ohneFoto: true }, async l => {
@@ -745,7 +963,7 @@ function plane() {
 
   if (gib('admin', 'desktop')) {
     add('zustand-forbidden-admin-desktop', { role: 'admin', device: 'desktop', state: 'forbidden' }, l => zustand(l, {
-      studio: true, protokoll: true,
+      studio: true, protokoll: true, nichtSagen: LESEFEHLER_TEXTE,
       was: {
         landing: 'Landing Page, wenn die Use-Case-Liste mit 403 antwortet: Hinweiskarte „konnte nicht gelesen werden" statt einer erfundenen Zahl.',
         usecases: 'Kachelwand bei 403 auf die Use-Case-Liste: roter Kasten „konnten nicht geladen werden" mit Ursache (Leserecht), HTTP-Status und Klartext von SharePoint — kein „Keine Use Cases".',
@@ -755,7 +973,7 @@ function plane() {
       },
     }));
     add('zustand-error-admin-desktop', { role: 'admin', device: 'desktop', state: 'error' }, l => zustand(l, {
-      studio: true,
+      studio: true, nichtSagen: LESEFEHLER_TEXTE,
       was: {
         landing: 'Landing Page, wenn die Use-Case-Liste mit 500 antwortet.',
         usecases: 'Kachelwand bei HTTP 500: Lade-Fehler statt leerer Plattform, mit „Erneut versuchen".',
@@ -792,7 +1010,7 @@ function plane() {
       },
     }));
     add('zustand-logerror-admin-desktop', { role: 'admin', device: 'desktop', state: 'logerror' }, l => zustand(l, {
-      deeplink: false, protokoll: true,
+      deeplink: false, protokoll: true, nichtSagenProtokoll: /Noch nichts protokolliert|Nothing logged yet|\b0 Einträge|\b0 entries/,
       was: {
         landing: 'Landing Page, wenn nur das Protokoll mit 500 antwortet (Use Cases lesbar).',
         usecases: 'Kachelwand, wenn nur das Protokoll mit 500 antwortet.',
@@ -816,8 +1034,8 @@ function plane() {
       },
     }));
     add('zustand-laden-admin-desktop', { role: 'admin', device: 'desktop', state: 'ok' }, l => zustand(l, {
-      extra: { delay: 250 }, sofort: true, deeplink: false, tag: 'laedt',
-      was: { landing: 'Landing Page WÄHREND die Use Cases laden (jede Antwort 250 ms verzögert, rund 35 Anfragen bis zur Wand): Hinweiskarte mit Fortschrittsbalken „Die Use Cases werden geladen …".', usecases: 'Kachelwand WÄHREND des Ladens: Fortschrittsbalken und „Use Cases werden geladen …".' },
+      extra: { delay: 250 }, sofort: true, tag: 'laedt',
+      was: { landing: 'Landing Page WÄHREND die Use Cases laden (jede Antwort 250 ms verzögert, rund 35 Anfragen bis zur Wand): Hinweiskarte mit Fortschrittsbalken „Die Use Cases werden geladen …".', usecases: 'Kachelwand WÄHREND des Ladens: Fortschrittsbalken und „Use Cases werden geladen …".', deeplink: 'Deep-Link ?uc=3 WÄHREND die Use Cases laden: der Ladezustand der Detailseite (bei echten Antwortzeiten dauert er Sekunden).' },
     }));
     add('zustand-erstinstallation-first-desktop', { role: 'first', device: 'desktop', state: 'ok' }, async l => {
       await l.gehe();
@@ -831,7 +1049,7 @@ function plane() {
   }
   if (gib('user', 'mobile')) {
     add('zustand-forbidden-user-mobile', { role: 'user', device: 'mobile', state: 'forbidden' }, l => zustand(l, {
-      startBild: true,
+      startBild: true, nichtSagen: LESEFEHLER_TEXTE,
       was: {
         landing: 'Handy, User: Landing Page bei 403 auf die Use-Case-Liste.',
         start: 'Handy, User: Start-Übersicht bei 403 auf die Use-Case-Liste.',

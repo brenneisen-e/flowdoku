@@ -117,7 +117,7 @@ function AppContent(): React.ReactElement {
   ensureDexUiStyles();
   const { t, isDe } = useLanguage();
   const { currentPage, currentUseCaseId } = useNavigation();
-  const { isRolesLoading, rolesReadStatus, currentUserRole } = useRoles();
+  const { isRolesLoading, currentUserRole } = useRoles();
   const layoutRef = useShellHeight();
 
   const seitenName =
@@ -156,17 +156,17 @@ function AppContent(): React.ReactElement {
       <div className="app-layout" ref={layoutRef}>
         <Header />
 
-        {/* Der Fall, den DEX teuer gelernt hat: Die Person steht in der
-            Rollenliste, darf sie aber nicht lesen — dann ist ihre Rolle
-            wirkungslos, und das muss dastehen statt still zu wirken. */}
-        {!isRolesLoading && rolesReadStatus === 'forbidden' && (
-          <div className="dex-ui-callout dex-ui-callout--warn" role="status" style={{ margin: '12px 24px 0' }}>
-            <span>
-              {t('Deine Rolle konnte nicht geprüft werden — dir fehlt das Leserecht auf der Rollenliste. Falls du eigentlich Use Case Organizer oder Admin bist: Ein Admin muss dir das Leserecht nachsetzen.',
-                'Your role could not be checked — you lack read access to the roles list. If you are meant to be a Use Case Organizer or admin, an admin has to grant it.')}
-            </span>
-          </div>
-        )}
+        {/* Hier stand bis v1.2 eine Warnleiste „Deine Rolle konnte nicht geprüft
+            werden", sobald die Rollenliste mit 403 antwortete. Das ist aber
+            der NORMALFALL jedes gewöhnlichen Nutzers: Die Liste hat eigene
+            Rechte (Owners und vergebene Personen), wer nicht darin steht,
+            darf sie nicht lesen. Die Leiste stand damit auf jeder Seite bei
+            jedem Nutzer und versprach „ein Admin muss dir das Leserecht
+            nachsetzen" — und ein Admin, der das ernst nimmt, öffnet die
+            Adressliste für alle (Review-Fund 7, 29.09.2026).
+            Wie in DEX steht der Hinweis jetzt NUR an der Kachel „Use Case
+            Studio" (StartPage), wo die Frage „bin ich Organizer?" gestellt
+            wird. */}
 
         {/* `display:flex` und `flex-direction:column` stehen INLINE, nicht im
             SCSS — und sie sind nicht kosmetisch: `.page-container` hat

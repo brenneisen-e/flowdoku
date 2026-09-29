@@ -536,8 +536,8 @@ function RolleVergeben(props: AktionsProps): React.ReactElement {
               <div className="dex-ui-callout dex-ui-callout--warn" role="alert">
                 <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
                 <span className="dex-ui-callout-body">
-                  {t(`Die Personensuche ist gerade nicht möglich${suche.http ? ` (HTTP ${suche.http})` : ''}. Das heißt nicht, dass es die Person nicht gibt — SharePoint hat die Suche nicht beantwortet, meist wegen Drosselung. Warte kurz und versuch es noch einmal.`,
-                    `The people search is not possible right now${suche.http ? ` (HTTP ${suche.http})` : ''}. That does not mean the person does not exist — SharePoint did not answer the search, usually because of throttling. Wait a moment and try again.`)}{' '}
+                  {t(`Die Personensuche ist gerade nicht möglich${suche.http ? ` (HTTP ${suche.http})` : ''}. Das heißt nicht, dass es die Person nicht gibt — SharePoint hat die Suche nicht beantwortet, etwa wegen Drosselung. Warte kurz und versuch es noch einmal.`,
+                    `The people search is not possible right now${suche.http ? ` (HTTP ${suche.http})` : ''}. That does not mean the person does not exist — SharePoint did not answer the search, for example because of throttling. Wait a moment and try again.`)}{' '}
                   <button type="button" className="dex-ui-textlink" onClick={() => setNochmal(n => n + 1)}>{t('Erneut suchen', 'Search again')}</button>
                 </span>
               </div>
@@ -820,7 +820,10 @@ function RollenListe(props: ListeProps): React.ReactElement {
             </div>
           ) : (
             <div className="dex-ui-table-wrap">
-              <table className="dex-ui-table">
+              {/* Mindestbreite: Ohne sie quetscht der Handy-Bildschirm die Spalten
+                  zusammen, statt dass die Tabelle seitwärts rollt — die
+                  Rollen-Auswahl war nur noch „Ad" breit. */}
+              <table className="dex-ui-table" style={{ minWidth: 760 }}>
                 <thead>
                   <tr>
                     <th>{t('Person', 'Person')}</th>
@@ -964,8 +967,8 @@ function RechtePruefung(props: PruefProps): React.ReactElement {
       setAktion({
         ton: res.offen.length > 0 ? 'warn' : 'ok',
         text: isDe
-          ? `${res.behoben.length} von ${n} nachgesetzt und nachgelesen.${res.offen.length > 0 ? ` NICHT setzbar: ${offenText}. Häufige Ursachen: Das Konto ist ausgeschieden, die Person hat die Site nie besucht und SharePoint löst sie nicht auf, oder die Anfragen wurden gedrosselt — dann in ein paar Minuten erneut prüfen.` : ''}`
-          : `${res.behoben.length} of ${n} re-granted and read back.${res.offen.length > 0 ? ` NOT grantable: ${offenText}. Common causes: the account has left, the person never visited the site and SharePoint cannot resolve them, or requests were throttled — check again in a few minutes.` : ''}`,
+          ? `Bei ${res.behoben.length} von ${n} ${n === 1 ? 'Person' : 'Personen'} nachgesetzt und nachgelesen.${res.offen.length > 0 ? ` NICHT setzbar: ${offenText}. Häufige Ursachen: Das Konto ist ausgeschieden, die Person hat die Site nie besucht und SharePoint löst sie nicht auf, oder die Anfragen wurden gedrosselt — dann in ein paar Minuten erneut prüfen.` : ''}`
+          : `Re-granted and read back for ${res.behoben.length} of ${n} ${n === 1 ? 'person' : 'people'}.${res.offen.length > 0 ? ` NOT grantable: ${offenText}. Common causes: the account has left, the person never visited the site and SharePoint cannot resolve them, or requests were throttled — check again in a few minutes.` : ''}`,
       });
       // Die Kontrolle danach ist ein NEUER Lesevorgang, nicht das Ergebnis des
       // Schreibens: Der Bericht unten zeigt, was jetzt gilt.
@@ -1002,8 +1005,8 @@ function RechtePruefung(props: PruefProps): React.ReactElement {
       setAktion({
         ton: res.offen.length > 0 ? 'warn' : 'ok',
         text: isDe
-          ? `Bei ${res.erledigt} von ${items.length} entzogen.${res.offen.length > 0 ? ` NICHT entzogen: ${offenText}. Entweder hat sich die Rolle seit der Prüfung geändert, oder SharePoint hat den Entzug nicht bestätigt — prüf noch einmal.` : ''}`
-          : `Revoked for ${res.erledigt} of ${items.length}.${res.offen.length > 0 ? ` NOT revoked: ${offenText}. Either the role changed since the check, or SharePoint did not confirm the revocation — check again.` : ''}`,
+          ? `Bei ${res.erledigt} von ${items.length} ${items.length === 1 ? 'Person' : 'Personen'} entzogen und nachgelesen.${res.offen.length > 0 ? ` NICHT entzogen: ${offenText}. Entweder hat sich die Rolle seit der Prüfung geändert, oder SharePoint hat den Entzug nicht bestätigt — prüf noch einmal.` : ''}`
+          : `Revoked and read back for ${res.erledigt} of ${items.length} ${items.length === 1 ? 'person' : 'people'}.${res.offen.length > 0 ? ` NOT revoked: ${offenText}. Either the role changed since the check, or SharePoint did not confirm the revocation — check again.` : ''}`,
       });
       setPhase('prueft');
       const gelesen = await lauf();
@@ -1058,7 +1061,11 @@ function RechtePruefung(props: PruefProps): React.ReactElement {
         </div>
       )}
 
-      {aktion && (
+      {/* Das Ergebnis eines Schritts gehört zu dem Bericht, neben dem er stand.
+          Wurde der Bericht verworfen (eine Rolle hat sich geändert), bliebe „1 von
+          1 nachgesetzt" sonst als Meldung über einem Stand stehen, den es nicht
+          mehr gibt. */}
+      {aktion && (bericht || lesefehler || laufend) && (
         <div className={cx('dex-ui-callout', aktion.ton === 'ok' ? 'dex-ui-callout--success' : 'dex-ui-callout--warn')} role="status" style={{ marginTop: 12 }}>
           <span className="dex-ui-callout-icon">{aktion.ton === 'ok' ? <Check size={16} /> : <AlertCircle size={16} />}</span>
           <span className="dex-ui-callout-body">{aktion.text}</span>
