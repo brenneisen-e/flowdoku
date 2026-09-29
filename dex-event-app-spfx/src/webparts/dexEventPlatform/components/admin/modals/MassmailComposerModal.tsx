@@ -64,6 +64,8 @@ export interface MassmailComposerModalProps {
   massmailCustomHeaderB64: string;
   setMassmailCustomHeaderB64: React.Dispatch<React.SetStateAction<string>>;
   setMassmailMode: React.Dispatch<React.SetStateAction<"closed" | "pick" | "paste" | "editor">>;
+  /** v32.26: Empfängergruppe direkt im Editor umstellen. */
+  setMassmailAudience?: React.Dispatch<React.SetStateAction<MassmailAudience>>;
   setMassmailPasteRaw: React.Dispatch<React.SetStateAction<string>>;
   setMassmailSubheading: React.Dispatch<React.SetStateAction<string>>;
   setShowEmailModal: React.Dispatch<React.SetStateAction<boolean>>;
@@ -75,7 +77,7 @@ export interface MassmailComposerModalProps {
 }
 
 export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) => {
-  const { applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject, eventServiceRef, isDe, massmailAudience, massmailCc, massmailCustomHeaderB64, setMassmailCustomHeaderB64, massmailDraftSaved, massmailEventPhotoB64, massmailHeaderImage, massmailHeaderOpts, massmailPasteRaw, massmailStatuses, massmailSubheading, massmailTesting, massmailTestMsg, registrations, resetMassmailDraft, saveMassmailDraft, searchUser, searchUsers, selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending, setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading, setShowEmailModal, showAlert, showEmailModal, massmailOffene } = p;
+  const { applyMassmailHero, confirmDialog, emailBody, emailHeading, emailSending, emailSubject, eventServiceRef, isDe, massmailAudience, massmailCc, massmailCustomHeaderB64, setMassmailCustomHeaderB64, massmailDraftSaved, massmailEventPhotoB64, massmailHeaderImage, massmailHeaderOpts, massmailPasteRaw, massmailStatuses, massmailSubheading, massmailTesting, massmailTestMsg, registrations, resetMassmailDraft, saveMassmailDraft, searchUser, searchUsers, selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending, setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading, setShowEmailModal, showAlert, showEmailModal, massmailOffene, setMassmailAudience } = p;
         // v31.2: Das zusätzliche CC ist selten nötig und steht deshalb in
         // einem Aufklapper — offen nur, wenn schon jemand eingetragen ist,
         // damit ein gesetzter Verteiler nie unsichtbar mitfährt.
@@ -108,6 +110,11 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
         // eine Mail nur in BCC an alle geschickt wird"). Nicht im Entwurf
         // gespeichert — eine Versandart, keine Textentscheidung.
         const [bccMode, setBccMode] = React.useState(false);
+        // v32.26: Empfänger, Kopf und Umfrage standardmäßig zugeklappt
+        // (Nutzer-Ansage 29.09.2026: „übersichtlicher“) — der Text ist das, was man hier tut.
+        const [aufAn, setAufAn] = React.useState(false);
+        const [aufKopf, setAufKopf] = React.useState(false);
+        const [aufUmfrage, setAufUmfrage] = React.useState(false);
         // v31.70: Empfänger können auch von AUSSERHALB der Teilnehmerliste kommen
         // (Erinnerung an einen Verteiler) — deshalb nur das, was der Versand braucht.
         const recipients: Array<{ ParticipantEmail: string; Vorname?: string; Nachname?: string }> = (() => {
@@ -345,7 +352,36 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
               // Sende-Knopf sitzt im Fuß. Klassen statt Inline-Kästen (Hover kommt mit).
               <div className="dex-ui-stack" style={{ gap: 20 }}>
                 <div>
-                  <div className="dex-ui-section-title">{isDe ? 'An wen geht die Mail?' : 'Who receives the email?'}</div>
+                  <button type="button" className={cx('dex-ui-disclosure', aufAn && 'is-open')} onClick={() => setAufAn(o => !o)} aria-expanded={aufAn}>
+                    <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                    {isDe ? 'An wen geht die Mail?' : 'Who receives the email?'}
+                    <span className={cx('dex-ui-pill', recipients.length > 0 ? 'dex-ui-pill--green' : 'dex-ui-pill--red')} style={{ marginLeft: 8 }}><Users size={12} /> {recipients.length}</span>
+                    <span className="dex-ui-muted" style={{ marginLeft: 6, fontWeight: 400, fontSize: '0.8rem' }}>{audienceLabel}</span>
+                  </button>
+                  {aufAn && (
+                  <div className="dex-ui-disclosure-body">
+                  {/* v32.26: Gruppe direkt hier umstellen (Nutzer-Ansage 29.09.2026).
+                      Die vier Status-Gruppen sofort; Erinnerung, Nachrücker und
+                      eigene Auswahl brauchen einen Zwischenschritt — dafür der
+                      Rückweg in die Empfängerwahl. */}
+                  {setMassmailAudience && (
+                    <div className="dex-ui-inline" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
+                      {([
+                        ['active', isDe ? 'Alle aktiven' : 'All active'],
+                        ['activePlusWait', isDe ? 'Aktive + Warteliste' : 'Active + waitlist'],
+                        ['waitOnly', isDe ? 'Nur Warteliste' : 'Waitlist only'],
+                        ['everyone', isDe ? 'Alle inkl. Abgemeldete' : 'Everyone incl. cancelled'],
+                      ] as Array<[MassmailAudience, string]>).map(([k, lbl]) => (
+                        <button key={k} type="button" className={cx('dex-ui-chip', massmailAudience === k && 'is-active')} aria-pressed={massmailAudience === k}
+                          disabled={emailSending} onClick={() => setMassmailAudience(k)}>
+                          {massmailAudience === k && <Check size={12} />} {lbl}
+                        </button>
+                      ))}
+                      <button type="button" className="dex-ui-textbtn" onClick={zurueck} disabled={emailSending}>
+                        {isDe ? 'Erinnerung, Nachrücker, eigene Auswahl …' : 'Reminder, late joiners, custom …'}
+                      </button>
+                    </div>
+                  )}
                   <div className="dex-ui-inline">
                     <span className={cx('dex-ui-pill', recipients.length > 0 ? 'dex-ui-pill--green' : 'dex-ui-pill--red')}><Users size={13} /> {recipients.length} {isDe ? 'Empfänger' : 'recipients'}</span>
                     {/* v31.10: `--wrap`, weil `audienceLabel` bei „Eigene Auswahl"
@@ -365,8 +401,8 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                     {recipients.length === 0
                       ? (isDe ? 'In dieser Gruppe ist niemand. Geh über „Zurück zur Empfängerwahl“ einen Schritt zurück und wähle eine andere Gruppe.' : 'This group is empty. Use “Back to recipients” and pick another group.')
                       : (isDe
-                        ? <>Die Gruppe hast du im Schritt davor gewählt — über &bdquo;Zurück zur Empfängerwahl&ldquo; in der Fußzeile änderst du sie. <strong>CC:</strong> {ccCount === 0 ? 'niemand — an diesem Event ist keine Organizer-Adresse hinterlegt.' : massmailCcPreview.join(', ')}</>
-                        : <>You picked the group in the step before — change it via &ldquo;Back to recipients&rdquo; in the footer. <strong>CC:</strong> {ccCount === 0 ? 'nobody — this event has no organizer address on file.' : massmailCcPreview.join(', ')}</>)}
+                        ? <>Die Gruppe stellst du mit den Knöpfen oben um. <strong>CC:</strong> {ccCount === 0 ? 'niemand — an diesem Event ist keine Organizer-Adresse hinterlegt.' : massmailCcPreview.join(', ')}</>
+                        : <>Switch the group with the buttons above. <strong>CC:</strong> {ccCount === 0 ? 'nobody — this event has no organizer address on file.' : massmailCcPreview.join(', ')}</>)}
                   </div>
                   {/* v31.70: Versandart — verdeckt (BCC) oder offen (An). */}
                   <label className={cx('dex-ui-toggle-row', bccMode && 'is-active')} style={{ marginTop: 8 }}>
@@ -401,10 +437,17 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                       />
                     </div>
                   )}
+                  </div>
+                  )}
                 </div>
 
                 <div>
-                  <div className="dex-ui-section-title">{isDe ? 'Wie sieht der Kopf der Mail aus?' : 'What does the email header look like?'}</div>
+                  <button type="button" className={cx('dex-ui-disclosure', aufKopf && 'is-open')} onClick={() => setAufKopf(o => !o)} aria-expanded={aufKopf}>
+                    <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                    {isDe ? 'Wie sieht der Kopf der Mail aus?' : 'What does the email header look like?'}
+                  </button>
+                  {aufKopf && (
+                  <div className="dex-ui-disclosure-body">
                   {/* v30.52: gemeinsame Auswahl (s. admin/MailHeaderImageChooser) — vorher
                       stand dieselbe Reiter-Reihe hier und in der Einladungsmail zweimal. */}
                   <MailHeaderImageChooser
@@ -423,11 +466,21 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                     customBusy={headerBusy}
                     customNote={headerNote}
                   />
+                  </div>
+                  )}
                 </div>
 
                 {/* v31.12: Die Umfrage sitzt hier — nach dem Kopf, vor der
                     Absende-Prüfung. Nutzer-Ansage 11.09.2026: erreichbar über
                     „E-Mail versenden", nicht als eigener Weg daneben. */}
+                <div>
+                  <button type="button" className={cx('dex-ui-disclosure', aufUmfrage && 'is-open')} onClick={() => setAufUmfrage(o => !o)} aria-expanded={aufUmfrage}>
+                    <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                    {isDe ? 'Umfrage einfügen' : 'Add a poll'}
+                    <span className="dex-ui-label-optional">(optional)</span>
+                  </button>
+                  {aufUmfrage && (
+                  <div className="dex-ui-disclosure-body">
                 <PollComposerSection
                   selectedEvent={selectedEvent}
                   eventServiceRef={eventServiceRef}
@@ -436,68 +489,21 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                   emailBody={emailBody}
                   setEmailBody={setEmailBody}
                 />
+                  </div>
+                  )}
+                </div>
 
+                {/* v32.26: „Bevor du sendest“ entfällt — Entwurf und Testmail stehen als
+                    Knöpfe in der Fußzeile (Nutzer-Ansage 29.09.2026). Hier bleibt nur
+                    die Rückmeldung der Testmail und das Zurücksetzen. */}
+                {massmailTestMsg && (
+                  <div className={cx('dex-ui-callout', testOk ? 'dex-ui-callout--success' : 'dex-ui-callout--warn')} style={{ padding: '6px 10px' }} role="status">{massmailTestMsg}</div>
+                )}
                 <div>
-                  <div className="dex-ui-section-title">{isDe ? 'Bevor du sendest' : 'Before you send'}</div>
-                  {/* v31.10: `flexWrap` plus eine Mindestbreite für den Textblock —
-                      `dex-ui-step` ist eine Zeile ohne Umbruch, und `dex-ui-step-body`
-                      trägt `min-width: 0`. Auf dem Handy schrumpfte der Text deshalb
-                      neben dem Knopf auf ein Wort je Zeile („Dein / Text / wird /
-                      ohnehin …"), und die Pille „Gespeichert" lag darüber. Mit der
-                      Mindestbreite rutscht der KNOPF in die zweite Zeile, wo er als
-                      Ganzes hingehört; auf dem Desktop ändert sich nichts. */}
-                  <div className="dex-ui-stack">
-                    <div className={cx('dex-ui-step', massmailDraftSaved && 'is-done')} style={{ flexWrap: 'wrap' }}>
-                      <span className="dex-ui-step-num">{massmailDraftSaved ? <Check size={14} /> : 1}</span>
-                      <div className="dex-ui-step-body" style={{ minWidth: 170 }}>
-                        <div className="dex-ui-step-title">{isDe ? 'Zwischenstand sichern' : 'Save your progress'}</div>
-                        <div className="dex-ui-step-hint">{isDe ? 'Dein Text wird ohnehin automatisch gespeichert und beim nächsten Öffnen wiederhergestellt.' : 'Your text is saved automatically anyway and restored next time you open it.'}</div>
-                      </div>
-                      <div className="dex-ui-step-action dex-ui-inline" style={{ justifyContent: 'flex-end' }}>
-                        {massmailDraftSaved && <span className="dex-ui-pill dex-ui-pill--green"><Check size={12} /> {isDe ? 'Gespeichert' : 'Saved'}</span>}
-                        <button type="button" className="btn btn-secondary dex-ui-btn-sm" onClick={saveMassmailDraft} disabled={emailSending}>
-                          <Check size={14} /> {isDe ? 'Entwurf speichern' : 'Save draft'}
-                        </button>
-                      </div>
-                    </div>
-                    <div className={cx('dex-ui-step', massmailTesting && 'is-pending')} style={{ flexWrap: 'wrap' }}>
-                      <span className="dex-ui-step-num">2</span>
-                      <div className="dex-ui-step-body" style={{ minWidth: 170 }}>
-                        <div className="dex-ui-step-title">{isDe ? 'Erst an die Organizer testen' : 'Test with the organizers first'}</div>
-                        <div className="dex-ui-step-hint">{isDe ? 'Schickt die Mail so, wie sie jetzt ist, mit [TEST] im Betreff — nur an die Organizer des Events.' : 'Sends the email as it is now, with [TEST] in the subject — to the event organizers only.'}</div>
-                        {massmailTestMsg && (
-                          <div className={cx('dex-ui-callout', testOk ? 'dex-ui-callout--success' : 'dex-ui-callout--warn')} style={{ marginTop: 8, padding: '6px 10px' }} role="status">{massmailTestMsg}</div>
-                        )}
-                      </div>
-                      <div className="dex-ui-step-action">
-                        <button type="button" className="btn btn-outline dex-ui-btn-sm" onClick={() => { sendMassmailTestToOrganizers().catch(() => { /* */ }); }} disabled={emailSending || massmailTesting}>
-                          <Send size={14} /> {massmailTesting ? (isDe ? 'Sendet…' : 'Sending…') : (isDe ? 'Testmail senden' : 'Send test email')}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  {/* v31.10: Was „Auf Vorlage zurücksetzen" wegwirft, stand nur im
-                      `title` — auf dem Handy gibt es kein Überfahren, der Hinweis war
-                      dort also unerreichbar (Leitfaden 6b). Er steht jetzt als Text
-                      unter dem Knopf; der `title` bleibt als Zugabe. Und der Verweis
-                      auf den Sende-Knopf nennt die Fußzeile statt „unten rechts" —
-                      auf dem Handy sitzt der Knopf unten über die volle Breite. */}
-                  <div style={{ marginTop: 8 }}>
-                    <div className="dex-ui-muted" style={{ fontSize: '0.76rem' }}>{isDe ? 'Der Versand selbst ist der grüne Knopf in der Fußzeile dieses Dialogs.' : 'Sending itself is the green button in the footer of this dialog.'}</div>
-                    <div style={{ marginTop: 4 }}>
-                      <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" style={{ marginLeft: -8 }} onClick={resetMassmailDraft} disabled={emailSending}
-                        title={isDe ? 'Setzt Betreff, Überschrift, Text und zusätzliches CC auf die Vorlage zurück.' : 'Resets subject, heading, text and additional CC to the template.'}>
-                        {isDe ? 'Auf Vorlage zurücksetzen' : 'Reset to template'}
-                      </button>
-                      {/* Die Folge steht UNTER dem Knopf, nicht daneben: nebeneinander
-                          bricht sie auf dem Handy ohnehin um, und dann steht der
-                          Knopf als erste Zeile über einem Fließtext und liest sich
-                          als Überschrift. */}
-                      <div className="dex-ui-help" style={{ marginTop: 2 }}>
-                        {isDe ? 'Setzt Betreff, Überschrift, Text und zusätzliches CC auf die Vorlage zurück.' : 'Resets subject, heading, text and additional CC to the template.'}
-                      </div>
-                    </div>
-                  </div>
+                  <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" style={{ marginLeft: -8 }} onClick={resetMassmailDraft} disabled={emailSending}
+                    title={isDe ? 'Setzt Betreff, Überschrift, Text und zusätzliches CC auf die Vorlage zurück.' : 'Resets subject, heading, text and additional CC to the template.'}>
+                    {isDe ? 'Auf Vorlage zurücksetzen' : 'Reset to template'}
+                  </button>
                 </div>
               </div>
             )}
@@ -506,6 +512,16 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
               onClick: zurueck,
               disabled: emailSending,
             }}
+            footerExtra={<>
+              <button type="button" className="btn btn-secondary" onClick={saveMassmailDraft} disabled={emailSending}
+                title={isDe ? 'Der Text wird ohnehin automatisch gespeichert und beim nächsten Öffnen wiederhergestellt.' : 'The text is saved automatically anyway and restored next time.'}>
+                <Check size={14} /> {massmailDraftSaved ? (isDe ? 'Gespeichert' : 'Saved') : (isDe ? 'Entwurf speichern' : 'Save draft')}
+              </button>
+              <button type="button" className="btn btn-outline" onClick={() => { sendMassmailTestToOrganizers().catch(() => { /* */ }); }} disabled={emailSending || massmailTesting}
+                title={isDe ? 'Schickt die Mail so, wie sie jetzt ist, mit [TEST] im Betreff — nur an die Organizer des Events.' : 'Sends the email as it is now, with [TEST] in the subject — to the event organizers only.'}>
+                <Send size={14} /> {massmailTesting ? (isDe ? 'Sendet…' : 'Sending…') : (isDe ? 'Testmail an Organizer' : 'Test email to organizers')}
+              </button>
+            </>}
             extraAction={{
               label: emailSending ? (isDe ? 'Wird eingetragen…' : 'Queuing…') : (isDe ? `An ${recipients.length} Empfänger senden` : `Send to ${recipients.length} recipients`),
               onClick: sendAction,

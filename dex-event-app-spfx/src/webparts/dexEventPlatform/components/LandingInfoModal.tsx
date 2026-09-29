@@ -22,6 +22,7 @@ import { APP_VERSION } from '../version';
 import { useNavigation } from '../context/NavigationContext';
 import { EventContext } from '../context/EventContext';
 import { KpiRow } from './KpiRow';
+import { useIsMobile } from '../utils/useIsMobile';
 
 // v32.0.12: Dynamisch, weil InquiryModal selbst dieses Fenster rendert — ein
 // statischer Import in beide Richtungen wäre ein Modul-Zyklus.
@@ -57,6 +58,8 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
   // Einstieg reichen Einsatzbereich und Ablauf; die Kacheln bleiben zu, bis
   // jemand sie sehen will — sonst zeigt der Dialog beim Öffnen drei Bildschirme.
   const [showFeatures, setShowFeatures] = React.useState(false);
+  // v32.26: vor jedem frühen Return (rules-of-hooks).
+  const quer = !useIsMobile();
   // v31.94: „Handbuch" im Self-Service-Kasten — Hook VOR dem frühen Return.
   const { navigate } = useNavigation();
   // v32.0.10: Die Zähler vom Ladebildschirm auch hier (Nutzer-Ansage
@@ -86,6 +89,8 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
   }
 
   const isDE = locale === 'de';
+  // v32.26: Querformat am Rechner (Nutzer-Ansage 29.09.2026) — links Zahlen,
+  // Einsatzbereich und Self-Service, rechts der Ablauf in sieben Schritten.
   // v31.95: „Hast du Fragen?" direkt aus dem Self-Service-Kasten — derselbe
   // Dialog wie der Knopf im Kopf (QuestionButton hört auf das Fenster-Ereignis,
   // `tab: 'ask'` öffnet gleich „Frage stellen"). Erst schließen, dann öffnen,
@@ -180,7 +185,7 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
     <Modal
       open
       onClose={onClose}
-      maxWidth={860}
+      maxWidth={quer ? 1200 : 860}
       ariaLabel={isDE ? 'Über die App' : 'About the app'}
       icon={<Info size={20} />}
       title={<>DEX Event Experience Platform <span className="dex-ui-pill dex-ui-pill--gray" style={{ verticalAlign: 'middle', marginLeft: 6 }}>v{APP_VERSION}</span></>}
@@ -207,10 +212,12 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
         </button>
       </>}
     >
-      <div>
+      <div style={quer
+        ? { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', columnGap: 32, gridAutoFlow: 'row dense', alignItems: 'start' }
+        : undefined}>
         {/* v32.0.10: Bisher genutzt für … (dieselben Zahlen wie beim Start). */}
         {evCtx && (
-          <section className="dex-ui-section">
+          <section className="dex-ui-section" style={quer ? { gridColumn: 1 } : undefined}>
             <h4 className="dex-ui-section-title">{isDE ? 'Bisher genutzt für' : 'So far used for'}</h4>
             <KpiRow
               locale={isDE ? 'de' : 'en'}
@@ -222,7 +229,7 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
           </section>
         )}
         {/* Einsatzbereich */}
-        <section className="dex-ui-section">
+        <section className="dex-ui-section" style={quer ? { gridColumn: 1 } : undefined}>
           <h4 className="dex-ui-section-title">{isDE ? 'Für diese Events ist DEX gemacht' : 'DEX is built for these events'}</h4>
           {/* v31.95: Kacheln mit Symbol statt Haken-Zeilen — die Liste sah
               aus wie die Schritte darunter (Nutzer 24.09.2026: „hier sieht
@@ -249,7 +256,7 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
         </section>
 
         {/* So funktioniert es */}
-        <section className="dex-ui-section">
+        <section className="dex-ui-section" style={quer ? { gridColumn: 2, gridRow: '1 / span 5', marginTop: 0 } : undefined}>
           <h4 className="dex-ui-section-title">{isDE ? 'So läuft ein Event mit DEX' : 'How an event runs with DEX'}</h4>
           {/* v31.95: Prozess-Zeitstrahl statt sieben gleicher Karten — Nummern
               auf einer Linie, je Schritt ein Symbol. */}
@@ -271,7 +278,7 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
             soll auch stehen, dass DEX als Self-Service gedacht ist … Fragen
             über die Fragen-Funktion oben oder in einem der monatlichen Calls
             oder gerne selber im Handbuch". */}
-        <section className="dex-ui-section">
+        <section className="dex-ui-section" style={quer ? { gridColumn: 1 } : undefined}>
           <h4 className="dex-ui-section-title">{isDE ? 'DEX ist Self-Service' : 'DEX is self-service'}</h4>
           <div className="dex-ui-callout dex-ui-callout--neutral">
             <span className="dex-ui-callout-icon"><Info size={16} /></span>
@@ -284,7 +291,7 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
         </section>
 
         {/* Features — Aufklapper, Standard zu */}
-        <section className="dex-ui-section">
+        <section className="dex-ui-section" style={quer ? { gridColumn: 1 } : undefined}>
           <button
             type="button"
             className={cx('dex-ui-disclosure', showFeatures && 'is-open')}
@@ -313,7 +320,7 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
         </section>
 
         {/* Interesse? — der Knopf dazu sitzt im Fuß */}
-        <section className="dex-ui-section">
+        <section className="dex-ui-section" style={quer ? { gridColumn: 1 } : undefined}>
           <h4 className="dex-ui-section-title">{isDE ? 'Interesse?' : 'Interested?'}</h4>
           <p className="dex-ui-muted" style={{ margin: 0, fontSize: '0.86rem', lineHeight: 1.6 }}>
             {isDE

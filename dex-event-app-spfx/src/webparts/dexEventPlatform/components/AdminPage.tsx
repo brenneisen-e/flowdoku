@@ -101,6 +101,7 @@ import { DeregModal } from './admin/modals/DeregModal';
 import { QrPreviewModal } from './admin/modals/QrPreviewModal';
 import { CommsLogModal } from './admin/modals/CommsLogModal';
 import { MassmailPickModal } from './admin/modals/MassmailPickModal';
+import { MailTypeModal } from './admin/modals/MailTypeModal';
 import { MassmailPasteModal } from './admin/modals/MassmailPasteModal';
 import { ExcelTargetModal } from './admin/modals/ExcelTargetModal';
 import { MassmailComposerModal } from './admin/modals/MassmailComposerModal';
@@ -161,6 +162,8 @@ export default function AdminPage(): React.ReactElement {
   const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent, subscribeEventRealtime, sendCompleteRegistrationReminder } = useEvents();
   // v26.67: laufende „Erinnerung senden"-Aktion pro verwaister Anmeldung (Id).
   const [reminderBusyId, setReminderBusyId] = React.useState<number | null>(null);
+  // v32.26: Mail-Typ-Dialog (Einladung / Reminder / Info) vor der Empfängerwahl.
+  const [mailTypOpen, setMailTypOpen] = React.useState(false);
   // v26.85: „Erinnerung senden" in der „Fehlende Klammer-Anmeldung"-Box (emailKey).
   const [missingReminderKey, setMissingReminderKey] = React.useState<string | null>(null);
   // v24.38: läuft gerade ein „Zur Klammer hinzufügen" für diese E-Mail?
@@ -2509,7 +2512,7 @@ export default function AdminPage(): React.ReactElement {
     massmailHeaderImage, massmailHeaderOpts, massmailPasteRaw, massmailStatuses, massmailSubheading, massmailTesting,
     massmailTestMsg, registrations, resetMassmailDraft, saveMassmailDraft, searchUser, searchUsers,
     selectedEvent, sendMassmailTestToOrganizers, setComposerCrop, setEmailBody, setEmailHeading, setEmailSending,
-    setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading,
+    setEmailSubject, setMassmailCc, setMassmailHeaderImage, setMassmailMode, setMassmailPasteRaw, setMassmailSubheading, setMassmailAudience,
     setShowEmailModal, showAlert, showEmailModal,
     massmailOffene,
   };
@@ -2636,6 +2639,7 @@ export default function AdminPage(): React.ReactElement {
     duplicateEvents, isDe, selectedEvent, setConfirmDeleteEvent,
   };
   const eventDetailCardProps = {
+    onMailTile: () => setMailTypOpen(true), // v32.26
     activeRegs, childEventsOf, confirmDialog, detailCardRef, events,
     evTabHover, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating,
     isLoadingRegs, isMobile, isOrganizerFor, navigate, openTabGroup, registrations, regsUnknown,
@@ -2657,7 +2661,7 @@ export default function AdminPage(): React.ReactElement {
     isCheckingDeclines, isDe, isDetectingOverbook, isFixingColumns, isFixingFields, isOrganizerFor,
     isPromoting, isRefreshingProfiles, isReorderingIDs, isRepairingAccess, isRepairingNames,
     isRepairingOrganizers, isRepairingPerms, isResettingCounter, isSendingQR, isSplitCapacity, isSyncingRegistry,
-    navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker, promoteResult,
+    navigate, openChangeLogForEvent, openCommsModal, openInviteModal, openMassmailPicker: () => setMailTypOpen(true), promoteResult,
     qrSentCount, refreshEvents, refreshProfilesResult, registrations, reloadRegistrations, reorderResult, repairAccessResult,
     repairNamesResult, repairOrganizersResult, repairPermsResult, resetCounterResult, runIdReorder, runManualPromote,
     searchUsers, selectedEvent, setAccessFixModal, setAssignBibsOpen, setB2runTodoOpen, setBibImportOpen, setBillingPanelOpen, setConcurOpen,
@@ -3420,6 +3424,9 @@ export default function AdminPage(): React.ReactElement {
       {/* v17.10: Step 1 — Zielgruppen-Picker für Massenmail. Erscheint vor
           dem RichText-Editor. */}
       {massmailMode === 'pick' && selectedEvent && <MassmailPickModal {...massmailPickModalProps} />}
+      {/* v32.26: Mail-Typ zuerst — Einladung, Reminder oder Info. */}
+      <MailTypeModal open={mailTypOpen && !!selectedEvent} isDe={isDe} onClose={() => setMailTypOpen(false)}
+        onInvite={openInviteModal} onReminder={() => openMassmailPicker('reminder')} onInfo={() => openMassmailPicker()} />
 
       {/* v17.10: Step 2 (nur für 'nachruecker') — Paste-Eingabe + Extraktion */}
       {massmailMode === 'paste' && selectedEvent && <MassmailPasteModal {...massmailPasteModalProps} />}

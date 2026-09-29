@@ -5,7 +5,7 @@
 import * as React from 'react';
 import { formatDate, localizeStatus } from '../../../utils/eventStatus';
 import { formatAllDayPeriod, isEventOver } from '../../../utils/eventFormat';
-import { Calendar, Pencil, Pin, QrCode, Users } from '../../Icons';
+import { Calendar, Mail, Pencil, Pin, QrCode, Users } from '../../Icons';
 // v31.3: Gemeinsame UI-Klassen (Pillen, Chips, Zeilen, Aktions-Kachel) —
 // Hover kommt aus den Klassen, nicht mehr aus `evTabHover`.
 import { cx } from '../../dexUi';
@@ -45,6 +45,8 @@ export interface EventDetailCardProps {
   reservedDetailHeight: number;
   selectedEvent: DeloitteEvent;
   setCheckInHubOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  /** v32.26: Kachel „E-Mail versenden“ unter dem Bild — öffnet den Mail-Typ-Dialog. */
+  onMailTile?: () => void;
   setCheckInHubStep: React.Dispatch<React.SetStateAction<"choose" | "checkin">>;
   setEvTabHover: React.Dispatch<React.SetStateAction<string>>;
   setOpenTabGroup: React.Dispatch<React.SetStateAction<string>>;
@@ -62,7 +64,7 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
   // v31.3: `evTabHover`/`setEvTabHover`/`isMobile` bleiben in der Schnittstelle
   // (AdminPage reicht sie weiter), werden hier aber nicht mehr gelesen — der
   // Hover kommt aus den Klassen, die Label/Wert-Zeilen sind Pillen geworden.
-  const { activeRegs, childEventsOf, confirmDialog, detailCardRef, events, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating, isLoadingRegs, isOrganizerFor, navigate, openTabGroup, registrations, regsUnknown, reservedDetailHeight, selectedEvent, setCheckInHubOpen, setCheckInHubStep, setOpenTabGroup, subEventRegsByEventId, subListsIncomplete, t, toggleDraftStatus, waitlistRegs } = p;
+  const { activeRegs, childEventsOf, confirmDialog, detailCardRef, events, handleSelectEvent, isAdmin, isConsolidatedMode, isDe, isImpersonating, isLoadingRegs, isOrganizerFor, navigate, openTabGroup, registrations, regsUnknown, reservedDetailHeight, selectedEvent, setCheckInHubOpen, setCheckInHubStep, onMailTile, setOpenTabGroup, subEventRegsByEventId, subListsIncomplete, t, toggleDraftStatus, waitlistRegs } = p;
   // v31.3: Ableitungen für den Seitenkopf — reine Berechnungen, keine Hooks.
   const isDraft = !!selectedEvent.isFictive;
   const isFinalState = !isDraft && (selectedEvent.status === 'Completed' || selectedEvent.status === 'Cancelled');
@@ -373,6 +375,17 @@ export const EventDetailCard: React.FC<EventDetailCardProps> = (p) => {
                       <span className="dex-ui-action-body">
                         <span className="dex-ui-action-title">{isDe ? 'QR-Codes und Check-In' : 'QR codes and check-in'}</span>
                         <span className="dex-ui-action-desc">{isDe ? 'Codes verschicken oder Check-in starten' : 'Send codes or start check-in'}</span>
+                      </span>
+                    </button>
+                  )}
+                  {/* v32.26: Mail-Einstieg neben dem Check-in (Nutzer-Ansage 29.09.2026). */}
+                  {canManageSci && onMailTile && (
+                    <button type="button" className="dex-ui-action" onClick={onMailTile}
+                      title={isDe ? 'Einladung, Reminder oder Info-Mail an die Teilnehmer' : 'Invitation, reminder or info email to attendees'}>
+                      <span className="dex-ui-action-icon"><Mail size={18} /></span>
+                      <span className="dex-ui-action-body">
+                        <span className="dex-ui-action-title">{isDe ? 'E-Mail / Reminder versenden' : 'Send email / reminder'}</span>
+                        <span className="dex-ui-action-desc">{isDe ? 'Einladung, Erinnerung oder Info' : 'Invitation, reminder or info'}</span>
                       </span>
                     </button>
                   )}

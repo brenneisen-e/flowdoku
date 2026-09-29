@@ -311,8 +311,14 @@ export const EventOverviewScreen: React.FC<EventOverviewScreenProps> = (p) => {
                       </span>
                     )}
                   </div>
-                  {/* v23.42: Organizer mit Foto + Hover (wie Anmeldeseite). */}
-                  <div onClick={e => e.stopPropagation()} style={{ marginTop: 6 }}>
+                  {/* v23.42: Organizer mit Foto + Hover (wie Anmeldeseite).
+                      v32.26: KEIN stopPropagation mehr am Wrapper — der Block
+                      war so breit wie die Spalte, ein Klick in den leeren
+                      Streifen neben den Chips fokussierte die Karte, öffnete
+                      sie aber nicht („manchmal zweimal klicken", Audit
+                      29.09.2026). Chips und Kontaktkarte stoppen selbst
+                      (OrganizerList). */}
+                  <div style={{ marginTop: 6 }}>
                     <OrganizerList
                       names={event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => o.trim()).filter(Boolean)}
                       emails={event.organizerEmails}

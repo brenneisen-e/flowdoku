@@ -16,6 +16,7 @@ import { InfoTooltip } from './InfoTooltip';
 // v31.2: Gemeinsame UI-Klassen (Auswahl-Kacheln, Toggle-Zeilen, Callouts) —
 // Modal.tsx injiziert das Stylesheet, hier braucht es nur `cx`.
 import { cx } from './dexUi';
+import { useIsMobile } from '../utils/useIsMobile';
 
 /**
  * v29.45: Was der Organizer für sein Event braucht — ankreuzen statt frei
@@ -126,6 +127,10 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
   const { currentUser, photoUrl } = useCurrentUser();
   const { locale } = useLanguage();
   const isDe = locale === 'de';
+  // v32.26: Querformat auf dem Rechner (Nutzer-Ansage 29.09.2026: „für bessere Struktur und Übersicht“) —
+  // links Art, Name und Beschreibung, rechts die Bedarfs-Kacheln. Nur wenn
+  // die Kacheln überhaupt erscheinen (internes Event, kein Organizer-Antrag).
+  const isMobileInq = useIsMobile();
   const userFullName = `${currentUser.firstName} ${currentUser.surname}`.trim();
   // v24.24: Standort + Position des eingeloggten Users (read-only Anzeige +
   // gehen mit in die Anfrage-Mail an die Admins).
@@ -216,7 +221,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
       open={open}
       onClose={onClose}
       dismissable={!sending}
-      maxWidth={580}
+      maxWidth={(!organizerMode && eventScope === 'internal' && !isMobileInq) ? 1100 : 580}
       ariaLabel={organizerMode ? (isDe ? 'Organizer werden' : 'Become an organizer') : (isDe ? 'DEX-Anfrage' : 'DEX inquiry')}
       icon={organizerMode ? <CaptainHat size={20} /> : <MessageSquare size={20} />}
       title={organizerMode
@@ -262,6 +267,12 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
         </button>
       </>}
     >
+      {(() => {
+        const quer = !organizerMode && eventScope === 'internal' && !isMobileInq;
+        return (
+      <div style={quer
+        ? { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.15fr)', columnGap: 28, rowGap: 16, gridAutoFlow: 'row dense', alignItems: 'start' }
+        : { display: 'flex', flexDirection: 'column', gap: 16 }}>
         {/* v28.40: Einsatzbereich klarstellen. Bis hierhin stand in der
             Anfrage-Strecke nirgends, für welche Art von Events DEX gedacht
             ist — die einzige Erwaehnung von „extern" war die technische
@@ -273,7 +284,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
             Kachel mit Hover und Häkchen liest sich als Entscheidung, nicht als
             Fußnote. Semantik unverändert: eventScope 'internal' | 'external'. */}
         {!organizerMode && (
-          <div role="radiogroup" aria-label={isDe ? 'Um was für ein Event geht es?' : 'What kind of event is it?'}>
+          <div role="radiogroup" aria-label={isDe ? 'Um was für ein Event geht es?' : 'What kind of event is it?'} style={quer ? { gridColumn: 1 } : undefined}>
             <div className="dex-ui-label">{isDe ? 'Um was für ein Event geht es?' : 'What kind of event is it?'}</div>
             <div className="dex-ui-grid-2" style={{ gap: 10 }}>
               {([
@@ -320,7 +331,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
           </div>
         )}
         {!organizerMode && (
-          <div className={dimmed ? 'dex-ui-card--muted' : undefined}>
+          <div className={dimmed ? 'dex-ui-card--muted' : undefined} style={quer ? { gridColumn: 1 } : undefined}>
             <label className="dex-ui-label" htmlFor="dexInquiryEventName">{isDe ? 'Wie heißt dein Event?' : 'What is your event called?'}</label>
             <input
               id="dexInquiryEventName"
@@ -336,7 +347,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
         {/* v29.45: Bedarfs-Checkliste. Steht VOR dem Freitext: erst ankreuzen,
             was es an Funktionen braucht, dann alles Übrige beschreiben. */}
         {!organizerMode && eventScope === 'internal' && (
-          <div>
+          <div style={quer ? { gridColumn: 2, gridRow: '1 / span 4', paddingLeft: 28, borderLeft: '1px solid var(--dex-gray-200)' } : undefined}>
             <div className="dex-ui-label">
               {isDe ? 'Was brauchst du für dein Event?' : 'What do you need for your event?'}
               <span className="dex-ui-label-optional">(optional)</span>
@@ -404,7 +415,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
         {/* v31.2: Beschriftung als Frage statt „Sonst noch etwas?" — das las
             sich optional, obwohl die Beschreibung in der Anfrage Pflicht ist
             (canSubmit). Im Organizer-Modus bleibt sie optional und sagt es. */}
-        <div className={dimmed ? 'dex-ui-card--muted' : undefined}>
+        <div className={dimmed ? 'dex-ui-card--muted' : undefined} style={quer ? { gridColumn: 1 } : undefined}>
           <label className="dex-ui-label" htmlFor="dexInquiryMessage">
             {organizerMode
               ? (isDe ? 'Warum möchtest du Organizer werden?' : 'Why do you want to become an organizer?')
@@ -426,7 +437,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
           />
         </div>
         {status === 'success' && (
-          <div className="dex-ui-callout dex-ui-callout--success" role="status">
+          <div className="dex-ui-callout dex-ui-callout--success" role="status" style={quer ? { gridColumn: '1 / -1' } : undefined}>
             <span className="dex-ui-callout-icon"><Check size={16} /></span>
             <span>
               {organizerMode
@@ -436,7 +447,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
           </div>
         )}
         {status === 'error' && (
-          <div className="dex-ui-callout dex-ui-callout--danger" role="alert">
+          <div className="dex-ui-callout dex-ui-callout--danger" role="alert" style={quer ? { gridColumn: '1 / -1' } : undefined}>
             <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
             <span>{isDe ? 'Senden fehlgeschlagen — versuch es später noch einmal.' : 'Sending failed — please try again later.'}</span>
           </div>
@@ -448,7 +459,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
             v31.2: Steht jetzt am Ende statt vor den Fragen — der Organizer
             beantwortet erst, worum es geht, und sieht zuletzt, mit welchen
             Daten die Anfrage rausgeht (wie ein Absender unter einem Brief). */}
-        <div>
+        <div style={quer ? { gridColumn: 1 } : undefined}>
           <div className="dex-ui-muted" style={{ fontWeight: 600, marginBottom: 6 }}>
             {isDe ? 'Du fragst an als' : 'Requesting as'}
           </div>
@@ -473,6 +484,9 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
             </span>
           </div>
         </div>
+      </div>
+        );
+      })()}
       <LandingInfoModal
         open={showInfo}
         locale={locale === 'de' ? 'de' : 'en'}
