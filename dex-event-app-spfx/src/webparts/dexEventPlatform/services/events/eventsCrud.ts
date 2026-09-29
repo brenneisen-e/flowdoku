@@ -174,13 +174,41 @@ export async function seedEvents(svc: EventService): Promise<void> {
  *   Rechten. Dieselbe Falle wie bei `getAllRegistrations` (CLAUDE.md: „Ein
  *   Lesefehler ist keine Null").
  */
+/**
+ * v32.20: Folgt dem nextLink einer Listenabfrage. Bis v32.19 las die App
+ * DEX_Events mit `$top=100` OHNE Weiterblättern — seit die Liste 100 Zeilen
+ * überschritten hat, fehlten alle Events mit dem frühesten Startdatum
+ * (Befund 29.09.2026: jedes Log zeigte exakt „100 Events“). Ein Fehler auf
+ * einer Folgeseite ist ein Lesefehler, keine leere Menge: Status melden.
+ */
+async function alleSeiten(
+  svc: EventService,
+  ersteUrl: string,
+  onHttpError?: (_status: number) => void,
+): Promise<{ rows: unknown[]; bytes: number; seiten: number; ok: boolean }> {
+  let url: string | null = ersteUrl;
+  const rows: unknown[] = [];
+  let bytes = 0; let seiten = 0;
+  // Sicherung gegen Endlosschleifen: 50 Seiten à 100 = 5000 Zeilen.
+  while (url && seiten < 50) {
+    const response = await svc._sp.get(url, SPHttpClient.configurations.v1);
+    if (!response.ok) { if (onHttpError) onHttpError(response.status); return { rows, bytes, seiten, ok: false }; }
+    const raw = await response.text();
+    bytes += raw.length; seiten++;
+    const data = JSON.parse(raw);
+    for (const r of (data.value || [])) rows.push(r);
+    url = data['odata.nextLink'] || data['@odata.nextLink'] || (data.d && data.d.__next) || null;
+  }
+  return { rows, bytes, seiten, ok: true };
+}
+
 export async function getEvents(svc: EventService, onHttpError?: (_status: number) => void, slim?: boolean): Promise<SPEvent[]> {
   try {
-    const response = await svc._sp.get(
+    const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+    const res = await alleSeiten(svc,
       `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${slim ? EVENT_SELECT_SLIM : EVENT_SELECT}&$orderby=StartDate desc&$top=100`,
-      SPHttpClient.configurations.v1
-    );
-    if (!response.ok) { if (onHttpError) onHttpError(response.status); return []; }
+      onHttpError);
+    if (!res.ok && res.rows.length === 0) return [];
     // v29.51 (Messpunkt): Das ist die EINZIGE blockierende Datenabfrage des
     // Starts — und EVENT_SELECT holt 79 Spalten, darunter EmailImageBase64
     // und EmailTemplateOverrides mit eingebetteten Bildern. Ob das ein paar
@@ -188,13 +216,11 @@ export async function getEvents(svc: EventService, onHttpError?: (_status: numbe
     // Optimierungsschritt; bisher wurde darüber geraten. `.text()` +
     // JSON.parse ist genau das, was `.json()` intern auch tut — der Umweg
     // kostet nichts und liefert die exakte Byte-Zahl.
-    const raw = await response.text();
-    const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
-    const data = JSON.parse(raw);
-    const parseMs = t0 ? Math.round(performance.now() - t0) : -1;
-    const rows = data.value || [];
+    const rows = res.rows as SPEvent[];
+    const raw = { length: res.bytes };
+    const gesamtMs = t0 ? Math.round(performance.now() - t0) : -1;
     dlog('perf',
-      `[DEX][perf][getEvents] ${rows.length} Events · ${Math.round(raw.length / 1024)} KB JSON · parse ${parseMs} ms`
+      `[DEX][perf][getEvents] ${rows.length} Events · ${Math.round(raw.length / 1024)} KB JSON · ${res.seiten} Seite(n) · ${gesamtMs} ms${res.ok ? '' : ' · ABGEBROCHEN'}`
     );
     // v32.0.4: Welche Spalte trägt das Gewicht? Befund 28.09.2026: 36,7 MB für
     // 100 Events, 18 s Boot — für JEDE Rolle, denn alle lesen dieselbe Abfrage.
@@ -286,15 +312,14 @@ export async function getOutlookBodies(svc: EventService, ids?: string[]): Promi
     // Outlook-Spalte nur, wenn es sie gibt (sonst lehnt SharePoint ab).
     const outlookSpalte = await hatEventsSpalte(svc, 'OutlookLogoBase64');
     const sel = `Id,Modified,OutlookBody,EmailImageBase64${outlookSpalte ? ',OutlookLogoBase64' : ''}`;
-    const response = await svc._sp.get(
-      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${sel}${filter}&$orderby=StartDate desc&$top=100`,
-      SPHttpClient.configurations.v1
-    );
-    if (!response.ok) return null;
-    const data = await response.json();
+    // v32.20: alle Seiten — sonst blieben Events jenseits der ersten 100
+    // für immer „Outlook-Text ausstehend", und der Assistent wartete darauf.
+    const res = await alleSeiten(svc,
+      `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=${sel}${filter}&$orderby=StartDate desc&$top=100`);
+    if (!res.ok) return null;
     const out: Record<string, { body: string; modified: string; mailLogo: string; outlookLogo: string }> = {};
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const r of (data.value || []) as any[]) {
+    for (const r of res.rows as any[]) {
       out[String(r.Id)] = { body: r.OutlookBody || '', modified: r.Modified || '', mailLogo: r.EmailImageBase64 || '', outlookLogo: r.OutlookLogoBase64 || '' };
     }
     return out;
