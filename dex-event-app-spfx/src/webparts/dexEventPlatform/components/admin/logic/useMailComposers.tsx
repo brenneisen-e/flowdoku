@@ -82,7 +82,7 @@ export interface UseMailComposersResult {
   inviteHeaderOpts: { imageWidth: number; imagePaddingV: number; imagePaddingH: number; };
   massmailHeaderOpts: { imageWidth: number; imagePaddingV: number; imagePaddingH: number; };
   openInviteModal: () => void;
-  openMassmailPicker: () => void;
+  openMassmailPicker: (start?: MassmailAudience) => void;
   openPendingReminder: () => Promise<void>;
   /** v31.72: Dieselbe Rechnung wie „Wer hat noch nicht geantwortet?" — für
    *  die Massenmail-Gruppe „Erinnerung". null = kein Event. `audience` leer
@@ -442,9 +442,11 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
     setMassmailHeaderImage(p => ({ ...p, ...eventHeaderImageLayout(ev.emailTemplateOverrides) }));
     window.setTimeout(() => { massmailHydratingRef.current = false; }, 0);
   };
-  const openMassmailPicker = (): void => {
+  // v32.26: optional mit Startgruppe — „Reminder“ im Mail-Typ-Dialog wählt
+  // die Erinnerung vor.
+  const openMassmailPicker = (start?: MassmailAudience): void => {
     if (selectedEvent) applyMassmailDraftOrDefaults(selectedEvent);
-    setMassmailAudience('active');
+    setMassmailAudience(start || 'active');
     setMassmailPasteRaw('');
     setMassmailTestMsg(null);
     setMassmailMode('pick');
