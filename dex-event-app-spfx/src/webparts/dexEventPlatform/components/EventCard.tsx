@@ -20,6 +20,8 @@ import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
+import { useCurrentUser } from '../context/UserContext';
+import { istImTestTeam } from '../utils/testTeam';
 import { DeloitteEvent } from '../types';
 import { useCachedImageWithFallback } from '../utils/imageCache';
 import { isRegistrationFullyClosed, isRegistrationOpen } from '../utils/eventFormat';
@@ -82,6 +84,9 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   const isDe = locale === 'de';
   const { canCreateEvents } = useRoles();
   const { childEventsOf } = useEvents();
+  const { currentUser } = useCurrentUser();
+  // v32.29: Test-Team darf wie der Organizer vor „Aktiv ab" in die Seite.
+  const istTestTeam = istImTestTeam(currentUser, event);
   // v19.22: Event-Bild über den IndexedDB-Cache — beim zweiten App-Aufruf sofort
   // da, ohne SharePoint-Roundtrip.
   // v28.11: Für den Kachel-Hintergrund (cover) das UNBESCHNITTENE Querformat-
@@ -140,7 +145,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   // nicht „für dich buchbar".
   const openChildCount = event.subEventsDisabled
     ? 0
-    : childEvents.filter(ce => (!ce.isFictive || canCreateEvents || isOwnOrganizer) && isRegistrationOpen(ce)).length;
+    : childEvents.filter(ce => (!ce.isFictive || canCreateEvents || isOwnOrganizer || istTestTeam) && isRegistrationOpen(ce)).length;
   // v31.9: Bezeichnung immer aus den Term-Konstanten (Leitfaden 6d) — im
   // `subEventsOnlyMode` heißen die Kinder für Teilnehmer nicht „Sub-Events",
   // sondern schlicht „Events" (v29.13); ein eigener Begriff des Organizers
@@ -161,7 +166,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   // rein (zum Vorbereiten) und bekommen stattdessen nur einen Hinweis-Badge.
   const activeFromTs = event.activeFrom ? new Date(event.activeFrom).getTime() : 0;
   const notYetActive = activeFromTs > 0 && activeFromTs > Date.now();
-  const showPreviewOverlay = notYetActive && !canCreateEvents && !isOwnOrganizer && !alreadySignedUp;
+  const showPreviewOverlay = notYetActive && !canCreateEvents && !isOwnOrganizer && !istTestTeam && !alreadySignedUp;
   const showOrganizerActiveBadge = notYetActive && (canCreateEvents || isOwnOrganizer);
   const blockClick = showDeadlineOverlay || showPreviewOverlay;
 

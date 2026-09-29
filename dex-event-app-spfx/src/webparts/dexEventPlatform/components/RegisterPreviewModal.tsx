@@ -13,7 +13,7 @@
  */
 
 import * as React from 'react';
-import { X, Users } from './Icons';
+import { X, Users, Download } from './Icons';
 import { PreviewContextStack } from './manual/previews/PreviewProviders';
 import RegistrationPage from './RegistrationPage';
 import Header from './Header';
@@ -258,9 +258,56 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
   // v31.2: Sprache und Stylesheet — ebenfalls VOR dem Return (siehe oben).
   const isDe = useLocaleSafe() === 'de';
   React.useEffect(() => { ensureDexUiStyles(); }, []);
+  const scopeRef = React.useRef<HTMLDivElement | null>(null); // v32.29: PDF (vor dem frühen Return)
   if (!open) return null;
 
   const closeLabel = isDe ? 'Vorschau schließen' : 'Close preview';
+  // v32.29: Vorschau als PDF (Nutzer-Ansage 29.09.2026). Kein eigener
+  // Renderer: Der Inhalt der Vorschau wird samt Stylesheets in ein
+  // Druckfenster kopiert, dort wählt man „Als PDF speichern“. Canvas (die
+  // DEX-Kugel) kopiert sich nicht mit — sie wird vorher zum Bild. Die
+  // SPFx-Styles hängen an den Klassen der Vorfahren (CSS-Module-Wurzel), deshalb
+  // wird die Kette der Vorfahren-Klassen um die Kopie herum nachgebaut.
+  const alsPdf = (): void => {
+    const scope = scopeRef.current;
+    if (!scope) return;
+    const w = window.open('', '_blank');
+    if (!w) return;
+    const kopie = scope.cloneNode(true) as HTMLElement;
+    const orig = Array.from(scope.querySelectorAll('canvas'));
+    const neu = Array.from(kopie.querySelectorAll('canvas'));
+    orig.forEach((c, i) => {
+      try {
+        const img = document.createElement('img');
+        img.src = c.toDataURL('image/png');
+        img.style.cssText = c.style.cssText;
+        img.width = c.clientWidth; img.height = c.clientHeight;
+        if (neu[i] && neu[i].parentNode) neu[i].parentNode!.replaceChild(img, neu[i]);
+      } catch { /* Bild bleibt weg */ }
+    });
+    // App-Kopfzeile gehört nicht in die Anmeldeseite.
+    kopie.querySelectorAll('header.header').forEach(h => { const box = h.parentElement; (box && box !== kopie ? box : h).remove(); });
+    kopie.style.maxHeight = 'none'; kopie.style.overflow = 'visible'; kopie.style.aspectRatio = 'auto'; kopie.style.borderRadius = '0';
+    let html = kopie.outerHTML;
+    let el: HTMLElement | null = scope.parentElement;
+    while (el && el !== document.body) {
+      if (el.className && typeof el.className === 'string') html = `<div class="${el.className}">${html}</div>`;
+      el = el.parentElement;
+    }
+    const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).map(n => n.outerHTML).join('\n');
+    const titel = (data.title || (isDe ? 'Anmeldeseite' : 'Registration page')).replace(/[<>&]/g, '');
+    w.document.open();
+    w.document.write(`<!doctype html><html lang="${isDe ? 'de' : 'en'}"><head><meta charset="utf-8"><title>${titel}</title>${styles}
+<style>
+  html, body { background: #fff !important; margin: 0; }
+  @page { size: A4; margin: 12mm; }
+  body > div { position: static !important; transform: none !important; animation: none !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .dex-preview-scope { width: 100% !important; max-width: 900px; margin: 0 auto; }
+</style></head><body>${html}</body></html>`);
+    w.document.close();
+    window.setTimeout(() => { try { w.focus(); w.print(); } catch { /* */ } }, 700);
+  };
 
   return (
     <div
@@ -348,6 +395,7 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
                 }} />
               )}
               <div
+                ref={scopeRef}
                 className="dex-preview-scope"
                 // v14.10: Klicks sind jetzt erlaubt (Organizer kann durchklicken,
                 // Sub-Events anhaken, Felder ausfüllen) — der EventContext-Stub
@@ -406,7 +454,13 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
               ? 'Etwas ändern? Schließe die Vorschau und passe die Felder im Wizard an.'
               : 'Want to change something? Close the preview and edit the fields in the wizard.'}
           </span>
-          <button type="button" className="btn btn-primary" onClick={onClose}>{closeLabel}</button>
+          <span style={{ display: 'inline-flex', gap: 8 }}>
+            <button type="button" className="btn btn-secondary" onClick={alsPdf}
+              title={isDe ? 'Öffnet die Anmeldeseite als Druckansicht — dort ' + '\u201eAls PDF speichern\u201c wählen.' : 'Opens the registration page for printing — choose \u201cSave as PDF\u201d there.'}>
+              <Download size={14} /> {isDe ? 'Als PDF speichern' : 'Save as PDF'}
+            </button>
+            <button type="button" className="btn btn-primary" onClick={onClose}>{closeLabel}</button>
+          </span>
         </div>
       </div>
     </div>

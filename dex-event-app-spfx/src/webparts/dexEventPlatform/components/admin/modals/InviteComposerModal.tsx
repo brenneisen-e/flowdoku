@@ -8,7 +8,8 @@ import { replacePlaceholders, wrapTemplate } from '../../../services/EmailTempla
 import { formatOrganizerList } from '../../../context/eventTextHelpers';
 import RecipientPicker from '../../admin/RecipientPicker';
 import MailHeaderImageChooser from '../../admin/MailHeaderImageChooser';
-import { AlertCircle, Check, ChevronDown, Plus, Send, X } from '../../Icons';
+import { AlertCircle, Check, ChevronDown, Plus, Send, Users, X } from '../../Icons';
+import Modal from '../../Modal';
 import { HtmlEditorModal } from '../../HtmlEditorModal';
 // v31.2: Gemeinsame UI-Klassen — das Stylesheet hängt HtmlEditorModal beim
 // Öffnen selbst ein (`ensureDexUiStyles`), hier braucht es nur `cx`.
@@ -79,6 +80,18 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // (Nutzer-Ansage 29.09.2026); die Zeile nennt Ziel und Anzahl trotzdem.
         const [aufAn, setAufAn] = React.useState(false);
         const [aufBild, setAufBild] = React.useState(false);
+        // v32.29: „Nur intern“ hat drei Kreise — ich, alle Organizer, Organizer
+        // plus Test-Team (Nutzer-Ansage 29.09.2026). Bewusst KEINE zwei neuen
+        // Kacheln („das werden dann viele Kacheln“), sondern eine Kachel mit
+        // Chip-Zeile darunter; `inviteTarget` bleibt 'organizer', der Kreis
+        // lebt nur hier im Dialog. Intern heißt weiter: kein Bcc-Versand, kein
+        // Eintrag im Kommunikations-Log.
+        const [internKreis, setInternKreis] = React.useState<'ich' | 'orgs' | 'orgsTest'>('ich');
+        // v32.29: Erst „An wen?“, dann der Editor — wie bei Info-Mail und
+        // Reminder (Nutzer-Ansage 29.09.2026). Kommt der Dialog mit einer schon
+        // gesetzten Auswahl (Kasten „Offene Personen“ setzt die Liste vorab),
+        // ist die Frage beantwortet und der Editor öffnet direkt.
+        const [schritt, setSchritt] = React.useState<'wer' | 'mail'>(inviteCustomEmails ? 'mail' : 'wer');
         // v32.27: Verteiler in ihre Mitglieder auflösen (Nutzer-Befund 29.09.2026:
         // „An alle im Mailverteiler“ zeigte 1 — die Verteiler-Adresse selbst). Ein
         // Verteiler hat ein @ und lief deshalb als einzelne Person durch; damit
@@ -99,6 +112,26 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
           : audienceRoh).filter(e => !ausgeschlossen.has(e.toLowerCase()));
         const myEmail = currentUser.email || '';
         const myDisplayName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || myEmail;
+        const eindeutig = (list: string[]): string[] => {
+          const seen = new Set<string>();
+          const out: string[] = [];
+          for (const raw of list) {
+            const e = (raw || '').trim();
+            const lc = e.toLowerCase();
+            if (!e || lc.indexOf('@') < 0 || seen.has(lc)) continue;
+            seen.add(lc);
+            out.push(e);
+          }
+          return out;
+        };
+        const orgEmails = eindeutig([myEmail, ...(selectedEvent.organizerEmails || []), ...(selectedEvent.coOrganizerEmails || [])]);
+        const orgTestEmails = eindeutig([...orgEmails, ...(selectedEvent.testTeamEmails || [])]);
+        const internEmails = internKreis === 'orgs' ? orgEmails : internKreis === 'orgsTest' ? orgTestEmails : [myEmail].filter(Boolean);
+        const internLabel = internKreis === 'orgs'
+          ? (isDe ? 'An alle Organizer' : 'To all organizers')
+          : internKreis === 'orgsTest'
+          ? (isDe ? 'An Organizer + Test-Team' : 'To organizers + test team')
+          : '';
         // v28.37: „Nur an noch nicht Angemeldete" — der Verteiler abzueglich
         // aller, die im Event schon eine Zeile haben (angemeldet, Warteliste,
         // eingecheckt ODER abgemeldet). Genau der Nachfass-Fall: erinnern, ohne
@@ -138,7 +171,7 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // Handanpassung sticht die Radio-Auswahl.
         const effectiveEmails = inviteCustomEmails || modeEmails;
         const targetEmails = inviteTarget === 'organizer'
-          ? [myEmail].filter(Boolean)
+          ? internEmails
           : effectiveEmails;
         /** Echter Massenversand (Verteiler ODER Nachfass) — nur „An mich" nicht. */
         const isBroadcast = inviteTarget !== 'organizer';
@@ -180,7 +213,9 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // Verteilergröße, selbst nachdem Adressen entfernt wurden.
         const nRecipients = targetEmails.length;
         const recipientLabel = inviteTarget === 'organizer'
-          ? (isDe ? `An mich (${myEmail})` : `To me (${myEmail})`)
+          ? (internKreis === 'ich'
+            ? (isDe ? `An mich (${myEmail})` : `To me (${myEmail})`)
+            : `${internLabel} (${targetEmails.length} ${isDe ? 'Empfänger' : 'recipients'})`)
           : (isDe
             ? `${inviteCustomEmails
               ? 'An angepasste Auswahl'
@@ -275,10 +310,14 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
           }
           const confirmMsg = isDe
             ? (inviteTarget === 'organizer'
-              ? `Einladungs-Mail an dich selbst (${myEmail}) senden? Du kannst sie anschließend aus Outlook an deinen Verteiler weiterleiten.`
+              ? (internKreis === 'ich'
+                ? `Einladungs-Mail an dich selbst (${myEmail}) senden? Du kannst sie anschließend aus Outlook an deinen Verteiler weiterleiten.`
+                : `Einladungs-Mail zur Probe ${internKreis === 'orgs' ? 'an alle Organizer' : 'an Organizer und Test-Team'} senden (${targetEmails.length} Empfänger)?\n\n${targetEmails.join(', ')}\n\nDas ist ein interner Versand — er zählt nicht als Einladung an die Teilnehmenden.`)
               : `Einladungs-Mail an ${resolvedRecipients.length} aufgelöste Empfänger des Mailverteilers senden?\n\nDie Verteiler wurden in einzelne Mitglieder-Adressen aufgelöst; die Empfänger stehen im Bcc (sehen einander nicht), du selbst im An-Feld.\n\n${resolvedRecipients.slice(0, 12).join(', ')}${resolvedRecipients.length > 12 ? `, … (+${resolvedRecipients.length - 12})` : ''}`)
             : (inviteTarget === 'organizer'
-              ? `Send invitation email to yourself (${myEmail})? You can then forward it from Outlook to your distribution list.`
+              ? (internKreis === 'ich'
+                ? `Send invitation email to yourself (${myEmail})? You can then forward it from Outlook to your distribution list.`
+                : `Send a test invitation ${internKreis === 'orgs' ? 'to all organizers' : 'to organizers and test team'} (${targetEmails.length} recipients)?\n\n${targetEmails.join(', ')}\n\nThis is an internal send — it does not count as an invitation to participants.`)
               : `Send invitation email to ${resolvedRecipients.length} resolved recipients of the mail distribution?\n\nDistribution lists were resolved into individual member addresses; recipients are on Bcc (cannot see each other), you are in the To field.\n\n${resolvedRecipients.slice(0, 12).join(', ')}${resolvedRecipients.length > 12 ? `, … (+${resolvedRecipients.length - 12})` : ''}`);
           if (!(await confirmDialog(confirmMsg, { confirmLabel: isDe ? 'Senden' : 'Send' }))) return;
           setInviteSending(true);
@@ -292,7 +331,7 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
           const fullBody = applyInviteHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, inviteHeaderOpts));
           const ccString = ccEmails.join(';');
           const recipientName = inviteTarget === 'organizer'
-            ? myDisplayName
+            ? (internKreis === 'ich' ? myDisplayName : internLabel)
             : (inviteTarget === 'uninvited'
               ? (isDe ? 'Noch nicht Eingeladene' : 'Not-yet-invited')
               : inviteTarget === 'pending'
@@ -422,18 +461,8 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
           );
         };
         const noAudience = audienceEmails.length === 0;
-        const headerExtra = (
-          <div>
-            {/* ---- 1. An wen? ------------------------------------------ */}
-            <div className="dex-ui-section">
-              <button type="button" className={cx('dex-ui-disclosure', aufAn && 'is-open')} onClick={() => setAufAn(o => !o)} aria-expanded={aufAn}>
-                <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
-                {isDe ? 'An wen geht die Mail?' : 'Who receives the email?'}
-                <span className="dex-ui-pill dex-ui-pill--green" style={{ marginLeft: 8 }}>{targetEmails.length}</span>
-                <span className="dex-ui-muted" style={{ marginLeft: 6, fontWeight: 400, fontSize: '0.8rem' }}>{recipientLabel}</span>
-              </button>
-              {aufAn && (
-              <div className="dex-ui-disclosure-body">
+        const zielAuswahl = (
+            <>
               <div className="dex-ui-grid-2" role="radiogroup" aria-label={isDe ? 'Empfänger' : 'Recipients'}>
                 {/* v31.2: „Nur an mich" ist die Vorgabe (inviteTarget-Default
                     'organizer') und steht deshalb oben links — die Blickführung
@@ -441,10 +470,11 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                     nicht mehr. */}
                 {renderTargetTile({
                   key: 'organizer',
-                  title: isDe ? 'Nur an mich' : 'Only to me',
+                  title: isDe ? 'Nur intern' : 'Internal only',
+                  count: targetEmails.length && inviteTarget === 'organizer' ? targetEmails.length : undefined,
                   desc: isDe
-                    ? `${myEmail} — zum Prüfen oder zum Weiterleiten aus Outlook an deinen Verteiler.`
-                    : `${myEmail} — to check it, or to forward it from Outlook to your distribution list.`,
+                    ? 'Zum Prüfen oder Weiterleiten — an dich, alle Organizer oder zusätzlich das Test-Team.'
+                    : 'To check or forward it — to you, all organizers, or organizers plus the test team.',
                 })}
                 {renderTargetTile({
                   key: 'audience',
@@ -487,6 +517,30 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                     : `Whoever already registered or cancelled is excluded — ${alreadyDecidedCount} address(es) per participant list.`,
                 })}
               </div>
+              {inviteTarget === 'organizer' && (
+                <div className="dex-ui-inline" role="radiogroup" aria-label={isDe ? 'Wer genau?' : 'Who exactly?'} style={{ gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span className="dex-ui-muted" style={{ fontSize: '0.82rem', marginRight: 4 }}>{isDe ? 'Wer genau?' : 'Who exactly?'}</span>
+                  {([
+                    { k: 'ich' as const, l: isDe ? `Nur ich` : 'Only me', n: myEmail ? 1 : 0 },
+                    { k: 'orgs' as const, l: isDe ? 'Alle Organizer' : 'All organizers', n: orgEmails.length },
+                    { k: 'orgsTest' as const, l: isDe ? 'Organizer + Test-Team' : 'Organizers + test team', n: orgTestEmails.length },
+                  ]).map(o => (
+                    <button
+                      key={o.k}
+                      type="button"
+                      role="radio"
+                      aria-checked={internKreis === o.k}
+                      className={cx('dex-ui-chip', internKreis === o.k && 'is-active')}
+                      onClick={() => setInternKreis(o.k)}
+                    >
+                      {o.l} <span style={{ opacity: 0.75, marginLeft: 4 }}>{o.n}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {inviteTarget === 'organizer' && internKreis !== 'ich' && (
+                <div className="dex-ui-help" style={{ wordBreak: 'break-word' }}>{targetEmails.join(', ')}</div>
+              )}
               {/* v31.2: Die Grenze des Abgleichs gehört zum Zähler der Kachel,
                   nicht erst zur Wahl — sie steht, sobald die Kachel wählbar ist. */}
               {!noAudience && invitedKnown && (
@@ -517,6 +571,21 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                   </div>
                 </div>
               )}
+            </>
+        );
+        const headerExtra = (
+          <div>
+            {/* ---- 1. An wen? ------------------------------------------ */}
+            <div className="dex-ui-section">
+              <button type="button" className={cx('dex-ui-disclosure', aufAn && 'is-open')} onClick={() => setAufAn(o => !o)} aria-expanded={aufAn}>
+                <span className="dex-ui-disclosure-chevron"><ChevronDown size={16} /></span>
+                {isDe ? 'An wen geht die Mail?' : 'Who receives the email?'}
+                <span className="dex-ui-pill dex-ui-pill--green" style={{ marginLeft: 8 }}>{targetEmails.length}</span>
+                <span className="dex-ui-muted" style={{ marginLeft: 6, fontWeight: 400, fontSize: '0.8rem' }}>{recipientLabel}</span>
+              </button>
+              {aufAn && (
+              <div className="dex-ui-disclosure-body">
+              {zielAuswahl}
               {/* v28.37: Empfaengerliste — eingeklappt (sie kann mehrere hundert
                   Adressen haben und schob den Dialog vorher auseinander) und vor
                   dem Senden anpassbar: einzelne rausnehmen oder ergaenzen. Eine
@@ -720,7 +789,7 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // einzelner Adressen. Sie muss die WIRKLICH adressierte Liste nennen,
         // sonst widerspricht sie dem Senden-Knopf direkt daneben.
         const previewToLine = inviteTarget === 'organizer'
-          ? myEmail
+          ? (internKreis === 'ich' ? myEmail : targetEmails.join(', '))
           : (isDe
             ? `${targetEmails.length} ${targetEmails.length === 1 ? 'Empfänger' : 'Empfänger'}${
               inviteCustomEmails ? ' (angepasste Auswahl)'
@@ -733,6 +802,28 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                 : inviteTarget === 'pending' ? ' — not yet registered'
                 : ' of the mail distribution'}`);
         const previewSubjectLine = replacePlaceholders(inviteSubject, previewVars);
+        if (schritt === 'wer') {
+          return (
+            <Modal
+              open={true}
+              onClose={() => setShowInviteModal(false)}
+              maxWidth={980}
+              title={isDe ? 'An wen soll die Einladung gehen?' : 'Who should receive the invitation?'}
+              subtitle={isDe ? 'Wähle die Empfänger — den Text schreibst du danach im Editor.' : 'Choose the recipients — you write the text in the editor next.'}
+              icon={<Users size={20} />}
+              footer={
+                <>
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowInviteModal(false)}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+                  <button type="button" className="btn btn-primary" disabled={targetEmails.length === 0} onClick={() => setSchritt('mail')}>
+                    {isDe ? `Weiter: Einladung schreiben (${targetEmails.length})` : `Next: write invitation (${targetEmails.length})`}
+                  </button>
+                </>
+              }
+            >
+              {zielAuswahl}
+            </Modal>
+          );
+        }
         return (
           <HtmlEditorModal
             open={showInviteModal}

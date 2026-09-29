@@ -527,14 +527,9 @@ function AppContent(): React.ReactElement {
   // (Hard-Reload). Zeigt eine grüne Erfolgs-Banner-Meldung und navigiert
   // automatisch in die Event-Liste. Die Action wird im useEffect-Block direkt
   // ausgewertet (s.u.) — kein extra useMemo nötig.
-  const [successBanner, setSuccessBanner] = React.useState<{ title: string; type: 'create' | 'update' } | null>(null);
-
-  // v9.43: Banner nach 8 Sekunden automatisch ausblenden — User hat genug Zeit zu lesen.
-  React.useEffect(() => {
-    if (!successBanner) return;
-    const t = setTimeout(() => setSuccessBanner(null), 8000);
-    return () => clearTimeout(t);
-  }, [successBanner]);
+  // v32.29: Der grüne Banner „Event erstellt!“ oben ist entfallen (Nutzer-
+  // Ansage: „das kann weg“) — der Abschluss-Dialog des Assistenten sagt
+  // dasselbe schon, der Banner war die zweite Meldung zum selben Ereignis.
 
   // v9.45: Soft-Refresh-Listener für Event-Submit-Erfolg. EventCreationPage
   // dispatcht diesen Event direkt nach Submit (createEvent oder updateEvent),
@@ -546,10 +541,6 @@ function AppContent(): React.ReactElement {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const detail = (e as any).detail as { title?: string; eventId?: string; type?: 'create' | 'update' } | undefined;
       if (!detail) return;
-      setSuccessBanner({
-        title: detail.title || 'Event',
-        type: detail.type === 'update' ? 'update' : 'create',
-      });
       // v17.4: Beim Update kehrt der User in das Organizer-Menü des Events
       // zurück (AdminPage mit dem soeben gespeicherten Event vorselektiert)
       // statt in die Event-Liste — weiterarbeiten ohne Such-Klick.
@@ -645,11 +636,6 @@ function AppContent(): React.ReactElement {
         // (frische Subsite kann sonst 400/404 werfen) und der App-Bootstrap
         // navigiert dann sauber zur Event-Liste mit grüner Erfolgs-Banner.
         didHandleDeepLink.current = true;
-        const evt = events.find(e => e.id === eventParam);
-        setSuccessBanner({
-          title: evt?.title || 'Event',
-          type: action === 'event-updated' ? 'update' : 'create',
-        });
         navigate('register');
         // URL aufräumen, damit ein zweiter Reload nicht erneut den Banner triggert
         try {
@@ -1271,41 +1257,6 @@ function AppContent(): React.ReactElement {
           Mount würde ihn nur verschieben. Rendert ohne Lauf nichts. */}
       <AdminAutoMaintenance />
 
-      {successBanner && (
-        <div
-          role="status"
-          style={{
-            position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)',
-            zIndex: 2500, maxWidth: 'calc(100vw - 32px)',
-            padding: '14px 22px', borderRadius: 12,
-            background: 'linear-gradient(135deg, #86bc25, #6b9a1e)',
-            color: '#fff', boxShadow: '0 8px 24px rgba(107,154,30,0.35)',
-            display: 'flex', alignItems: 'center', gap: 14,
-            fontSize: '0.95rem', fontWeight: 500,
-            animation: 'dexBannerSlideIn 0.4s ease-out',
-          }}
-        >
-          <span style={{ fontSize: '1.4rem', lineHeight: 1 }}>✓</span>
-          <span style={{ lineHeight: 1.4 }}>
-            <strong>{successBanner.type === 'update' ? 'Event aktualisiert!' : 'Event erstellt!'}</strong>
-            {' '}
-            <span style={{ opacity: 0.95 }}>{'„'}{successBanner.title}{'“ '}{successBanner.type === 'update' ? 'wurde gespeichert' : 'wurde angelegt'} — {successBanner.type === 'create' ? 'taucht jetzt in der Eventliste auf' : 'die Änderungen sind live'}.</span>
-          </span>
-          <button
-            type="button"
-            onClick={() => setSuccessBanner(null)}
-            aria-label="Schließen"
-            style={{
-              background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
-              width: 26, height: 26, borderRadius: '50%', cursor: 'pointer',
-              fontSize: '1rem', lineHeight: 1, padding: 0,
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >×</button>
-          <style>{`@keyframes dexBannerSlideIn { from { opacity: 0; transform: translate(-50%, -20px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
-        </div>
-      )}
       <main className="main-content" style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
         {/* v20.0: Suspense-Grenze für die lazy geladenen Sekundär-Seiten-Chunks.
             v31.9.5: Der Platzhalter war wörtlich „…" mit Buchstabenabstand 4.
