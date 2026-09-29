@@ -50,17 +50,26 @@ export default function StartPage(): React.ReactElement {
 
   const isMobile = useIsMobile();
   const { navigate } = useNavigation();
-  const { isAdmin, isOrganizer, isRolesLoading, rolesReadStatus } = useRoles();
+  const { isAdmin, isOrganizer, isRolesLoading, rolesReadStatus, erstinstallation } = useRoles();
   const { t } = useLanguage();
   const { openKontakt } = useHilfe();
 
   // Ein 403 auf der Rollenliste heißt „nicht lesbar", nicht „kein Organizer".
   // Ohne den Satz sieht jemand, der Organizer IST, nur „Organizer werden?" —
   // und niemand weiß, warum die Kachel grau ist (DEX v30.81).
-  const rechteHinweis = rolesReadStatus === 'forbidden'
-    ? t('Deine Rolle konnte nicht geprüft werden (fehlendes Leserecht). Bist du bereits Organizer? Dann bitte einen Admin, in der Rollenverwaltung „Rechte prüfen" auszuführen.',
-      'Your role could not be checked (missing read access). Already an organizer? Ask an admin to run "Check rights" in role management.')
-    : null;
+  //
+  // Scheitert das Speichern des ersten Admin-Eintrags (frische Plattform),
+  // wird niemand still Admin — und ohne diesen Satz sähe die Person nur eine
+  // normale Oberfläche mit „Organizer werden?" und wüsste nicht, warum
+  // (Review 29.09.2026). Sie ist ja gerade NICHT Admin und erreicht deshalb
+  // keine Seite, die es sagen könnte.
+  const rechteHinweis = erstinstallation === 'nicht-gespeichert'
+    ? t('Die Erstinstallation konnte nicht gespeichert werden — du bist deshalb noch nicht als Admin eingetragen. Lade die Seite neu, um es erneut zu versuchen.',
+      'The initial setup could not be saved — so you are not registered as admin yet. Reload the page to try again.')
+    : rolesReadStatus === 'forbidden'
+      ? t('Deine Rolle konnte nicht geprüft werden (fehlendes Leserecht). Bist du bereits Organizer? Dann bitte einen Admin, in der Rollenverwaltung „Rechte prüfen" auszuführen.',
+        'Your role could not be checked (missing read access). Already an organizer? Ask an admin to run "Check rights" in role management.')
+      : null;
 
   const itemUseCases: MenuItem = {
     key: 'usecases',

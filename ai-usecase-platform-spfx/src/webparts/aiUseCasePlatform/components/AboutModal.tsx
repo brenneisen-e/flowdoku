@@ -33,8 +33,8 @@ export default function AboutModal(props: { open: boolean; onClose: () => void; 
 
   const ROLLEN: Array<{ r: UserRole; text: string }> = [
     { r: 'User', text: t('Use Cases ansehen und Demos starten.', 'View use cases and start demos.') },
-    { r: 'Organizer', text: t('Zusätzlich Use Cases anlegen und pflegen — mit Bild, Links und Bewertung.', 'Also create and maintain use cases — with image, links and assessment.') },
-    { r: 'Admin', text: t('Zusätzlich Rollen vergeben und Rechte prüfen.', 'Also assign roles and check rights.') },
+    { r: 'Organizer', text: t('Zusätzlich Use Cases anlegen und pflegen — mit Bild, Links und Bewertung —, archivierte Use Cases sehen und das Protokoll lesen.', 'Also create and maintain use cases — with image, links and assessment —, see archived use cases and read the log.') },
+    { r: 'Admin', text: t('Zusätzlich Rollen vergeben, entziehen und Rechte prüfen (Vollzugriff auf die drei Listen der Plattform).', 'Also assign and revoke roles and check rights (full control of the platform’s three lists).') },
   ];
 
   return (

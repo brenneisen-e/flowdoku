@@ -20,12 +20,22 @@
  * 3. **Nie implizit herabstufen.** Wer schon eine Rolle hat, wird über die
  *    Auswahl in seiner Zeile geändert — mit Bestätigung —, nie über „Person
  *    hinzufügen".
- * 4. **Die eigene Rolle ändert man nicht selbst.** Wer sich herabstuft, käme
- *    nicht mehr an diese Seite; der Entzug der Rechte läuft für die angemeldete
- *    Person ohnehin nicht (Selbstschutz im Service).
+ * 4. **Die eigene Rolle ändert man nicht selbst — auch nicht unter einem
+ *    Alias.** Wer sich herabstuft, käme nicht mehr an diese Seite; gesperrt sind
+ *    deshalb alle Zeilen, die zum eigenen KONTO auflösen (nicht nur die mit der
+ *    eigenen Adress-Zeichenkette), und der Service entzieht der angemeldeten
+ *    Person nie etwas.
  * 5. **Die Adresse ist der einzige Schlüssel — und sie ist nicht eindeutig.**
  *    Verglichen wird über `toLowerCase().trim()`; der Audit meldet, wenn die
  *    Rechte unter einer anderen Schreibweise stehen als die Rollenzeile.
+ * 6. **Beide Reiter bleiben gemountet.** Ein Schreibvorgang oder Audit läuft im
+ *    Hintergrund weiter; hängte der Reiterwechsel die Komponente aus, ginge die
+ *    Meldung („Rechte nicht gesetzt") verloren, und danach ließe sich ein
+ *    zweiter Vorgang parallel starten. Darum werden die Reiter nur versteckt,
+ *    und die Reiter-Knöpfe sind gesperrt, solange etwas läuft.
+ * 7. **Keine Klartexte aus dem Service.** Fehlergründe kommen als Codes
+ *    (`RechteCode`, `AktionsGrund`, `LeseFehler`) und werden hier mit `t()`
+ *    ausformuliert — zweisprachig, ohne rohe `e.message`.
  *
  * Alle Hooks stehen vor dem ersten frühen `return` (ESLint
  * `react-hooks/rules-of-hooks` ist hier ein Fehler, kein Hinweis).
@@ -41,7 +51,8 @@ import { useDialog } from '../context/DialogContext';
 import { RoleAssignment, UserRole } from '../types';
 import { ROLLEN_ALLE, rolleLabel, rolleRang } from '../utils/rollen';
 import { RECHTE_MATRIX, MATRIX_SPALTEN, MatrixWert } from '../data/rollenMatrix';
-import { PersonenTreffer, RechteBericht, RechteListe } from '../services/SharePointService';
+import { PersonenTreffer, RechteBericht, RechteListe, RechteCode, LeseFehler } from '../services/SharePointService';
+import { AktionsGrund } from '../context/RoleContext';
 
 // ---------------------------------------------------------------------------
 // Kleinkram
@@ -91,30 +102,45 @@ function datumText(iso: string, isDe: boolean): string {
 }
 
 /**
- * Die Rechte-Texte, die der `RoleContext` und der Service als Klartext liefern
- * (ASCII, ohne Umlaute — sie sind älter als die zweisprachige Oberfläche).
- * Unbekanntes bleibt, wie es ist: Ein roher Satz ist besser als ein
- * verschwundener.
+ * Die Rechte, die beim Schreiben NICHT gesetzt werden konnten — der Service
+ * liefert Codes, hier stehen die Sätze (deutsch und englisch).
  */
-const RECHTE_TEXTE: Record<string, { de: string; en: string }> = {
-  'Rollenliste (Vollzugriff)': { de: 'Rollenliste (Vollzugriff)', en: 'Roles list (full control)' },
-  'Rollenliste (Lesen)': { de: 'Rollenliste (Lesen)', en: 'Roles list (read)' },
-  'Rollenliste (Vollzugriff bleibt bestehen)': { de: 'Rollenliste (Vollzugriff ließ sich nicht entziehen)', en: 'Roles list (full control could not be revoked)' },
-  'Use-Case-Liste (Bearbeiten)': { de: 'Use-Case-Liste (Bearbeiten)', en: 'Use case list (edit)' },
-  'Protokoll (Beitragen)': { de: 'Protokoll (Beitragen)', en: 'Log (contribute)' },
-  'Person nicht aufloesbar': { de: 'Person nicht auflösbar', en: 'person could not be resolved' },
-  'Entzug unvollstaendig': { de: 'Entzug unvollständig', en: 'revocation incomplete' },
+const RECHTE_TEXTE: Record<RechteCode, { de: string; en: string }> = {
+  'roles:read': { de: 'Rollenliste (Lesen)', en: 'Roles list (read)' },
+  'roles:full': { de: 'Rollenliste (Vollzugriff)', en: 'Roles list (full control)' },
+  'useCases:edit': { de: 'Use-Case-Liste (Bearbeiten)', en: 'Use case list (edit)' },
+  'useCases:full': { de: 'Use-Case-Liste (Vollzugriff)', en: 'Use case list (full control)' },
+  'log:contribute': { de: 'Protokoll (Beitragen)', en: 'Log (contribute)' },
+  'log:full': { de: 'Protokoll (Vollzugriff)', en: 'Log (full control)' },
+  'konto': { de: 'Person nicht auflösbar', en: 'person could not be resolved' },
 };
 
-function rechteText(roh: string, isDe: boolean): string {
-  return Object.prototype.hasOwnProperty.call(RECHTE_TEXTE, roh) ? (isDe ? RECHTE_TEXTE[roh].de : RECHTE_TEXTE[roh].en) : roh;
+function rechteText(code: RechteCode, isDe: boolean): string {
+  const z = Object.prototype.hasOwnProperty.call(RECHTE_TEXTE, code) ? RECHTE_TEXTE[code] : undefined;
+  return z ? (isDe ? z.de : z.en) : code;
+}
+
+/** Ein Lesefehler der Rechte-Prüfung als Satzteil: welche Liste, welcher Grund — zweisprachig, aus dem Code. */
+function leseFehlerText(f: LeseFehler, isDe: boolean): string {
+  const liste = f.liste === 'rollen' ? (isDe ? 'Rollenliste (Inhalt)' : 'Roles list (content)')
+    : f.liste === 'roles' ? (isDe ? 'Rechte der Rollenliste' : 'Rights of the roles list')
+      : f.liste === 'useCases' ? (isDe ? 'Rechte der Use-Case-Liste' : 'Rights of the use case list')
+        : (isDe ? 'Rechte des Protokolls' : 'Rights of the log');
+  const grund = f.code === 'http' ? `HTTP ${f.status}`
+    : f.code === 'zu-gross' ? (isDe ? 'zu groß für den Lesepfad' : 'too large for the read path')
+      : f.code === 'ausnahme' ? (isDe ? 'Lesen gescheitert' : 'read failed')
+        : (isDe ? 'keine Antwort' : 'no answer');
+  return `${liste}: ${grund}`;
 }
 
 /** Was eine Rolle auf einer Liste braucht — in Worten, für den Bericht. */
 function listeMitRecht(key: RechteListe, rolle: UserRole, isDe: boolean): string {
-  if (key === 'roles') return rolle === 'Admin' ? (isDe ? 'Rollenliste (Vollzugriff)' : 'Roles list (full control)') : (isDe ? 'Rollenliste (Lesen)' : 'Roles list (read)');
-  if (key === 'useCases') return isDe ? 'Use-Case-Liste (Bearbeiten)' : 'Use case list (edit)';
-  return isDe ? 'Protokoll (Beitragen)' : 'Log (contribute)';
+  // Ein Admin braucht auf allen drei Listen Vollzugriff (Berechtigungen
+  // verwalten), ein Organizer nur, was er zum Pflegen braucht.
+  const admin = rolle === 'Admin';
+  if (key === 'roles') return rechteText(admin ? 'roles:full' : 'roles:read', isDe);
+  if (key === 'useCases') return rechteText(admin ? 'useCases:full' : 'useCases:edit', isDe);
+  return rechteText(admin ? 'log:full' : 'log:contribute', isDe);
 }
 
 /** Der Name der Liste ohne Recht — für „hat mehr als vorgesehen". */
@@ -148,22 +174,31 @@ function rollePille(rolle: UserRole): string {
 
 type Reiter = 'personen' | 'rechte';
 
+/** Warum das letzte Lesen der Rollenliste nicht ging — Status oder Code, für die Meldung oben. */
+interface Veraltet { status: number; zuGross: boolean }
+
 export default function RolePage(): React.ReactElement {
   ensureDexUiStyles();
-  const { roles, isAdmin, isRolesLoading, rolesReadStatus, refreshRoles, service } = useRoles();
+  const { roles, isAdmin, isRolesLoading, rolesReadStatus, refreshRoles, service, erstinstallation, erstinstallationFehlt, erstinstallationWiederholen } = useRoles();
   const { t } = useLanguage();
   const { navigate } = useNavigation();
 
   const [reiter, setReiter] = React.useState<Reiter>('personen');
+  // Ein Schreibvorgang oder Audit läuft — sperrt alle anderen Knöpfe UND den
+  // Reiterwechsel. Zwei gleichzeitige Rechte-Vergaben an dieselbe Liste sind
+  // genau das Muster, das SharePoint drosselt. Der Zustand steht hier oben, nicht
+  // im Reiter: Beide Reiter bleiben gemountet, und die Knöpfe oben müssen ihn kennen.
+  const [laeuft, setLaeuft] = React.useState(false);
   // Klartext, wenn das LETZTE Lesen der Rollenliste gescheitert ist. `refreshRoles`
   // lässt in dem Fall den alten Stand stehen und meldet nichts — die Seite
   // würde also einen Stand zeigen, der nicht mehr stimmt, ohne es zu sagen.
-  const [veraltet, setVeraltet] = React.useState('');
+  const [veraltet, setVeraltet] = React.useState<Veraltet | null>(null);
   const [neuLaedt, setNeuLaedt] = React.useState(false);
 
   const pruefeStand = React.useCallback((): void => {
     const st = service.lastRolesReadStatus;
-    setVeraltet(st >= 200 && st < 300 ? '' : (st ? `HTTP ${st}` : 'keine Antwort'));
+    const zuGross = service.lastRolesReadCode === 'zu-gross';
+    setVeraltet(st >= 200 && st < 300 && !zuGross ? null : { status: st, zuGross });
   }, [service]);
 
   const neuLaden = async (): Promise<void> => {
@@ -179,12 +214,32 @@ export default function RolePage(): React.ReactElement {
   if (!isAdmin) {
     return (
       <div className="dex-ui-empty">
-        <div className="dex-ui-empty-title">{t('Nur für Admins', 'Admins only')}</div>
-        <div className="dex-ui-empty-desc">{t('Rollen vergeben dürfen nur Admins der Plattform.', 'Only platform admins may assign roles.')}</div>
-        <button type="button" className="dex-ui-empty-action" onClick={() => navigate('landing')}>{t('Zum Startbildschirm', 'Back to the start screen')}</button>
+        {erstinstallation === 'nicht-gespeichert' ? (
+          <>
+            <div className="dex-ui-empty-title">{t('Erstinstallation nicht gespeichert', 'Initial setup not saved')}</div>
+            <div className="dex-ui-empty-desc">
+              {t('Die Rollenliste ist leer, aber dein Eintrag als erster Admin ließ sich nicht schreiben — deshalb bist du (noch) kein Admin. Es wurde niemand befördert. Versuch es noch einmal; bleibt es dabei, darf dein Konto die Rollenliste nicht beschreiben, und ein Site-Owner muss es einrichten.',
+                'The roles list is empty, but your entry as the first admin could not be written — so you are not an admin (yet). Nobody was promoted. Try again; if it persists, your account may not write to the roles list, and a site owner has to set it up.')}
+            </div>
+            <button type="button" className="dex-ui-empty-action" disabled={isRolesLoading} onClick={() => { void erstinstallationWiederholen(); }}>
+              {isRolesLoading ? t('Lädt …', 'Loading …') : t('Erneut versuchen', 'Try again')}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="dex-ui-empty-title">{t('Nur für Admins', 'Admins only')}</div>
+            <div className="dex-ui-empty-desc">{t('Rollen vergeben dürfen nur Admins der Plattform.', 'Only platform admins may assign roles.')}</div>
+            <button type="button" className="dex-ui-empty-action" onClick={() => navigate('landing')}>{t('Zum Startbildschirm', 'Back to the start screen')}</button>
+          </>
+        )}
       </div>
     );
   }
+
+  const veraltetGrund = veraltet
+    ? (veraltet.zuGross ? t('Liste zu groß', 'list too large') : veraltet.status ? `HTTP ${veraltet.status}` : t('keine Antwort', 'no answer'))
+    : '';
+  const wechsel = (r: Reiter): void => { if (!laeuft) setReiter(r); };
 
   return (
     <div>
@@ -196,7 +251,7 @@ export default function RolePage(): React.ReactElement {
           </p>
         </div>
         <div className="dex-ui-page-head-actions">
-          <button type="button" className="dex-ui-textbtn" disabled={neuLaedt || isRolesLoading} onClick={() => { void neuLaden(); }}>
+          <button type="button" className="dex-ui-textbtn" disabled={neuLaedt || isRolesLoading || laeuft} onClick={() => { void neuLaden(); }}>
             <RefreshCw size={14} /> {neuLaedt ? t('Lädt …', 'Loading …') : t('Neu laden', 'Reload')}
           </button>
         </div>
@@ -218,24 +273,45 @@ export default function RolePage(): React.ReactElement {
         <div className="dex-ui-callout dex-ui-callout--warn" role="alert" style={{ marginBottom: 16 }}>
           <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
           <span>
-            {t(`Das letzte Lesen der Rollenliste ist gescheitert (${veraltet}). Angezeigt wird der Stand von vorhin — eine Änderung kann schon durch sein, ohne dass sie hier steht. „Neu laden“ versucht es noch einmal.`,
-              `The last read of the roles list failed (${veraltet}). You are seeing the earlier state — a change may already be through without showing here. “Reload” tries again.`)}
+            {t(`Das letzte Lesen der Rollenliste ist gescheitert (${veraltetGrund}). Angezeigt wird der Stand von vorhin — eine Änderung kann schon durch sein, ohne dass sie hier steht. „Neu laden“ versucht es noch einmal.`,
+              `The last read of the roles list failed (${veraltetGrund}). You are seeing the earlier state — a change may already be through without showing here. “Reload” tries again.`)}
+          </span>
+        </div>
+      )}
+      {erstinstallation === 'rechte-fehlen' && (
+        <div className="dex-ui-callout dex-ui-callout--warn" role="alert" style={{ marginBottom: 16 }}>
+          <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
+          <span>
+            {t(`Du bist als erster Admin eingetragen — aber nicht alle Rechte konnten gesetzt werden: ${erstinstallationFehlt.map(c => rechteText(c, true)).join(', ')}. „Rechte prüfen“ unten zeigt es und setzt nach.`,
+              `You are registered as the first admin — but not all rights could be set: ${erstinstallationFehlt.map(c => rechteText(c, false)).join(', ')}. “Check rights” below shows it and re-grants.`)}
           </span>
         </div>
       )}
 
       <div style={{ marginBottom: 18 }}>
         <div className="dex-ui-tabs" role="tablist" aria-label={t('Bereiche der Rollenverwaltung', 'Sections of the role management')}>
-          <button type="button" role="tab" aria-selected={reiter === 'personen'} className={cx('dex-ui-tab', reiter === 'personen' && 'is-active')} onClick={() => setReiter('personen')}>
+          <button type="button" role="tab" id="rollen-tab-personen" aria-controls="rollen-panel-personen" aria-selected={reiter === 'personen'} disabled={laeuft && reiter !== 'personen'} className={cx('dex-ui-tab', reiter === 'personen' && 'is-active')} onClick={() => wechsel('personen')}>
             {t('Personen', 'People')}
           </button>
-          <button type="button" role="tab" aria-selected={reiter === 'rechte'} className={cx('dex-ui-tab', reiter === 'rechte' && 'is-active')} onClick={() => setReiter('rechte')}>
+          <button type="button" role="tab" id="rollen-tab-rechte" aria-controls="rollen-panel-rechte" aria-selected={reiter === 'rechte'} disabled={laeuft && reiter !== 'rechte'} className={cx('dex-ui-tab', reiter === 'rechte' && 'is-active')} onClick={() => wechsel('rechte')}>
             {t('Rechte je Rolle', 'Rights per role')}
           </button>
         </div>
+        {laeuft && (
+          <p className="dex-ui-help" style={{ margin: '6px 0 0' }} role="status">
+            {t('Es läuft gerade ein Vorgang — der Reiterwechsel ist bis zum Ende gesperrt, damit dessen Meldung nicht verloren geht.', 'An operation is running — switching tabs is locked until it ends so its message is not lost.')}
+          </p>
+        )}
       </div>
 
-      {reiter === 'personen' ? <PersonenTab pruefeStand={pruefeStand} /> : <RechteMatrix />}
+      {/* Beide Reiter bleiben gemountet und werden nur versteckt: Ein laufender
+          Schreibvorgang oder Audit behält so seinen Zustand und seine Meldung. */}
+      <div role="tabpanel" id="rollen-panel-personen" aria-labelledby="rollen-tab-personen" hidden={reiter !== 'personen'} style={reiter !== 'personen' ? { display: 'none' } : undefined}>
+        <PersonenTab pruefeStand={pruefeStand} laeuft={laeuft} setLaeuft={setLaeuft} />
+      </div>
+      <div role="tabpanel" id="rollen-panel-rechte" aria-labelledby="rollen-tab-rechte" hidden={reiter !== 'rechte'} style={reiter !== 'rechte' ? { display: 'none' } : undefined}>
+        <RechteMatrix />
+      </div>
     </div>
   );
 }
@@ -246,14 +322,41 @@ export default function RolePage(): React.ReactElement {
 
 type Meldung = { ton: 'ok' | 'warn' | 'fehler'; text: string } | null;
 
-function PersonenTab(props: { pruefeStand: () => void }): React.ReactElement {
-  const { lastRightsMissing } = useRoles();
-  const { t, isDe } = useLanguage();
+/** Die Sätze zu einem Grund, warum ein Schreibvorgang nicht (oder nur als Zeile) ging — zweisprachig, aus dem Code. */
+function grundText(grund: AktionsGrund, name: string, isDe: boolean): string {
+  switch (grund) {
+    case 'lesefehler':
+      return isDe
+        ? 'Die Rollenliste ließ sich nicht frisch lesen — deshalb wurde nichts geändert. Versuch es gleich noch einmal.'
+        : 'The roles list could not be read fresh — so nothing was changed. Try again shortly.';
+    case 'selbst':
+      return isDe
+        ? 'Das ist dein eigenes Konto (auch unter einer anderen Schreibweise der Adresse). Die eigene Rolle ändert ein anderer Admin — wer sich selbst herabstuft oder entfernt, käme nicht mehr an diese Seite. Es wurde nichts geändert.'
+        : 'That is your own account (also under a different spelling of the address). Another admin changes your own role — whoever downgrades or removes themselves could no longer reach this page. Nothing was changed.';
+    case 'entzug':
+      return isDe
+        ? `Entzug fehlgeschlagen — die Zeile in der Rollenliste blieb unverändert. Bei ${name} ließ sich mindestens ein Recht nicht entziehen (oder SharePoint hat es nicht bestätigt); einzelne Listen können schon entzogen sein. „Rechte prüfen“ zeigt den genauen Stand. Versuch es gleich noch einmal.`
+        : `Revocation failed — the row in the roles list stayed unchanged. At least one right of ${name} could not be revoked (or SharePoint did not confirm it); some lists may already be revoked. “Check rights” shows the exact state. Try again shortly.`;
+    case 'zeile-nach-entzug':
+      return isDe
+        ? `Die überzähligen Rechte von ${name} sind entzogen, aber die Zeile in der Rollenliste ließ sich danach nicht ändern. Sie trägt noch die alte Rolle — „Rechte prüfen“ unten zeigt, was fehlt, und du kannst die Änderung wiederholen.`
+        : `The surplus rights of ${name} were revoked, but the row in the roles list could not be changed afterwards. It still carries the old role — “Check rights” below shows what is missing, and you can repeat the change.`;
+    case 'nicht-gefunden':
+      return isDe ? 'Die Zeile gibt es nicht mehr. Lade die Liste neu.' : 'The row no longer exists. Reload the list.';
+    case 'herabstufung':
+      return isDe
+        ? `${name} hat schon eine höhere Rolle. „Person hinzufügen“ stuft nie herab — ändere die Rolle über die Auswahl in der Liste.`
+        : `${name} already has a higher role. “Add person” never downgrades — change the role via the dropdown in the list.`;
+    default:
+      return '';
+  }
+}
 
-  // Ein Schreibvorgang oder Audit läuft — sperrt alle anderen Knöpfe. Zwei
-  // gleichzeitige Rechte-Vergaben an dieselbe Liste sind genau das Muster, das
-  // SharePoint drosselt.
-  const [laeuft, setLaeuft] = React.useState(false);
+function PersonenTab(props: { pruefeStand: () => void; laeuft: boolean; setLaeuft: (b: boolean) => void }): React.ReactElement {
+  const { lastRightsMissing, lastAktionGrund } = useRoles();
+  const { t, isDe } = useLanguage();
+  const { laeuft, setLaeuft } = props;
+
   const [meldung, setMeldung] = React.useState<Meldung>(null);
   const [bericht, setBericht] = React.useState<RechteBericht | null>(null);
   const meldeTimer = React.useRef<number | undefined>(undefined);
@@ -272,16 +375,25 @@ function PersonenTab(props: { pruefeStand: () => void }): React.ReactElement {
    * Nach jedem Schreiben: melden, was an Rechten fehlt. Nie verschweigen — „Zeile
    * gesetzt" heißt nicht „Rechte gesetzt" (in DEX fehlten so bei 18 von 126
    * Einträgen Rechte, und jede Zuweisung hatte Erfolg gemeldet).
+   *
+   * Der Grund, warum etwas NICHT ging, kommt als Code aus dem Context
+   * (`lastAktionGrund`) und wird hier ausformuliert; `fehler` ist der
+   * allgemeine Satz für den Fall ohne besonderen Grund.
    */
-  const meldeRechte = (erfolg: boolean, erledigt: string, fehler: string, folge?: string): void => {
-    if (!erfolg) { melde('fehler', fehler); return; }
+  const meldeRechte = (erfolg: boolean, erledigt: string, fehler: string, name: string): void => {
+    const grund = lastAktionGrund();
+    if (!erfolg) { melde('fehler', grundText(grund, name, isDe) || fehler); return; }
+    if (grund === 'nur-zeile') {
+      melde('ok', isDe
+        ? `${erledigt} Es war ein überzähliger Eintrag derselben Adresse: Es gilt der erste, deshalb wurde nur die Zeile geändert — die Rechte der Person blieben unberührt.`
+        : `${erledigt} It was a surplus entry of the same address: the first one applies, so only the row was changed — the person's rights were left untouched.`);
+      return;
+    }
     const fehlt = lastRightsMissing();
     if (fehlt.length > 0) {
-      // `folge` ersetzt den Standardsatz dort, wo er nicht stimmt: Nach dem
-      // Entfernen gibt es keine Zeile mehr, die „Rechte prüfen" nachsetzen könnte.
-      const satz = folge || (isDe
+      const satz = isDe
         ? 'Solange das so ist, wirkt die Rolle nicht vollständig. „Rechte prüfen“ unten zeigt es und setzt nach.'
-        : 'While that is so, the role does not fully apply. “Check rights” below shows it and re-grants.');
+        : 'While that is so, the role does not fully apply. “Check rights” below shows it and re-grants.';
       melde('warn', isDe
         ? `${erledigt} Aber bei den SharePoint-Rechten hat nicht alles geklappt: ${fehlt.map(f => rechteText(f, true)).join(', ')}. ${satz}`
         : `${erledigt} But not everything worked with the SharePoint rights: ${fehlt.map(f => rechteText(f, false)).join(', ')}. ${satz}`);
@@ -321,7 +433,7 @@ interface AktionsProps {
   laeuft: boolean;
   setLaeuft: (b: boolean) => void;
   melde: (ton: 'ok' | 'warn' | 'fehler', text: string) => void;
-  meldeRechte: (erfolg: boolean, erledigt: string, fehler: string, folge?: string) => void;
+  meldeRechte: (erfolg: boolean, erledigt: string, fehler: string, name: string) => void;
   pruefeStand: () => void;
   verwerfeBericht: () => void;
 }
@@ -341,7 +453,7 @@ const SUCHE_LEER: SuchStand = { status: 'leer', treffer: [], ausgeblendet: 0, ht
 const VERGEBBAR: UserRole[] = ['Organizer', 'Admin'];
 
 function RolleVergeben(props: AktionsProps): React.ReactElement {
-  const { roles, addRole, searchUsers, lastPersonSearchStatus } = useRoles();
+  const { roles, addRole, searchUsers, cancelSearch, lastPersonSearchStatus } = useRoles();
   const { t } = useLanguage();
   const { confirmDialog } = useDialog();
   const { laeuft, setLaeuft, melde, meldeRechte, pruefeStand, verwerfeBericht } = props;
@@ -381,8 +493,10 @@ function RolleVergeben(props: AktionsProps): React.ReactElement {
     }, 400);
     return () => {
       window.clearTimeout(timer);
-      // Eine Antwort, die nach dem Verlassen der Seite eintrifft, darf nichts mehr setzen.
+      // Eine Antwort, die nach dem Verlassen der Seite eintrifft, darf nichts mehr
+      // setzen — und der Service soll eine überholte Suche nicht weiter bedienen.
       zaehler.current++;
+      cancelSearch();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, international, gewaehlt, nochmal]);
@@ -423,9 +537,12 @@ function RolleVergeben(props: AktionsProps): React.ReactElement {
         t(`${name} ist jetzt ${rolleLabel(rolle)}.`, `${name} is now ${rolleLabel(rolle)}.`),
         t(`${name} konnte nicht eingetragen werden — die Rollenliste hat den Eintrag nicht angenommen. Versuch es gleich noch einmal; bleibt es dabei, fehlt dir ein Recht auf der Liste.`,
           `${name} could not be added — the roles list did not accept the entry. Try again shortly; if it persists, you lack a right on the list.`),
+        name,
       );
+      // Auch nach einem Fehlschlag: Die Zeile kann schon stehen (Rechte fehlten
+      // dann), und ein Bericht aus dem Stand davor wäre eine Falschaussage.
+      verwerfeBericht();
       if (ok) {
-        verwerfeBericht();
         setGewaehlt(null);
         setText('');
       }
@@ -588,7 +705,7 @@ function RolleVergeben(props: AktionsProps): React.ReactElement {
 
 // --- Die Liste der Vergebenen -----------------------------------------------
 
-type Befund = 'luecke' | 'ueberschuss' | 'alias' | 'ok' | 'nicht-geprueft';
+type Befund = 'luecke' | 'ueberschuss' | 'alias' | 'gruppe' | 'ok' | 'nicht-geprueft';
 
 interface ListeProps extends AktionsProps {
   bericht: RechteBericht | null;
@@ -635,6 +752,7 @@ function RollenListe(props: ListeProps): React.ReactElement {
     const m = new Map<string, Befund>();
     if (!bericht) return m;
     bericht.okAdressen.forEach(a => m.set(a, 'ok'));
+    bericht.ueberGruppe.forEach(a => m.set(a.email.trim().toLowerCase(), 'gruppe'));
     bericht.aliase.forEach(a => m.set(a.email.trim().toLowerCase(), 'alias'));
     bericht.ueberschuss.forEach(a => m.set(a.email.trim().toLowerCase(), 'ueberschuss'));
     bericht.luecken.forEach(a => m.set(a.email.trim().toLowerCase(), 'luecke'));
@@ -646,6 +764,7 @@ function RollenListe(props: ListeProps): React.ReactElement {
     const b = befund.get((r.userEmail || '').trim().toLowerCase()) || 'nicht-geprueft';
     if (b === 'luecke') return <span className="dex-ui-pill dex-ui-pill--sm dex-ui-pill--red">{t('Rechte fehlen', 'Rights missing')}</span>;
     if (b === 'ueberschuss') return <span className="dex-ui-pill dex-ui-pill--sm dex-ui-pill--orange">{t('Zu viele Rechte', 'Too many rights')}</span>;
+    if (b === 'gruppe') return <span className="dex-ui-pill dex-ui-pill--sm dex-ui-pill--blue" title={t('Nicht direkt gesetzt, sondern über eine SharePoint-Gruppe der Liste (Owners, Members) — ausreichend, keine Lücke', 'Not set directly but through a SharePoint group of the list (Owners, Members) — sufficient, no gap')}>{t('über Gruppe gedeckt', 'covered by group')}</span>;
     if (b === 'alias') return <span className="dex-ui-pill dex-ui-pill--sm dex-ui-pill--blue" title={t('Rechte da, aber unter einer anderen Schreibweise der Adresse', 'Rights present, but under a different spelling of the address')}>{t('Andere Schreibweise', 'Other spelling')}</span>;
     if (b === 'ok') return r.role === 'User'
       ? <span className="dex-ui-pill dex-ui-pill--sm dex-ui-pill--gray">{t('ohne Rechte', 'no rights')}</span>
@@ -688,8 +807,10 @@ function RollenListe(props: ListeProps): React.ReactElement {
         t(`${name} ist jetzt ${rolleLabel(neu)}.`, `${name} is now ${rolleLabel(neu)}.`),
         t(`Die Rolle von ${name} konnte nicht geändert werden — die Zeile trägt weiterhin ${rolleLabel(r.role)}. Versuch es noch einmal.`,
           `The role of ${name} could not be changed — the row still carries ${rolleLabel(r.role)}. Try again.`),
+        name,
       );
-      if (ok) verwerfeBericht();
+      // Auch nach einem Fehlschlag: Rechte können schon (teilweise) entzogen sein.
+      verwerfeBericht();
     } catch (e) {
       console.warn('[AIUC] Rolle ändern:', e);
       melde('fehler', t('Beim Ändern ist etwas schiefgegangen. Lade die Liste neu und prüf, was jetzt gilt.', 'Something went wrong while changing. Reload the list and check what applies now.'));
@@ -701,11 +822,20 @@ function RollenListe(props: ListeProps): React.ReactElement {
   async function entfernen(r: RoleAssignment): Promise<void> {
     if (laeuft) return;
     const name = r.userName || r.userEmail;
-    const ja = await confirmDialog(
-      t(`Die Rolle von ${name} entfernen? Die Person verliert damit auch ihre Rechte auf den Listen der Plattform und ist danach wieder ein normaler User.`,
-        `Remove the role of ${name}? The person also loses their rights on the platform lists and is a regular user again.`),
-      { confirmLabel: t('Entfernen', 'Remove'), danger: true },
-    );
+    const lc = (r.userEmail || '').trim().toLowerCase();
+    const gleiche = lc ? roles.filter(x => (x.userEmail || '').trim().toLowerCase() === lc) : [r];
+    const istGueltig = gleiche[0].id === r.id;
+    const naechste = istGueltig ? gleiche.filter(x => x.id !== r.id)[0] : undefined;
+    // Drei Fälle, drei Sätze — der Standardsatz „verliert seine Rechte" stimmt nur im ersten.
+    const frage = !istGueltig
+      ? t(`Diesen überzähligen Eintrag von ${name} entfernen? Für diese Adresse gilt der erste Eintrag (${rolleLabel(gleiche[0].role)}) — die Rechte der Person bleiben, es wird nur diese Zeile gelöscht.`,
+        `Remove this surplus entry of ${name}? The first entry applies to this address (${rolleLabel(gleiche[0].role)}) — the person's rights stay, only this row is deleted.`)
+      : naechste
+        ? t(`Den ersten Eintrag von ${name} entfernen? Es gibt noch einen weiteren mit derselben Adresse (${rolleLabel(naechste.role)}) — der gilt danach, und die Rechte richten sich nach ihm.`,
+          `Remove the first entry of ${name}? Another entry with the same address exists (${rolleLabel(naechste.role)}) — it applies afterwards, and the rights follow it.`)
+        : t(`Die Rolle von ${name} entfernen? Die Person verliert damit auch ihre Rechte auf den Listen der Plattform und ist danach wieder ein normaler User. Die Rechte werden zuerst entzogen und nachgelesen; scheitert das, bleibt die Zeile bestehen.`,
+          `Remove the role of ${name}? The person also loses their rights on the platform lists and is a regular user again. The rights are revoked first and read back; if that fails, the row stays.`);
+    const ja = await confirmDialog(frage, { confirmLabel: t('Entfernen', 'Remove'), danger: true });
     if (!ja) return;
     setLaeuft(true);
     try {
@@ -716,13 +846,9 @@ function RollenListe(props: ListeProps): React.ReactElement {
         t(`Die Rolle von ${name} ist entfernt.`, `The role of ${name} has been removed.`),
         t(`Die Rolle von ${name} konnte nicht entfernt werden — die Zeile steht weiterhin in der Rollenliste. Versuch es noch einmal.`,
           `The role of ${name} could not be removed — the row is still in the roles list. Try again.`),
-        // Die Zeile ist weg, also findet auch „Rechte prüfen" die Person nicht
-        // mehr. Der Weg zurück: erneut eintragen und noch einmal entfernen — das
-        // wiederholt den Entzug.
-        t('Die Person hat damit womöglich weiterhin Zugriff auf die Listen. Trag sie erneut ein und entferne sie noch einmal — dann wird der Entzug wiederholt.',
-          'The person may therefore still have access to the lists. Add them again and remove them once more — that repeats the revocation.'),
+        name,
       );
-      if (ok) verwerfeBericht();
+      verwerfeBericht();
     } catch (e) {
       console.warn('[AIUC] Rolle entfernen:', e);
       melde('fehler', t('Beim Entfernen ist etwas schiefgegangen. Lade die Liste neu und prüf, was jetzt gilt.', 'Something went wrong while removing. Reload the list and check what applies now.'));
@@ -772,8 +898,8 @@ function RollenListe(props: ListeProps): React.ReactElement {
                     : t(`${doppelte.length} Personen haben mehrere Einträge in der Rollenliste`, `${doppelte.length} people have several entries in the roles list`)}
                 </strong>
                 <br />
-                {t('Gültig ist die erste Zeile — eine Änderung an einer späteren bleibt wirkungslos. Entferne die überzähligen: ',
-                  'The first row wins — a change to a later one has no effect. Remove the surplus ones: ')}
+                {t('Gültig ist die erste Zeile — eine Änderung an einer späteren bleibt für die Rechte wirkungslos. Entferne die überzähligen (das ändert nur die Zeile, die Rechte der Person bleiben): ',
+                  'The first row wins — a change to a later one has no effect on the rights. Remove the surplus ones (that only changes the row, the rights of the person stay): ')}
                 {doppelte.slice(0, 8).map(a => `${a[0].userName || a[0].userEmail} (${a.map(x => rolleLabel(x.role, true)).join(', ')})`).join('; ')}
                 {doppelte.length > 8 ? ` … +${doppelte.length - 8}` : ''}
               </span>
@@ -900,16 +1026,16 @@ interface PruefProps {
 }
 
 function RechtePruefung(props: PruefProps): React.ReactElement {
-  const { auditRoleRights, lastRightsReadError, repairRoleRights, revokeExcessRights, rolesReadStatus } = useRoles();
+  const { auditRoleRights, lastRightsReadFehler, repairRoleRights, revokeExcessRights, rolesReadStatus } = useRoles();
   const { t, isDe } = useLanguage();
   const { confirmDialog } = useDialog();
   const { laeuft, setLaeuft, bericht, setBericht } = props;
 
   const [phase, setPhase] = React.useState<'ruht' | 'prueft' | 'setzt' | 'entzieht'>('ruht');
   const [fortschritt, setFortschritt] = React.useState({ done: 0, total: 0 });
-  // Warum das Lesen gescheitert ist. Steht getrennt vom Bericht: Ohne Bericht
-  // gibt es KEINE Aussage über die Rechte — weder „in Ordnung" noch „fehlt".
-  const [lesefehler, setLesefehler] = React.useState('');
+  // Warum das Lesen gescheitert ist (als Code). Steht getrennt vom Bericht: Ohne
+  // Bericht gibt es KEINE Aussage über die Rechte — weder „in Ordnung" noch „fehlt".
+  const [lesefehler, setLesefehler] = React.useState<LeseFehler | null>(null);
   // Was der letzte Schritt (nachsetzen / entziehen) getan hat.
   const [aktion, setAktion] = React.useState<{ ton: 'ok' | 'warn'; text: string } | null>(null);
 
@@ -919,20 +1045,21 @@ function RechtePruefung(props: PruefProps): React.ReactElement {
   async function lauf(): Promise<boolean> {
     setPhase('prueft');
     setFortschritt({ done: 0, total: 0 });
-    setLesefehler('');
+    setLesefehler(null);
     try {
       const res = await auditRoleRights(fortschrittFn);
       if (res === null) {
         setBericht(null);
-        setLesefehler(lastRightsReadError() || t('keine Antwort', 'no answer'));
+        setLesefehler(lastRightsReadFehler() || { code: 'keine-antwort', liste: 'rollen', status: 0 });
         return false;
       }
       setBericht(res);
       return true;
     } catch (e) {
+      // Kein `e.message` in der Oberfläche: Es wäre ein roher, einsprachiger Satz.
       console.warn('[AIUC] Rechte prüfen:', e);
       setBericht(null);
-      setLesefehler(e instanceof Error ? e.message : t('unbekannter Fehler', 'unknown error'));
+      setLesefehler({ code: 'ausnahme', liste: 'rollen', status: 0 });
       return false;
     }
   }
@@ -963,12 +1090,23 @@ function RechtePruefung(props: PruefProps): React.ReactElement {
     setFortschritt({ done: 0, total: n });
     try {
       const res = await repairRoleRights(bericht.luecken, fortschrittFn);
+      if (res.lesefehler) {
+        // Die Rollen ließen sich nicht frisch lesen: Nichts wurde angefasst.
+        setAktion({
+          ton: 'warn',
+          text: t('Die Rollenliste ließ sich nicht frisch lesen — deshalb wurde nichts nachgesetzt. Prüf die Rechte gleich noch einmal.',
+            'The roles list could not be read fresh — so nothing was re-granted. Check the rights again shortly.'),
+        });
+        return;
+      }
       const offenText = res.offen.map(o => `${o.name || o.email} (${o.fehlt.map(k => listeMitRecht(k, o.rolle, isDe)).join(', ')})${o.kontoAufloesbar ? '' : (isDe ? ' — Konto nicht auflösbar' : ' — account not resolvable')}`).join('; ');
+      const geaendertText = res.rolleGeaendert.map(o => o.name || o.email).join(', ');
+      const hatOffen = res.offen.length > 0 || res.rolleGeaendert.length > 0;
       setAktion({
-        ton: res.offen.length > 0 ? 'warn' : 'ok',
+        ton: hatOffen ? 'warn' : 'ok',
         text: isDe
-          ? `Bei ${res.behoben.length} von ${n} ${n === 1 ? 'Person' : 'Personen'} nachgesetzt und nachgelesen.${res.offen.length > 0 ? ` NICHT setzbar: ${offenText}. Häufige Ursachen: Das Konto ist ausgeschieden, die Person hat die Site nie besucht und SharePoint löst sie nicht auf, oder die Anfragen wurden gedrosselt — dann in ein paar Minuten erneut prüfen.` : ''}`
-          : `Re-granted and read back for ${res.behoben.length} of ${n} ${n === 1 ? 'person' : 'people'}.${res.offen.length > 0 ? ` NOT grantable: ${offenText}. Common causes: the account has left, the person never visited the site and SharePoint cannot resolve them, or requests were throttled — check again in a few minutes.` : ''}`,
+          ? `Bei ${res.behoben.length} von ${n} ${n === 1 ? 'Person' : 'Personen'} nachgesetzt und nachgelesen.${res.offen.length > 0 ? ` NICHT setzbar: ${offenText}. Häufige Ursachen: Das Konto ist ausgeschieden, die Person hat die Site nie besucht und SharePoint löst sie nicht auf, oder die Anfragen wurden gedrosselt — dann in ein paar Minuten erneut prüfen.` : ''}${res.rolleGeaendert.length > 0 ? ` OFFEN — Rolle hat sich geändert: ${geaendertText}. Für sie wurde nichts gesetzt; prüf die Rechte noch einmal.` : ''}`
+          : `Re-granted and read back for ${res.behoben.length} of ${n} ${n === 1 ? 'person' : 'people'}.${res.offen.length > 0 ? ` NOT grantable: ${offenText}. Common causes: the account has left, the person never visited the site and SharePoint cannot resolve them, or requests were throttled — check again in a few minutes.` : ''}${res.rolleGeaendert.length > 0 ? ` OPEN — role has changed: ${geaendertText}. Nothing was set for them; check the rights again.` : ''}`,
       });
       // Die Kontrolle danach ist ein NEUER Lesevorgang, nicht das Ergebnis des
       // Schreibens: Der Bericht unten zeigt, was jetzt gilt.
@@ -1001,12 +1139,41 @@ function RechtePruefung(props: PruefProps): React.ReactElement {
     setFortschritt({ done: 0, total: items.length });
     try {
       const res = await revokeExcessRights(items, fortschrittFn);
-      const offenText = res.offen.map(o => `${o.name || o.email} (${o.listen.map(k => listenName(k, isDe)).join(', ')})`).join('; ');
+      const nenne = (lst: Array<{ name: string; email: string; listen: RechteListe[] }>): string =>
+        lst.map(o => `${o.name || o.email} (${o.listen.map(k => listenName(k, isDe)).join(', ')})`).join('; ');
+      // Drei getrennte Zustände — nicht „nicht entzogen", wo der Entzug gelungen
+      // war und nur das Vorgesehene fehlt:
+      const nachGrund = (g: string): typeof res.offen => res.offen.filter(o => o.grund === g);
+      const geaendert = nachGrund('rolle-geaendert');
+      const selbst = nachGrund('selbst');
+      const nichtBestaetigt = res.offen.filter(o => o.grund === 'nicht-bestaetigt' || o.grund === 'lesefehler');
+      const teile: string[] = [];
+      if (nichtBestaetigt.length > 0) {
+        teile.push(isDe
+          ? ` NICHT entzogen (SharePoint hat den Entzug nicht bestätigt oder die Zuweisungen waren nicht lesbar): ${nenne(nichtBestaetigt)}. Prüf noch einmal.`
+          : ` NOT revoked (SharePoint did not confirm the revocation, or the assignments were not readable): ${nenne(nichtBestaetigt)}. Check again.`);
+      }
+      if (geaendert.length > 0) {
+        teile.push(isDe
+          ? ` OFFEN — Rolle hat sich seit der Prüfung geändert: ${nenne(geaendert)}. Dort wurde nichts angefasst.`
+          : ` OPEN — role has changed since the check: ${nenne(geaendert)}. Nothing was touched there.`);
+      }
+      if (selbst.length > 0) {
+        teile.push(isDe
+          ? ` Nicht angefasst, weil es dein eigenes Konto ist (auch unter einer anderen Schreibweise): ${nenne(selbst)}.`
+          : ` Not touched because it is your own account (also under a different spelling): ${nenne(selbst)}.`);
+      }
+      if (res.lesenFehlt.length > 0) {
+        teile.push(isDe
+          ? ` ENTZOGEN, aber das Vorgesehene fehlt jetzt (nachgelesen): ${nenne(res.lesenFehlt)}. Der Entzug ist gelungen — die Person braucht das nötige Recht wieder: „Fehlende Rechte nachsetzen“ im Bericht darunter.`
+          : ` REVOKED, but what the role provides is missing now (read back): ${nenne(res.lesenFehlt)}. The revocation worked — the person needs the required right again: “Re-grant missing rights” in the report below.`);
+      }
+      const sauberBeendet = res.offen.length === 0 && res.lesenFehlt.length === 0;
       setAktion({
-        ton: res.offen.length > 0 ? 'warn' : 'ok',
-        text: isDe
-          ? `Bei ${res.erledigt} von ${items.length} ${items.length === 1 ? 'Person' : 'Personen'} entzogen und nachgelesen.${res.offen.length > 0 ? ` NICHT entzogen: ${offenText}. Entweder hat sich die Rolle seit der Prüfung geändert, oder SharePoint hat den Entzug nicht bestätigt — prüf noch einmal.` : ''}`
-          : `Revoked and read back for ${res.erledigt} of ${items.length} ${items.length === 1 ? 'person' : 'people'}.${res.offen.length > 0 ? ` NOT revoked: ${offenText}. Either the role changed since the check, or SharePoint did not confirm the revocation — check again.` : ''}`,
+        ton: sauberBeendet ? 'ok' : 'warn',
+        text: (isDe
+          ? `Bei ${res.erledigt} von ${items.length} ${items.length === 1 ? 'Person' : 'Personen'} entzogen und nachgelesen.`
+          : `Revoked and read back for ${res.erledigt} of ${items.length} ${items.length === 1 ? 'person' : 'people'}.`) + teile.join(''),
       });
       setPhase('prueft');
       const gelesen = await lauf();
@@ -1039,8 +1206,8 @@ function RechtePruefung(props: PruefProps): React.ReactElement {
     <div className="dex-ui-section">
       <div className="dex-ui-section-title">{t('SharePoint-Rechte der Rollen', 'SharePoint rights of the roles')}</div>
       <p className="dex-ui-section-desc">
-        {t('Eine Rolle wirkt erst, wenn die Rechte auf den Listen wirklich stehen: Lesen auf der Rollenliste (sonst bleibt die Person trotz Eintrag ein normaler User), Bearbeiten auf den Use Cases und Beitragen im Protokoll (sonst scheitert das Pflegen). Die Prüfung liest das nach und ändert nichts — Nachsetzen ist ein eigener Schritt.',
-          'A role only applies once the rights on the lists are really set: read on the roles list (otherwise the person stays a regular user despite the entry), edit on the use cases and contribute on the log (otherwise maintaining fails). The check reads this back and changes nothing — re-granting is a separate step.')}
+        {t('Eine Rolle wirkt erst, wenn die Rechte auf den Listen wirklich stehen. Organizer: Lesen auf der Rollenliste (sonst bleibt die Person trotz Eintrag ein normaler User), Bearbeiten auf den Use Cases und Beitragen im Protokoll (sonst scheitert das Pflegen). Admins: Vollzugriff auf allen drei Listen (ohne ihn scheitern Rechte vergeben und prüfen). Rechte, die über eine SharePoint-Gruppe der Liste (Owners, Members) gedeckt sind, zählen als gedeckt. Die Prüfung liest das nach und ändert nichts — Nachsetzen ist ein eigener Schritt.',
+          'A role only applies once the rights on the lists are really set. Organizers: read on the roles list (otherwise the person stays a regular user despite the entry), edit on the use cases and contribute on the log (otherwise maintaining fails). Admins: full control on all three lists (without it, assigning and checking rights fails). Rights covered by a SharePoint group of the list (Owners, Members) count as covered. The check reads this back and changes nothing — re-granting is a separate step.')}
       </p>
 
       <div className="dex-ui-inline">
@@ -1077,8 +1244,8 @@ function RechtePruefung(props: PruefProps): React.ReactElement {
         <div className="dex-ui-callout dex-ui-callout--danger" role="alert" style={{ marginTop: 12 }}>
           <span className="dex-ui-callout-icon"><AlertCircle size={16} /></span>
           <span className="dex-ui-callout-body">
-            {t(`Die Rechte konnten nicht gelesen werden (${lesefehler}). Darüber lässt sich deshalb nichts sagen — weder, dass alles stimmt, noch, dass etwas fehlt. Versuch es in ein paar Minuten noch einmal; bleibt es dabei, fehlt dir das Recht, die Berechtigungen der Listen zu sehen.`,
-              `The rights could not be read (${lesefehler}). Nothing can be said about them — neither that everything is fine nor that something is missing. Try again in a few minutes; if it persists, you lack the right to see the permissions of the lists.`)}
+            {t(`Die Rechte konnten nicht gelesen werden (${leseFehlerText(lesefehler, true)}). Darüber lässt sich deshalb nichts sagen — weder, dass alles stimmt, noch, dass etwas fehlt. Versuch es in ein paar Minuten noch einmal; bleibt es dabei, fehlt dir das Recht, die Berechtigungen der Listen zu sehen (dafür braucht ein Admin Vollzugriff auf die Listen).`,
+              `The rights could not be read (${leseFehlerText(lesefehler, false)}). Nothing can be said about them — neither that everything is fine nor that something is missing. Try again in a few minutes; if it persists, you lack the right to see the permissions of the lists (an admin needs full control on the lists for that).`)}
           </span>
         </div>
       )}
@@ -1123,8 +1290,9 @@ function RechtePruefung(props: PruefProps): React.ReactElement {
                   {ueberschuss.map(u => (
                     <li key={u.email}>
                       {u.name || u.email} <span className="dex-ui-muted">({rolleLabel(u.rolle, true)})</span>:{' '}
-                      {u.rolle === 'Organizer' && u.listen.length === 1 && u.listen[0] === 'roles'
-                        ? t('kann die Rollenliste bearbeiten (Rest einer früheren Admin-Rolle?) — vorgesehen ist nur Lesen', 'can edit the roles list (left over from a former admin role?) — only read is provided')
+                      {u.rolle === 'Organizer'
+                        ? t(`hat mehr als die Organizer-Stufe auf: ${u.listen.map(k => listenName(k, true)).join(', ')} (Rest einer früheren Admin-Rolle?) — vorgesehen sind Lesen auf der Rollenliste, Bearbeiten auf den Use Cases, Beitragen im Protokoll`,
+                          `holds more than the organizer level on: ${u.listen.map(k => listenName(k, false)).join(', ')} (left over from a former admin role?) — provided are read on the roles list, edit on the use cases, contribute on the log`)
                         : t(`trägt noch direkte Rechte auf: ${u.listen.map(k => listenName(k, true)).join(', ')} — als User braucht sie keine`, `still holds direct rights on: ${u.listen.map(k => listenName(k, false)).join(', ')} — as a user they need none`)}
                     </li>
                   ))}
@@ -1148,6 +1316,22 @@ function RechtePruefung(props: PruefProps): React.ReactElement {
                 </ul>
                 {t('Die Rechte stimmen; die Zeile in der Rollenliste führt nur eine andere Adresse als das Konto. Am saubersten: die Zeile entfernen und die Person über die Suche neu eintragen — die Suche liefert die Adresse, die SharePoint führt.',
                   'The rights are fine; the row in the roles list merely carries a different address than the account. Cleanest: remove the row and add the person again via the search — the search returns the address SharePoint holds.')}
+              </span>
+            </div>
+          )}
+
+          {bericht.ueberGruppe.length > 0 && (
+            <div className="dex-ui-callout dex-ui-callout--info" role="status">
+              <span className="dex-ui-callout-icon"><Info size={16} /></span>
+              <span className="dex-ui-callout-body">
+                <strong>{t('Über eine SharePoint-Gruppe gedeckt — keine Lücke', 'Covered by a SharePoint group — no gap')}</strong>
+                <ul style={{ margin: '6px 0 6px', paddingLeft: 18 }}>
+                  {bericht.ueberGruppe.map(g => (
+                    <li key={g.email}>{g.name || g.email} <span className="dex-ui-muted">({rolleLabel(g.rolle, true)})</span>: {g.listen.map(k => listenName(k, isDe)).join(', ')}</li>
+                  ))}
+                </ul>
+                {t('Das Recht steht nicht direkt an der Person, sondern an einer Gruppe der Liste (meist Owners oder Members), in der sie Mitglied ist. „Nachsetzen“ vergibt dafür bewusst nichts Doppeltes. Verlässt die Person die Gruppe, fehlt das Recht — die nächste Prüfung meldet es dann.',
+                  'The right is not held by the person directly but by a group of the list (usually Owners or Members) they belong to. “Re-grant” deliberately adds nothing redundant. If the person leaves the group the right is gone — the next check will report it.')}
               </span>
             </div>
           )}
@@ -1191,8 +1375,8 @@ function RechteMatrix(): React.ReactElement {
       <div className="dex-ui-callout dex-ui-callout--info" style={{ marginBottom: 16 }}>
         <span className="dex-ui-callout-icon"><Users size={16} /></span>
         <span className="dex-ui-callout-body">
-          {t('Was darf wer? Das ist eine reine Ansicht — sie ändert nichts. Welche Rolle jemand hat, steht in der Rollenliste; ohne Eintrag ist jede Person ein User. Die Rolle wirkt erst mit Leserecht auf der Rollenliste, und die Rechte auf den Listen prüft und setzt der andere Reiter.',
-            'Who may do what? This is a plain view — it changes nothing. Which role someone has is stored in the roles list; without an entry every person is a user. The role only applies with read access to the roles list, and the other tab checks and sets the rights on the lists.')}
+          {t('Was darf wer? Das ist eine reine Ansicht — sie ändert nichts. Welche Rolle jemand hat, steht in der Rollenliste; ohne Eintrag ist jede Person ein User. Die Rolle wirkt erst mit Leserecht auf der Rollenliste, und die Rechte auf den Listen prüft und setzt der andere Reiter. Achtung: Was mit „nur Oberfläche“ gekennzeichnet ist, steuert die App in ihrer Oberfläche — SharePoint erzwingt es nicht. Wer über die Site selbst Rechte hat, kann es dort trotzdem tun.',
+            'Who may do what? This is a plain view — it changes nothing. Which role someone has is stored in the roles list; without an entry every person is a user. The role only applies with read access to the roles list, and the other tab checks and sets the rights on the lists. Note: rows marked “interface only” are controlled by the app’s interface — SharePoint does not enforce them. Whoever has rights through the site itself can still do it there.')}
         </span>
       </div>
 
@@ -1223,7 +1407,18 @@ function RechteMatrix(): React.ReactElement {
                 {k.zeilen.map(z => (
                   <tr key={z.key}>
                     <td>
-                      <div style={{ fontWeight: 600 }}>{isDe ? z.de : z.en}</div>
+                      <div style={{ fontWeight: 600 }}>
+                        {isDe ? z.de : z.en}
+                        {z.nurOberflaeche && (
+                          <span
+                            className="dex-ui-pill dex-ui-pill--sm dex-ui-pill--gray"
+                            style={{ marginLeft: 8, textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}
+                            title={t('Nur die Oberfläche der App steuert das. SharePoint erzwingt es nicht: Wer über die Site Rechte auf der Liste hat, kann es direkt in SharePoint tun.', 'Only the app interface controls this. SharePoint does not enforce it: whoever has rights on the list through the site can do it directly in SharePoint.')}
+                          >
+                            {t('nur Oberfläche', 'interface only')}
+                          </span>
+                        )}
+                      </div>
                       <div className="dex-ui-help" style={{ margin: '2px 0 0' }}>{isDe ? z.descDe : z.descEn}</div>
                     </td>
                     {MATRIX_SPALTEN.map(sp => (
@@ -1241,8 +1436,8 @@ function RechteMatrix(): React.ReactElement {
         <span style={{ display: 'inline-flex', verticalAlign: 'middle', color: 'var(--dex-green-dark, #4a7c1f)' }}><Check size={14} /></span> {t('ja', 'yes')} · — {t('nein', 'no')} · <span className="dex-ui-pill dex-ui-pill--sm dex-ui-pill--orange">{t('Text', 'text')}</span> {t('ja, mit der genannten Einschränkung', 'yes, with the stated limitation')}
       </p>
       <p className="dex-ui-help" style={{ marginTop: 4 }}>
-        {t('Die erste Person, die die Plattform öffnet, solange die Rollenliste leer ist, wird automatisch Admin. Ist die Rollenliste nicht lesbar, wird niemand befördert.',
-          'The first person to open the platform while the roles list is empty automatically becomes admin. If the roles list is not readable, nobody is promoted.')}
+        {t('Die erste Person, die die Plattform öffnet, solange die Rollenliste leer ist, wird automatisch Admin — aber nur, wenn ihr Eintrag wirklich gespeichert wurde; sonst meldet die App „Erstinstallation nicht gespeichert“ und niemand wird befördert. Ist die Rollenliste nicht lesbar, wird ebenfalls niemand befördert.',
+          'The first person to open the platform while the roles list is empty automatically becomes admin — but only if their entry was really saved; otherwise the app reports “Initial setup not saved” and nobody is promoted. If the roles list is not readable, nobody is promoted either.')}
       </p>
     </div>
   );

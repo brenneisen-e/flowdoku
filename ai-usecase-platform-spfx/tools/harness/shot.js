@@ -1087,8 +1087,8 @@ function plane() {
     add('zustand-roles403-organizer-desktop', { role: 'organizer', device: 'desktop', state: 'roles403' }, l => zustand(l, {
       startBild: true, deeplink: false,
       was: {
-        landing: 'Organizer, dem das Leserecht auf der Rollenliste fehlt (403): Die Rolle wirkt nicht, die Fußzeile sagt „Deine Rolle: User", oben steht die Warnung.',
-        start: 'Start-Übersicht bei 403 auf die Rollenliste: Warnkasten „Deine Rolle konnte nicht geprüft werden", Studio-Kachel ausgegraut mit Erklärung.',
+        landing: 'Organizer, dem das Leserecht auf der Rollenliste fehlt (403): Die Rolle wirkt nicht — die Fußzeile sagt „Deine Rolle: User", die Landing Page wirkt wie die eines Users (mit Einladung „Eigenen Use Case einstellen"); ein Hinweis auf das fehlende Leserecht steht hier nicht.',
+        start: 'Start-Übersicht bei 403 auf die Rollenliste: Die Studio-Kachel ist ausgegraut und trägt die Erklärung „Deine Rolle konnte nicht geprüft werden (fehlendes Leserecht)" — der einzige Hinweis.',
         usecases: 'Kachelwand bei 403 auf die Rollenliste: Use Cases lesbar, aber ohne Organizer-Rechte (kein Studio-Knopf).',
       },
     }));
@@ -1097,8 +1097,8 @@ function plane() {
     add('zustand-roles403-organizer-mobile', { role: 'organizer', device: 'mobile', state: 'roles403' }, l => zustand(l, {
       startBild: true, deeplink: false,
       was: {
-        landing: 'Handy, Organizer bei 403 auf die Rollenliste: Landing Page mit Warnung.',
-        start: 'Handy, Organizer bei 403 auf die Rollenliste: Start-Übersicht mit Warnkasten und ausgegrautem Studio.',
+        landing: 'Handy, Organizer bei 403 auf die Rollenliste: Landing Page wie die eines Users, ohne Hinweis auf das fehlende Leserecht.',
+        start: 'Handy, Organizer bei 403 auf die Rollenliste: Start-Übersicht, Zeile „Use Case Studio" mit der Erklärung zum fehlenden Leserecht.',
         usecases: 'Handy, Organizer bei 403 auf die Rollenliste: Kachelwand ohne Organizer-Rechte.',
       },
     }));

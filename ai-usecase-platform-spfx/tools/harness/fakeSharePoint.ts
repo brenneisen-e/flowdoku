@@ -369,6 +369,17 @@ export function baueKontext(p: Params): any {
     if (method === 'GET' && pfad === 'web/currentuser') {
       return { status: 200, kind: 'single', body: { Id: ICH.Id, Title: ICH.Title, Email: ICH.Email, LoginName: ICH.LoginName } };
     }
+    if (method === 'GET' && pfad === 'web/effectivebasepermissions') {
+      // Die App fragt so, ob die Person Listen verwalten darf (Bit 11, „Manage Lists", 0x800), bevor sie eine Liste oder Spalte anlegt.
+      // Nur Admins haben es — Organizer bearbeiten Zeilen, verwalten aber keine Listen.
+      const low = darfStruktur ? 2147483647 : (1011028719 & ~0x800);
+      return { status: 200, kind: 'single', body: { Low: low, High: darfStruktur ? 2147483647 : 432061 } };
+    }
+    if (method === 'GET' && (t = m(/^web\/sitegroups\/getbyid\((\d+)\)\/users$/i))) {
+      // Mitglieder der SharePoint-Gruppen der Site: Die Owners (3) tragen Full Control auf allem, Members (4) und Visitors (5) sind leer.
+      const ids = parseInt(t[1], 10) === 3 ? [12].concat(p.role === 'admin' || p.role === 'first' ? [ICH.Id] : []) : [];
+      return { status: 200, kind: 'list', body: prinzipale.filter(x => ids.indexOf(x.Id) >= 0).map(x => ({ Id: x.Id, Email: x.Email, LoginName: x.LoginName, PrincipalType: x.PrincipalType })) };
+    }
     if (method === 'GET' && pfad === 'web/associatedownergroup') {
       return { status: 200, kind: 'single', body: { Id: 3, Title: 'AIUC Owners' } };
     }

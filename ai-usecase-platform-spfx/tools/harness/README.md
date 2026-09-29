@@ -33,7 +33,7 @@ nimmt sonst das von Playwright installierte; `PLAYWRIGHT_CHROMIUM=<Pfad>`
 
 ## Was `shot.js` tut
 
-`node shot.js` läuft etwa 10 Minuten und macht rund 330 Bilder (davon rund 70 `-voll`).
+`node shot.js` läuft etwa 6 Minuten und macht rund 300 Bilder (davon rund 50 `-voll`), dazu `out/shots/index.html` — eine Galerie mit allen Bildern, ihrem Satz und den Befunden je Lauf — und `out/report.json` mit den Befunden nach Problem gruppiert (`gruppiert`).
 
 | Aufruf | Wirkung |
 | --- | --- |
@@ -127,7 +127,11 @@ Nr. 14 archiviert, Nr. 2 „eingebettet", fünf Kacheln mit Bild.
 Listen anlegen/prüfen, Spalten, `ListItemEntityTypeFullName`, Zeilen lesen,
 anlegen, `MERGE`, `recycle`, Anhänge, `roleassignments`
 (`breakroleinheritance`, `addroleassignment`, `removeroleassignment`,
-`roledefinitionbindings`), `ensureuser`, People-Picker, `GetMyProperties`.
+`roledefinitionbindings`), `web/effectivebasepermissions` (Bit „Manage Lists"),
+`sitegroups/getbyid(n)/users` (Owners), `ensureuser`, People-Picker,
+`GetMyProperties`. Wächst die REST-Fläche der App, meldet der Bericht den neuen
+Aufruf als „den die Attrappe nicht kennt" — dann in `fakeSharePoint.ts`
+ergänzen (so kamen die beiden letzten dazu).
 Es ist nicht nur Anzeige: Was die App schreibt, liest sie danach wieder, und
 `shot.js` prüft am Speicher nach (Zeile da? Protokolleintrag? Rechte auf den
 drei Listen?). Mit Absicht streng wie SharePoint:

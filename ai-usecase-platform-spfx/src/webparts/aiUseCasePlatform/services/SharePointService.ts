@@ -150,13 +150,13 @@ const RECHTE_SOLL: RechteSoll[] = [
  * (Review-Fund 19: deutsche Klartexte und ASCII-Umschreibungen wie
  * „unvollstaendig" gelangten bis in englische Meldungen).
  *
- * `<liste>:<stufe>` = diese Stufe konnte nicht gesetzt werden, `<liste>:entzug`
- * = überzählige Rechte auf dieser Liste ließen sich nicht entziehen.
+ * `<liste>:<stufe>` = diese Stufe konnte nicht gesetzt werden; `konto` = die
+ * Person ließ sich nicht auflösen (ausgeschieden oder gedrosselt).
  */
 export type RechteCode =
-  | 'roles:read' | 'roles:full' | 'roles:entzug'
-  | 'useCases:edit' | 'useCases:full' | 'useCases:entzug'
-  | 'log:contribute' | 'log:full' | 'log:entzug'
+  | 'roles:read' | 'roles:full'
+  | 'useCases:edit' | 'useCases:full'
+  | 'log:contribute' | 'log:full'
   | 'konto';
 
 /** Ergebnis eines Entzugs — Codes statt `true`/`false`, damit „Selbstschutz" nicht wie „erledigt" aussieht. */
@@ -288,6 +288,12 @@ export interface RechteBericht {
    * „Rechte fehlen".
    */
   ueberGruppe: Array<{ email: string; name: string; rolle: UserRole; listen: RechteListe[] }>;
+  /**
+   * Adressen (klein, getrimmt) von Zeilen, die beim Auflösen zum ANGEMELDETEN
+   * Konto führten, obwohl sie nicht die bekannten Schreibweisen der Person sind
+   * (ein Alias in der Rollenliste). Die Oberfläche sperrt diese Zeilen.
+   */
+  eigeneKonten: string[];
   /** Zeilen ohne Adresse: nicht prüfbar, nicht „in Ordnung". */
   ohneAdresse: number;
 }
@@ -573,13 +579,17 @@ export class SharePointService {
             SPHttpClient.configurations.v1,
             { headers: { 'Accept': 'application/json;odata=nometadata' } },
           );
-          if (!r.ok) return false;
+          // Nicht lesbar heißt „nein" für DIESEN Aufruf, wird aber nicht gemerkt:
+          // Eine Drosselung beim ersten Start würde sonst die Erstinstallation
+          // für die ganze Sitzung sperren.
+          if (!r.ok) { this._kannVerwaltenMerker = null; return false; }
           const d = await r.json();
           const low = Number(d.Low ?? d.d?.EffectiveBasePermissions?.Low ?? d.d?.Low);
           // Bit 11 (0x800) = ManageLists. `&` rechnet auf 32 Bit — die unteren
           // Bits bleiben auch bei Werten über 2^31 erhalten.
           return !isNaN(low) && (low & 0x800) !== 0;
         } catch {
+          this._kannVerwaltenMerker = null;
           return false;
         }
       })();
@@ -731,7 +741,31 @@ export class SharePointService {
    * werden. In DEX lief das einmal ueber „getRoles ist leer" — und ein 403
    * beim Lesen machte damit JEDEN Aufrufer zum Admin (v6.34).
    */
-  public async ensureRolesList(): Promise<{ isNewlyCreated: boolean; status: ListenStatus }> {
+  public ensureRolesList(): Promise<{ isNewlyCreated: boolean; status: ListenStatus }> {
+    return this.einmalig('roles', () => this.ensureRolesListNeu());
+  }
+
+  /**
+   * Zwei gleichzeitige Aufrufe teilen sich EINEN Lauf. Beim allerersten Start
+   * rufen `RoleProvider` (Erstinstallation) und `UseCaseProvider` dieselben
+   * `ensure*`-Methoden gleichzeitig; ohne das würden beide eine fehlende Liste
+   * anlegen, und der zweite Aufruf bekäme von SharePoint einen Fehler
+   * („Liste existiert schon") und ließe die Spalten aus.
+   */
+  private _laeufe: Record<string, Promise<unknown>> = {};
+
+  private einmalig<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const laufend = this._laeufe[key];
+    if (laufend) return laufend as Promise<T>;
+    const p = fn().then(
+      r => { delete this._laeufe[key]; return r; },
+      e => { delete this._laeufe[key]; throw e; },
+    );
+    this._laeufe[key] = p;
+    return p;
+  }
+
+  private async ensureRolesListNeu(): Promise<{ isNewlyCreated: boolean; status: ListenStatus }> {
     const name = LIST.roles;
     const status = await this.listStatus(name);
     if (status === 'ja') {
@@ -775,6 +809,14 @@ export class SharePointService {
       const d = await r.json();
       const has = d.HasUniqueRoleAssignments ?? d.d?.HasUniqueRoleAssignments;
       if (has) return;
+
+      // Nur wer Listen verwalten darf, kappt die Vererbung. Diese Funktion läuft
+      // bei JEDEM Start jeder Person, die die Rollenliste lesen kann; erbt sie
+      // (der Rechte-Schritt bei der Installation ist gescheitert), löste sonst
+      // jeder Nutzer aussichtslose Schreibanfragen aus — und ein Site-Owner, der
+      // in der App nur „User" ist, vergäbe sich beim Start selbst Full Control auf
+      // der Rollenliste, ohne dass es eine Rolle gibt (Review 29.09.2026).
+      if (!(await this.kannListenVerwalten())) return;
 
       await this._post(`${this.list(listName)}/breakroleinheritance(copyRoleAssignments=false,clearSubscopes=true)`, {});
 
@@ -1153,13 +1195,18 @@ export class SharePointService {
     if (konten.length === 0) return id === null && this.resolveUnklar() ? 'konto' : 'ok';
     const meine = this.meineId();
     if (meine && konten.indexOf(meine) >= 0) return 'selbst';
+    // Nur löschen, was dort wirklich steht: Ein DELETE auf eine nicht vorhandene
+    // Zuweisung beantwortet SharePoint mit 404/500 — eine rote Zeile in der
+    // Konsole für nichts (und bei jeder Person ohne Rechte dreimal).
+    const vorhanden = konten.filter(k => z.nachId.has(k));
+    if (vorhanden.length === 0) return 'ok';
 
-    for (let i = 0; i < konten.length; i++) {
-      await this._delete(`${base}/roleassignments/getbyprincipalid(${konten[i]})`).catch(() => undefined);
+    for (let i = 0; i < vorhanden.length; i++) {
+      await this._delete(`${base}/roleassignments/getbyprincipalid(${vorhanden[i]})`).catch(() => undefined);
     }
     const danach = await this.leseZuweisungenGewiss(s.liste);
     if (!danach) return 'lesefehler';
-    const rest = konten.filter(k => this.echteStufen(danach.nachId.get(k)).length > 0);
+    const rest = vorhanden.filter(k => this.echteStufen(danach.nachId.get(k)).length > 0);
     if (rest.length === 0) return 'ok';
     console.warn(`[AIUC] revoke/${key}: ${email} hat auf ${base} weiterhin Rechte (Konto ${rest.join(', ')}).`);
     return 'offen';
@@ -1662,7 +1709,7 @@ export class SharePointService {
       return true;
     });
     const bericht: RechteBericht = {
-      geprueft: 0, ok: 0, okAdressen: [], luecken: [], ueberschuss: [], aliase: [], ueberGruppe: [],
+      geprueft: 0, ok: 0, okAdressen: [], luecken: [], ueberschuss: [], aliase: [], ueberGruppe: [], eigeneKonten: [],
       ohneAdresse: zeilen.filter(z => !(z.email || '').trim()).length,
     };
 
@@ -1677,7 +1724,10 @@ export class SharePointService {
       z.nachId.forEach((stufen, pid) => {
         if (this.echteStufen(stufen).length === 0 || fremde.indexOf(pid) >= 0) return;
         const adr = z.adressenZuId.get(pid) || [];
-        if (adr.some(a => zeilenAdressen.indexOf(a) >= 0)) return;
+        // Ohne jede Adresse (App-Konten, Systemkonten) kann es kein Alias einer
+        // Person sein — und ein solches Konto würde sonst das Auflösen JEDER
+        // Zeile auslösen.
+        if (adr.length === 0 || adr.some(a => zeilenAdressen.indexOf(a) >= 0)) return;
         fremde.push(pid);
       });
     });
@@ -1687,6 +1737,7 @@ export class SharePointService {
       if (Object.prototype.hasOwnProperty.call(kontoCache, em)) return kontoCache[em];
       const id = await this.resolveUserId(roh);
       kontoCache[em] = id;
+      if (id && id === this.meineId() && !isCurrentUser(this.context, roh)) bericht.eigeneKonten.push(em);
       await pause(150);
       return id;
     };
@@ -1895,7 +1946,11 @@ export class SharePointService {
   // Use Cases
   // ===================================================================
 
-  public async ensureUseCaseList(): Promise<{ isNewlyCreated: boolean; status: ListenStatus }> {
+  public ensureUseCaseList(): Promise<{ isNewlyCreated: boolean; status: ListenStatus }> {
+    return this.einmalig('useCases', () => this.ensureUseCaseListNeu());
+  }
+
+  private async ensureUseCaseListNeu(): Promise<{ isNewlyCreated: boolean; status: ListenStatus }> {
     const name = LIST.useCases;
     const status = await this.listStatus(name);
     // Nur bei 404 anlegen; bei „unbekannt" (403, 429, 5xx) nichts schreiben
@@ -1943,7 +1998,11 @@ export class SharePointService {
     return { isNewlyCreated: !existed, status };
   }
 
-  public async ensureLogList(): Promise<ListenStatus> {
+  public ensureLogList(): Promise<ListenStatus> {
+    return this.einmalig('log', () => this.ensureLogListNeu());
+  }
+
+  private async ensureLogListNeu(): Promise<ListenStatus> {
     const name = LIST.log;
     const status = await this.listStatus(name);
     if (status === 'unbekannt') return status;

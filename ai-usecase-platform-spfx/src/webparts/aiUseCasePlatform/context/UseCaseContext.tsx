@@ -62,7 +62,7 @@ interface UseCaseContextType {
 const UseCaseContext = React.createContext<UseCaseContextType | undefined>(undefined);
 
 export function UseCaseProvider(props: { context: WebPartContext; children: React.ReactNode }): React.ReactElement {
-  const { service, isOrganizer } = useRoles();
+  const { service, isOrganizer, isRolesLoading } = useRoles();
   const [useCases, setUseCases] = React.useState<UseCase[]>([]);
   const [ladeStatus, setLadeStatus] = React.useState<LadeStatus>('laedt');
   const [letzterStatus, setLetzterStatus] = React.useState(0);
@@ -87,50 +87,70 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
     (async (): Promise<void> => {
       // Die Listen sicherstellen, bevor gelesen wird. Beim ersten Start der
       // App existiert noch nichts; ohne diesen Schritt sieht die erste Person
-      // einen Fehler statt einer leeren Plattform.
+      // einen Fehler statt einer leeren Plattform. Angelegt wird nur bei einem
+      // eindeutigen 404 — bei 403 & Co. schreibt das nichts (Review-Fund 11).
       try {
         await service.ensureUseCaseList();
         await service.ensureLogList();
       } catch (e) {
         console.warn('[AIUC] Listen konnten nicht sichergestellt werden:', e);
       }
-
-      /*
-       * Erstbefuellung mit den fuenf Use Cases aus dem Konzept-Deck.
-       *
-       * v1.1 (Fehlerbehebung): Die Bedingung war `isNewlyCreated` — „die
-       * Liste ist gerade erst entstanden". Das trug genau EINEN Start lang.
-       * Bei der ersten Installation legte v1.0.0 die Liste an, konnte wegen
-       * der fehlenden Spalten aber nichts hineinschreiben; beim naechsten
-       * Start war die Liste dann nicht mehr neu, und die Befuellung lief nie
-       * wieder. Die Plattform blieb leer, und es gab keinen Weg, das von
-       * Hand nachzuholen — die Kacheln waren weg und der Knopf dafuer auch.
-       *
-       * Bedingung ist jetzt der Zustand statt des Zeitpunkts: leer **und**
-       * noch nie befuellt. Der Merker steht im Protokoll; ohne ihn kaeme der
-       * Bestand zurueck, sobald jemand alle Eintraege absichtlich geloescht
-       * hat. Und weil die Richtung wichtig ist: Ist eine der beiden Listen
-       * nicht lesbar, wird NICHT befuellt — ein Lesefehler ist keine leere
-       * Plattform, und fuenf Kacheln neben einen unsichtbaren Bestand zu
-       * legen waere der teurere Fehler.
-       */
-      if (!abgebrochen && await service.darfErstbefuellen()) {
-        // Nacheinander, nicht parallel — fuenf gleichzeitige POSTs gegen
-        // dieselbe Liste sind genau das Muster, das SharePoint drosselt.
-        let angelegt = 0;
-        for (const uc of START_USE_CASES) {
-          // eslint-disable-next-line no-await-in-loop
-          if (await service.createUseCase(uc)) angelegt++;
-        }
-        if (angelegt > 0) await service.merkeErstbefuellung(angelegt);
-        else console.warn('[AIUC] Erstbefüllung: kein Eintrag angelegt — Grund steht oben in der Konsole.');
-      }
-
       if (!abgebrochen) await reload();
     })().catch(() => setLadeStatus('fehler'));
     return () => { abgebrochen = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /*
+   * Erstbefuellung mit den fuenf Use Cases aus dem Konzept-Deck.
+   *
+   * v1.1 (Fehlerbehebung): Die Bedingung war `isNewlyCreated` — „die
+   * Liste ist gerade erst entstanden". Das trug genau EINEN Start lang.
+   * Bei der ersten Installation legte v1.0.0 die Liste an, konnte wegen
+   * der fehlenden Spalten aber nichts hineinschreiben; beim naechsten
+   * Start war die Liste dann nicht mehr neu, und die Befuellung lief nie
+   * wieder. Die Plattform blieb leer, und es gab keinen Weg, das von
+   * Hand nachzuholen — die Kacheln waren weg und der Knopf dafuer auch.
+   *
+   * Bedingung ist jetzt der Zustand statt des Zeitpunkts: leer **und**
+   * noch nie befuellt. Der Merker steht im Protokoll; ohne ihn kaeme der
+   * Bestand zurueck, sobald jemand alle Eintraege absichtlich geloescht
+   * hat. Und weil die Richtung wichtig ist: Ist eine der beiden Listen
+   * nicht lesbar, wird NICHT befuellt — ein Lesefehler ist keine leere
+   * Plattform, und fuenf Kacheln neben einen unsichtbaren Bestand zu
+   * legen waere der teurere Fehler.
+   *
+   * v1.3 (Review-Fund 13): Die automatische Befüllung läuft NUR für Organizer
+   * und Admins und erst, NACHDEM die Rollen geladen sind — in einem eigenen
+   * Effekt, einmalig (Ref). Bis dahin lief sie beim ersten Start JEDER Person,
+   * ohne Rollenprüfung: Zwei Leute, die die leere Plattform gleichzeitig
+   * öffneten, befüllten beide (doppelte Kacheln), und ein User, der zufällig
+   * Schreibrecht auf der Liste hat, legte Inhalte an, die die Rollenverwaltung
+   * ihm nicht erlaubt. Das Protokoll (`log`) bleibt dabei best-effort.
+   */
+  const befuellungVersucht = React.useRef(false);
+  React.useEffect(() => {
+    if (isRolesLoading || !isOrganizer || befuellungVersucht.current) return;
+    befuellungVersucht.current = true;
+    // Kein Abbruch beim Aufräumen: Der Effekt läuft einmalig, und eine halb
+    // angelegte Startliste wäre schlimmer als eine fertige.
+    (async (): Promise<void> => {
+      if (!(await service.darfErstbefuellen())) return;
+      // Nacheinander, nicht parallel — fuenf gleichzeitige POSTs gegen
+      // dieselbe Liste sind genau das Muster, das SharePoint drosselt.
+      let angelegt = 0;
+      for (const uc of START_USE_CASES) {
+        // eslint-disable-next-line no-await-in-loop
+        if (await service.createUseCase(uc)) angelegt++;
+      }
+      if (angelegt > 0) {
+        await service.merkeErstbefuellung(angelegt);
+        await reload();
+      } else {
+        console.warn('[AIUC] Erstbefüllung: kein Eintrag angelegt — Grund steht oben in der Konsole.');
+      }
+    })().catch(e => console.warn('[AIUC] Erstbefüllung:', e));
+  }, [isRolesLoading, isOrganizer, service, reload]);
 
   const create = React.useCallback(async (uc: Partial<UseCase>): Promise<number | null> => {
     if (!isOrganizer) return null;
@@ -235,6 +255,9 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
   }, [service, reload, useCases, isOrganizer]);
 
   const seedStartUseCases = React.useCallback(async (): Promise<number> => {
+    // Wie `create`/`update`/`remove`: ohne Organizer-Rolle wird nichts geschrieben
+    // (die Oberfläche zeigt den Knopf ohnehin nur Organizern).
+    if (!isOrganizer) return 0;
     let angelegt = 0;
     for (const uc of START_USE_CASES) {
       // eslint-disable-next-line no-await-in-loop
@@ -246,7 +269,7 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
       await reload();
     }
     return angelegt;
-  }, [service, reload]);
+  }, [service, reload, isOrganizer]);
 
   const bereiche = React.useMemo(() => {
     const set: Record<string, true> = {};
