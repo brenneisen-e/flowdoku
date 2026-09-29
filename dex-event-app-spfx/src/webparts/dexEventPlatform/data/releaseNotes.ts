@@ -128,6 +128,8 @@ export function splitReleaseNote(text: string): ReleaseNoteParts {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '32.24.0', date: '2026-09-29', bereich: 'Event-Erstellung', type: 'Bugfix', text: 'Die Demo-Vorlagen setzen die Art der Sub-Events jetzt fest zurück (Liste statt Kalender, kein „nur Sub-Events“, keine Serie, keine Programmpunkte). Bisher übernahm eine Demo den Stand, der zuvor im Assistenten eingestellt war – so erschien das Networking-Dinner als Kalendertermin.' },
+  { version: '32.24.0', date: '2026-09-29', bereich: 'Anmeldung', type: 'Bugfix', text: 'Unter „Meine Events“ brechen die Knöpfe „Bisherige E-Mails“ und „Abmelden“ nicht mehr in zwei Zeilen um.' },
   { version: '32.23.0', date: '2026-09-29', bereich: 'Anmeldung', type: 'Bugfix', text: 'Die Felder im Anmeldeformular stehen jetzt immer auf einer Höhe, egal wie lang Frage oder Beschreibung im Nachbarfeld sind. Bisher schätzte die App die Zeilenzahl der Beschreibung aus der Textlänge; lag die Schätzung daneben, saßen die Eingaben versetzt. Auch Ja/Nein-Fragen reihen sich jetzt sauber ein.' },
   { version: '32.23.0', date: '2026-09-29', bereich: 'Allgemein', type: 'Bugfix', text: 'Startseite: Die Karte ist auf großen Bildschirmen wieder quadratisch. Die Kugel war dort so groß, dass der Inhalt nicht mehr ins Quadrat passte und die Karte hochkant wurde.' },
   { version: '32.22.0', date: '2026-09-29', bereich: 'Organizer Center', type: 'Feature', text: 'Events ohne Foto zeigen jetzt auch in der Event-Übersicht des Organizer Centers das Mail-Logo bzw. das DEX-Logo statt eines grauen Kastens.' },

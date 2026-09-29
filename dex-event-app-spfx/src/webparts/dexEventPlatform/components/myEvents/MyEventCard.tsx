@@ -421,9 +421,13 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                       : (selfCancelLockReason(event) === 'always'
                         ? (isDe ? 'Bei diesem Event ist die Selbst-Abmeldung deaktiviert — bitte an die Organizer wenden.' : 'Self-cancellation is disabled for this event — please contact the organizers.')
                         : (isDe ? 'Die Abmeldefrist ist abgelaufen — bitte an die Organizer wenden.' : 'The cancellation deadline has passed — please contact the organizers.'));
-                    const btn: React.CSSProperties = { width: '100%', justifyContent: 'center' };
+                    // v32.23: kein Umbruch in den Knöpfen („Bisherige E-" / „Mails",
+                    // Nutzer-Befund 29.09.2026) — die Spalte war fest 320 px, je
+                    // Knopf blieben rund 155 px. Jetzt wächst sie mit dem Text;
+                    // auf schmalen Schirmen rutscht sie per flexWrap unter den Titel.
+                    const btn: React.CSSProperties = { width: '100%', justifyContent: 'center', whiteSpace: 'nowrap' };
                     return (
-                      <div style={{ marginLeft: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch', width: 'min(100%, 320px)' }}>
+                      <div style={{ marginLeft: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch', maxWidth: '100%' }}>
                         <div style={{ display: 'grid', gridTemplateColumns: cancelZone ? '1fr 1fr' : '1fr', gap: 8 }}>
                           {/* Nachrichten zum Event: Broadcast-Mails (Einladung,
                               Ankündigungen) aus dem Kommunikations-Log lesen. */}
