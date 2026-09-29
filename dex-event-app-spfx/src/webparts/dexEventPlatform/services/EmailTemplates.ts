@@ -8,6 +8,7 @@
  */
 
 import { resolveMailHeaderImage, hasOwnMailLogo } from '../utils/mailHeaderImage';
+import { DEX_ORB_PNG } from '../data/brandLogos';
 import { SPHttpClient } from '@microsoft/sp-http';
 import { buildHashDeepLink } from '../utils/deepLink';
 
@@ -1069,7 +1070,7 @@ export interface QrEmailOverride {
   // `MailHeaderImage` nicht mehr hierher.
   // v31.74: `custom` wirkt jetzt auch hier — das Bild steht in
   // `headerCustomB64` (s. unten).
-  headerImage?: { hero?: 'logo' | 'event' | 'custom'; width?: number; paddingV?: number; paddingH?: number };
+  headerImage?: { hero?: 'logo' | 'event' | 'custom' | 'orb'; width?: number; paddingV?: number; paddingH?: number };
   /**
    * v31.74: Ein für DIESE QR-Mail hochgeladenes Kopfbild (Data-URL).
    *
@@ -1269,7 +1270,8 @@ export function qrCodeEmail(
   const hdr = resolveMailHeaderImage(override && override.headerImage, ev && ev.emailTemplateOverrides, ev && ev.mailImageBase64, !!customB64);
   // Das Bild, das statt {{ORB_URL}} eingebacken wird: das aufgelöste
   // Event-Foto ODER das hochgeladene eigene Bild — je nach Wahl.
-  const heroB64 = hdr.hero === 'custom' ? customB64 : (hdr.hero === 'event' ? (eventPhotoB64 || '') : '');
+  // v32.33: 'orb' = das DEX-Logo fest eingebacken (auch bei eigenem Mail-Logo).
+  const heroB64 = hdr.hero === 'custom' ? customB64 : (hdr.hero === 'event' ? (eventPhotoB64 || '') : (hdr.hero === 'orb' ? DEX_ORB_PNG : ''));
   // Der Orb-Schutz gilt auch hier: Ohne eigenes Bild wäre „Volle Breite" ein
   // bildschirmfüllender, unten abgeschnittener Orb (s. utils/mailHeaderImage).
   // v31.0: Ein eigenes Mail-Logo (hero 'logo', vom Flow für {{ORB_URL}}

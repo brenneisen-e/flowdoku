@@ -4,9 +4,10 @@
  * nach aussen liefert, geht als Objekt zurueck.
  */
 import * as React from 'react';
+import { buildHashDeepLink } from '../../../utils/deepLink';
 import { AudiencePerson, MassmailAudience } from '../../admin/adminTypes';
 import { DeloitteEvent } from '../../../types';
-import { MailHeaderImage, applyHeroImage, hasOwnHeaderImage, mailHeaderOpts } from '../../../utils/mailHeaderImage';
+import { MailHeaderImage, applyHeroImage, bildMasse, hasOwnHeaderImage, hasOwnMailLogo, kopfMasseFuerBild, mailHeaderOpts } from '../../../utils/mailHeaderImage';
 import { eventHeaderImageLayout } from '../../admin/adminConstants';
 import { getCachedImage } from '../../../utils/imageCache';
 import { isB2RunKoelnTitle } from '../../../data/b2runKoeln';
@@ -243,7 +244,7 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
     setInviteBody(loaded && typeof loaded.body === 'string' ? loaded.body : def.body);
     setInviteTarget(loaded && loaded.target === 'audience' ? 'audience' : 'organizer');
     // v29.37: dito für Einladung und Erinnerung.
-    setInviteHeaderImage(p => ({ ...p, ...eventHeaderImageLayout(ev.emailTemplateOverrides) }));
+    setInviteHeaderImage(p => ({ ...p, ...eventHeaderImageLayout(ev.emailTemplateOverrides, ev.mailImageBase64) }));
     // Hydration-Flag im nächsten Tick freigeben, damit das Auto-Speichern erst
     // auf echte Nutzer-Edits reagiert (nicht auf das initiale Laden).
     window.setTimeout(() => { inviteHydratingRef.current = false; }, 0);
@@ -420,12 +421,38 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
 
   // v22.9: Massenmail-Entwurf — Default-Texte, laden/speichern (localStorage pro
   // Event), Picker öffnen, zurücksetzen, Testmail an die Organizer.
-  const massmailDraftKey = (id: string): string => `dex_massmail_draft_${id}`;
-  const buildMassmailDefaults = (ev: DeloitteEvent): { subject: string; heading: string; body: string } => ({
-    subject: `${ev.title} - Info`,
-    heading: ev.title,
-    body: '',
-  });
+  // v32.33: Der Reminder hat seinen EIGENEN Entwurf — sonst überschreibt der
+  // Standardtext der Erinnerung eine halb geschriebene Info-Mail (und umgekehrt).
+  const reminderArtRef = React.useRef(false);
+  const massmailDraftKey = (id: string): string => `dex_massmail_draft_${id}${reminderArtRef.current ? '_reminder' : ''}`;
+  const buildMassmailDefaults = (ev: DeloitteEvent): { subject: string; heading: string; body: string } => {
+    if (!reminderArtRef.current) return { subject: `${ev.title} - Info`, heading: ev.title, body: '' };
+    // v32.33: Standardtext für die Erinnerung (Nutzer-Ansage 29.09.2026: „nett,
+    // dass es das Event gibt, noch keine Rückmeldung erfolgt ist und um
+    // Rückmeldung gebeten wird"). Sprache nach der Mail-Sprache des Events.
+    const en = (ev.emailLanguage || '').toUpperCase() === 'EN';
+    const link = buildHashDeepLink(`${siteUrl}/SitePages/DEX.aspx?env=WebView`, { action: 'register', event: ev.id });
+    const linkHtml = `<a href="${link}" style="color:#86bc25;font-weight:600;">${en ? 'Register or decline now' : 'Jetzt anmelden oder absagen'}</a>`;
+    const frist = ev.registrationDeadline ? new Date(ev.registrationDeadline) : null;
+    const fristOk = frist && !isNaN(frist.getTime()) && frist.getTime() > Date.now();
+    const fristDe = fristOk ? ` Die Anmeldung ist bis zum <strong>${(frist as Date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong> möglich.` : '';
+    const fristEn = fristOk ? ` Registration is open until <strong>${(frist as Date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong>.` : '';
+    const orgs = (ev.organizers || []).map(x => (x || '').trim()).filter(Boolean);
+    const gruss = en
+      ? `Best regards<br />The ${ev.title} organizer team${orgs.length ? '<br />' + orgs.join('<br />') : ''}`
+      : `Viele Grüße<br />Das ${ev.title} Orga-Team${orgs.length ? '<br />' + orgs.join('<br />') : ''}`;
+    return en
+      ? {
+        subject: `Reminder: ${ev.title}`,
+        heading: 'We would love to hear from you',
+        body: `<p>Hello,</p>\n<p>a little while ago we invited you to <strong>${ev.title}</strong> — and we haven’t heard back from you yet. Maybe the invitation just got lost in your inbox.</p>\n<p>We would be glad if you let us know whether you can make it.${fristEn} It only takes a moment, and a short “no” helps us plan too:</p>\n<p>${linkHtml}</p>\n<p>If you have any questions, just reply to this email.</p>\n<p>${gruss}</p>`,
+      }
+      : {
+        subject: `Erinnerung: ${ev.title}`,
+        heading: 'Wir freuen uns auf deine Rückmeldung',
+        body: `<p>Hallo,</p>\n<p>vor Kurzem haben wir dich zu <strong>${ev.title}</strong> eingeladen — bisher haben wir aber noch keine Rückmeldung von dir. Vielleicht ist die Einladung im Postfach einfach untergegangen.</p>\n<p>Wir würden uns freuen, wenn du uns kurz Bescheid gibst, ob du dabei bist.${fristDe} Das dauert nur einen Moment — und auch eine Absage hilft uns bei der Planung:</p>\n<p>${linkHtml}</p>\n<p>Bei Fragen antworte einfach auf diese Mail.</p>\n<p>${gruss}</p>`,
+      };
+  };
   const applyMassmailDraftOrDefaults = (ev: DeloitteEvent): void => {
     massmailHydratingRef.current = true;
     let loaded: { subject?: string; heading?: string; subheading?: string; body?: string } | null = null;
@@ -439,12 +466,13 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
     setMassmailSubheading(loaded && typeof loaded.subheading === 'string' ? loaded.subheading : '');
     setEmailBody(loaded && typeof loaded.body === 'string' ? loaded.body : def.body);
     // v29.37: Kopfbild-Größe aus dem Event übernehmen statt fest 180/30/30.
-    setMassmailHeaderImage(p => ({ ...p, ...eventHeaderImageLayout(ev.emailTemplateOverrides) }));
+    setMassmailHeaderImage(p => ({ ...p, ...eventHeaderImageLayout(ev.emailTemplateOverrides, ev.mailImageBase64) }));
     window.setTimeout(() => { massmailHydratingRef.current = false; }, 0);
   };
   // v32.26: optional mit Startgruppe — „Reminder“ im Mail-Typ-Dialog wählt
   // die Erinnerung vor.
   const openMassmailPicker = (start?: MassmailAudience): void => {
+    reminderArtRef.current = start === 'reminder';
     if (selectedEvent) applyMassmailDraftOrDefaults(selectedEvent);
     setMassmailAudience(start || 'active');
     setMassmailPasteRaw('');
@@ -496,7 +524,15 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
     if (!url) return;
     let cancelled = false;
     getCachedImage(url)
-      .then(b64 => { if (!cancelled && b64 && b64.indexOf('data:') === 0) setMassmailEventPhotoB64(b64); })
+      .then(b64 => {
+        if (cancelled || !b64 || b64.indexOf('data:') !== 0) return;
+        setMassmailEventPhotoB64(b64);
+        // v32.33: Ohne eigenes Mail-Logo ist das Event-Foto der Standard im
+        // Kopf (Nutzer-Ansage 29.09.2026) — nicht der Orb. Maße nach der Form.
+        if (!hasOwnMailLogo(selectedEvent.emailTemplateOverrides, selectedEvent.mailImageBase64)) {
+          void bildMasse(b64).then(m => { if (!cancelled) setMassmailHeaderImage(p => (p.hero === 'logo' ? { ...p, hero: 'event', ...kopfMasseFuerBild(m.width, m.height) } : p)); });
+        }
+      })
       .catch(() => { /* Event-Foto nicht ladbar → Option bleibt ohne Vorschau/deaktiviert */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -512,7 +548,15 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
     if (!url) return;
     let cancelled = false;
     getCachedImage(url)
-      .then(b64 => { if (!cancelled && b64 && b64.indexOf('data:') === 0) setInviteEventPhotoB64(b64); })
+      .then(b64 => {
+        if (cancelled || !b64 || b64.indexOf('data:') !== 0) return;
+        setInviteEventPhotoB64(b64);
+        // v32.33: Ohne eigenes Mail-Logo ist das Event-Foto der Standard im
+        // Kopf (Nutzer-Ansage 29.09.2026) — nicht der Orb. Maße nach der Form.
+        if (!hasOwnMailLogo(selectedEvent.emailTemplateOverrides, selectedEvent.mailImageBase64)) {
+          void bildMasse(b64).then(m => { if (!cancelled) setInviteHeaderImage(p => (p.hero === 'logo' ? { ...p, hero: 'event', ...kopfMasseFuerBild(m.width, m.height) } : p)); });
+        }
+      })
       .catch(() => { /* Event-Foto nicht ladbar → Option bleibt deaktiviert */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

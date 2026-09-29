@@ -4,7 +4,7 @@
  */
 import * as React from 'react';
 import { QrEmailOverride, buildQrBlockHtml, qrEmailDefaults } from '../../../services/EmailTemplates';
-import { MailHeaderImage, kopfMasseFuerBild, resolveMailHeaderImage } from '../../../utils/mailHeaderImage';
+import { MailHeaderImage, kopfBildVorschau, kopfMasseFuerBild, resolveMailHeaderImage } from '../../../utils/mailHeaderImage';
 import { ladeKopfbild } from '../../../utils/inlineMailImage';
 import MailHeaderImageChooser from '../../admin/MailHeaderImageChooser';
 import { SAMPLE_QR_ID } from '../../admin/adminConstants';
@@ -276,6 +276,7 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
               value={qrHeaderImage}
               onChange={setQrHeaderImage}
               eventPhotoB64={qrEventPhotoB64}
+              mailLogoB64={qrTgt.mailImageBase64 || customLogo}
               disabled={qrEditSaving || isSendingQR}
               onCrop={() => setComposerCrop('qr')}
               isDe={isDe}
@@ -418,7 +419,7 @@ export const QrEditModal: React.FC<QrEditModalProps> = (p) => {
               { key: '{{EventTitle}}', label: isDe ? 'Event-Titel' : 'Event title' },
               { key: '{{QR_BLOCK}}', label: isDe ? 'QR-Code-Block (fix)' : 'QR code block (fixed)' },
             ]}
-            imageBase64={(qrHeaderImage.hero === 'custom' && qrCustomHeaderB64) ? qrCustomHeaderB64 : (qrHeaderImage.hero === 'event' && qrEventPhotoB64) ? qrEventPhotoB64 : customLogo}
+            imageBase64={kopfBildVorschau(qrHeaderImage, { photo: qrEventPhotoB64, custom: qrCustomHeaderB64, mailLogo: qrTgt.mailImageBase64 || customLogo })}
             imageWidth={qrHeaderImage.width}
             imagePaddingV={qrHeaderImage.paddingV}
             imagePaddingH={qrHeaderImage.paddingH}

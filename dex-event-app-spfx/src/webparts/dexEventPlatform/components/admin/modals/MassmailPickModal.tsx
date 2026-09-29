@@ -29,10 +29,12 @@ export interface MassmailPickModalProps {
   setMassmailExtras: React.Dispatch<React.SetStateAction<Set<MassmailExtra>>>;
   selectedEvent: DeloitteEvent;
   myEmail: string;
+  /** v32.33: Zurück zur Frage „Was für eine Mail?" (MailTypeModal). */
+  onZurueckZurArt?: () => void;
 }
 
 export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
-  const { massmailAudience, massmailStatuses, registrations, setMassmailAudience, setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal, massmailOffene, massmailExtras, setMassmailExtras, selectedEvent, myEmail } = p;
+  const { massmailAudience, massmailStatuses, registrations, setMassmailAudience, setMassmailMode, setMassmailPasteRaw, setMassmailStatuses, setShowEmailModal, massmailOffene, massmailExtras, setMassmailExtras, selectedEvent, myEmail, onZurueckZurArt } = p;
   // v31.2: Die Props kennen kein isDe (Schnittstelle bleibt) — die Sprache
   // kommt wie in Modal.tsx aus dem Kontext.
   const isDe = useLocaleSafe() === 'de';
@@ -57,6 +59,11 @@ export const MassmailPickModal: React.FC<MassmailPickModalProps> = (p) => {
       subtitle={isDe ? 'Wähle eine oder mehrere Gruppen — den Text schreibst du danach im Mail-Editor.' : 'Pick one or more groups — you write the text in the mail editor afterwards.'}
       icon={<Users size={20} />}
       footer={<>
+        {onZurueckZurArt && (
+          <button type="button" className="btn btn-outline" style={{ marginRight: 'auto' }} onClick={() => { closeAll(); onZurueckZurArt(); }}>
+            {isDe ? 'Zurück: Art der Mail' : 'Back: type of mail'}
+          </button>
+        )}
         <button type="button" className="btn btn-secondary" onClick={closeAll}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
         <button type="button" className="btn btn-primary" onClick={proceed} disabled={!einfuegen && empfaenger.length === 0}>
           {einfuegen ? (isDe ? 'Weiter: Verteiler einfügen' : 'Next: paste list') : (isDe ? `Weiter zum Mail-Editor (${empfaenger.length})` : `Continue to mail editor (${empfaenger.length})`)}
