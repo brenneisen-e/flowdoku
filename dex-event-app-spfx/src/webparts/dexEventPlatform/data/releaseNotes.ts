@@ -128,6 +128,8 @@ export function splitReleaseNote(text: string): ReleaseNoteParts {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '32.35.0', date: '2026-09-29', bereich: 'Allgemein', type: 'Feature', text: 'Im Kopf der App steht der Seitentitel jetzt ganz links und „Zurück“ direkt neben der Suche. Auf dem Handy bleibt es wie bisher.' },
+  { version: '32.35.0', date: '2026-09-29', bereich: 'Organizer Center', type: 'Feature', text: 'Beim Einführungs-Event erscheint kein Hinweis mehr, ein Event-Bild hochzuladen – dort ist das DEX-Logo das gewollte Bild.' },
   { version: '32.34.0', date: '2026-09-29', bereich: 'Anmeldung', type: 'Bugfix', text: 'Lange Antworten in Auswahlfeldern werden auf der Anmeldeseite nicht mehr abgeschnitten – das Feld zeigt die ganze Antwort und wird bei Bedarf zweizeilig. Gilt für Einzel- und Mehrfachauswahl und für die Fragen zu einzelnen Terminen.' },
   { version: '32.33.0', date: '2026-09-29', bereich: 'E-Mails', type: 'Bugfix', text: 'Breite Bilder stehen im Mail-Kopf jetzt wieder in voller Breite. Nur runde oder fast runde Bilder bekommen 300 px. Bisher blieb ein Querformat-Bild bei 300 px hängen, sobald diese Größe einmal als Voreinstellung gespeichert war – das gilt jetzt für alle Mails.' },
   { version: '32.33.0', date: '2026-09-29', bereich: 'E-Mails', type: 'Feature', text: 'Die Bildwahl im Mail-Kopf ist klarer: „Event-Bild“ (Standard, sobald das Event ein Bild hat), „DEX-Logo“ oder „Eigenes Bild“ hochladen – jetzt auch in der Einladungsmail. Bisher hieß die erste Kachel „Standard-Logo“ und war je nach Event mal das DEX-Logo, mal das Event-Bild.' },
