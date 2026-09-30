@@ -28,7 +28,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Landing Page
     'landing.welcome': 'Willkommen bei',
     'landing.platform': 'DEX',
-    'landing.subtitle': 'Die neue App für die Organisation von Deloitte Events.',
+    'landing.subtitle': 'Die neue App für das Teilnehmermanagement von Deloitte Events.',
     'landing.devby': 'Entwickelt von Eike Brenneisen und Nils Felten.',
     'landing.start': 'Start',
     'landing.about': 'Die Event Experience Platform ist eine Lösung zur Verwaltung von Teilnehmern bei Deloitte-Events. Entwickelt von Eike Brenneisen und Nils Felten. Aktuell in der Pilotphase.',
@@ -510,7 +510,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     // Landing Page
     'landing.welcome': 'Welcome to',
     'landing.platform': 'DEX',
-    'landing.subtitle': 'The new app for organising Deloitte events.',
+    'landing.subtitle': 'The new app for participant management of Deloitte events.',
     'landing.devby': 'Built by Eike Brenneisen and Nils Felten.',
     'landing.start': 'Start',
     'landing.about': 'The Event Experience Platform is a solution for managing participants at Deloitte events. Developed by Eike Brenneisen and Nils Felten. Currently in pilot phase.',

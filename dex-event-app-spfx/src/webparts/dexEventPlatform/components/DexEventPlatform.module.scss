@@ -739,6 +739,13 @@
        Die Karte rückt um den halben Kreis nach unten; Monat und Punkt der
        Zeitleiste rücken mit, sonst stünden sie neben dem Kreis statt an der Karte. */
     .my-event-card--kreis { margin-top: 60px; }
+    /* v32.46: „Deine Angaben" wie das Anmeldeformular (.dex-reg-fields-grid):
+       Kopf und Feld teilen sich per Subgrid die Zeilen des Nachbarn. */
+    .dex-answer-grid { row-gap: 0 !important; column-gap: 14px; }
+    .dex-answer-grid > .dex-answer-field {
+      display: grid; grid-row: span 2; grid-template-rows: subgrid;
+      row-gap: 0; align-content: start; min-width: 0; margin-bottom: 14px;
+    }
     .my-event-card__kreis {
       width: 120px; height: 120px; margin: -84px auto 8px; border-radius: 50%; overflow: hidden;
       background: #fff; border: 1px solid var(--dex-gray-200); box-shadow: 0 2px 12px rgba(0,0,0,0.10);

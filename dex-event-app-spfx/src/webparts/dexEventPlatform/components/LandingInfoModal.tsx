@@ -191,9 +191,11 @@ export default function LandingInfoModal({ open, locale, onClose, onStartTutoria
       title={<>DEX Event Experience Platform <span className="dex-ui-pill dex-ui-pill--gray" style={{ verticalAlign: 'middle', marginLeft: 6 }}>v{APP_VERSION}</span></>}
       // v28.45: „alle Deloitte-Events" war zu weit gefasst — DEX ist auf
       // interne Events ausgelegt, nicht auf externe mit externen Gästen.
+      // v32.48: „Anmeldung" statt „Ausschreibung" — Events werden in DEX nicht
+      // ausgeschrieben (Nutzer-Ansage 30.09.2026); gleicher Wortlaut wie die Startseite.
       subtitle={isDE
-        ? 'Deine zentrale Plattform für interne Deloitte Events: von der Ausschreibung bis zum Check-in in einer App. Registrierung, Outlook-Einladungen, Warteliste, Massen-Mails, QR-Codes, Dokumente — alles im Deloitte-SharePoint-Tenant.'
-        : 'Your central platform for internal Deloitte events: from announcement to check-in in a single app. Registration, Outlook invites, waitlist, mass emails, QR codes, documents — all inside the Deloitte SharePoint tenant.'}
+        ? 'Deine zentrale Plattform für interne Deloitte Events: von der Anmeldung bis zum Check-in in einer App. Outlook-Einladungen, Warteliste, Massen-Mails, QR-Codes, Dokumente — alles im Deloitte-SharePoint-Tenant.'
+        : 'Your central platform for internal Deloitte events: from registration to check-in in a single app. Outlook invites, waitlist, mass emails, QR codes, documents — all inside the Deloitte SharePoint tenant.'}
       footer={<>
         {/* v30.25: Tutorial-Einstieg für JEDE Rolle. Die „Neu hier?"-Pille auf
             der Startseite wird Organizern und Admins nicht mehr angeboten (sie

@@ -66,8 +66,12 @@ export function FieldAnswerTag(props: { label: string; value: string; type?: str
 export function FieldAnswerField(props: { label: string; value: string; type?: string; offen?: boolean; pflicht?: boolean; help?: { text: string; inline: boolean } }): React.ReactElement {
   const { label, value, type, offen, pflicht, help } = props;
   const person = (type === 'user' || type === 'roommate') ? parsePersonAnswer(value) : null;
+  // v32.46: Kopf (Frage + Beschreibung) und Feld sind zwei Zeilen eines
+  // Subgrids (.dex-answer-grid, wie .dex-reg-fields-grid im Anmeldeformular) —
+  // sonst rutscht das Feld neben einer Frage mit Beschreibung nach unten.
   return (
-    <div style={{ minWidth: 0 }}>
+    <div className="dex-answer-field">
+      <div style={{ minWidth: 0 }}>
       <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--dex-gray-800)', marginBottom: 6, lineHeight: 1.35, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {label}
         {/* v32.45: Beschreibung wie im Anmeldeformular — „i" oder Text darunter,
@@ -81,6 +85,7 @@ export function FieldAnswerField(props: { label: string; value: string; type?: s
         <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: -2, marginBottom: 6 }}
           dangerouslySetInnerHTML={{ __html: renderFieldDescHtml(help.text) }} />
       )}
+      </div>
       <div
         aria-readonly="true"
         style={{
