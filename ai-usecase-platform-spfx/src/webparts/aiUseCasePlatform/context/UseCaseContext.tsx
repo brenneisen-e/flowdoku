@@ -15,6 +15,7 @@ import { UseCase, BildAenderung, SpeicherErgebnis, StartbestandErgebnis } from '
 import { useRoles } from './RoleContext';
 import { START_USE_CASES } from '../data/startUseCases';
 import { geaendertText, nurGeaendertes } from '../utils/aenderungen';
+import { sichereUrl } from '../utils/sicher';
 
 export type LadeStatus = 'laedt' | 'ok' | 'fehler';
 
@@ -148,7 +149,30 @@ export function UseCaseProvider(props: { context: WebPartContext; children: Reac
         else fehler = service.lastReadError || 'Der Eintrag wurde von SharePoint abgelehnt.';
       }
       const merker = angelegt > 0 ? await service.merkeErstbefuellung(angelegt) : true;
-      const erg: StartbestandErgebnis = { angelegt, fehlend: offen.length, fehler, merker };
+      // Kachelbilder: Bildschirmfotos der Demos an alle Start-Use-Cases hängen, die noch keins haben —
+      // auch an schon vorhandene (Bestand aus einem früheren Lauf). Die Daten (1 MB) kommen erst hier
+      // per `import()`, nie im Haupt-Bundle.
+      let bilder = 0;
+      try {
+        const { START_BILDER } = await import('../data/startBilder');
+        const frisch = await service.getUseCases();
+        for (const u of frisch || []) {
+          const b64 = START_BILDER[norm(u.titel)];
+          if (!b64 || sichereUrl(u.bildUrl)) continue;
+          const bin = atob(b64);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          // eslint-disable-next-line no-await-in-loop
+          const hoch = await service.uploadBild(u.id, new File([bytes], 'kachel.jpg', { type: 'image/jpeg' }));
+          // eslint-disable-next-line no-await-in-loop
+          if (hoch && await service.updateUseCase(u.id, { bildUrl: hoch.url })) bilder++;
+          // eslint-disable-next-line no-await-in-loop
+          else if (hoch) await service.entferneBilder(u.id, { nur: hoch.name });
+        }
+      } catch (e) {
+        console.warn('[AIUC] Kachelbilder des Startbestands:', e);
+      }
+      const erg: StartbestandErgebnis = { angelegt, fehlend: offen.length, fehler, merker, bilder };
       // Auch ein fehlender Merker bleibt sichtbar (nicht nur ein Teilerfolg): Sonst erfährt es niemand,
       // und der Startbestand kommt nach dem Leeren der Liste beim nächsten Start zurück.
       setStartbestandTeilweise(angelegt < offen.length || !merker ? erg : null);

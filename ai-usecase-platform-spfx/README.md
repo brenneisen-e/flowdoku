@@ -23,7 +23,7 @@ Landing  ──Start──▶  Start-Übersicht ─┬─▶ Use Cases        (K
 
 | Seite | Was sie kann |
 |---|---|
-| **Landing** | Orb, Begrüßung mit Vorname (je nach Tageszeit „Guten Morgen", „Guten Tag" oder „Guten Abend"), Willkommenstext, Hinweiskarte, „Start", „Entwickelt von …" — wie DEX |
+| **Landing** | Orb, Begrüßung mit Vorname (je nach Tageszeit „Guten Morgen", „Guten Tag" oder „Guten Abend"), Willkommenstext, Hinweiskarte, „Start" — wie DEX |
 | **Kopfzeile** | DE/EN, Suche über alle Use Cases, „Hast du Fragen?", Menü, Profil |
 | **Start-Übersicht** | Große Kacheln je Abschnitt. „Use Cases" und „Fragen & Feedback" sieht jede Person. „Use Case Studio" steht für alle da, ist aber für Nicht-Organizer ausgegraut („Organizer werden?"); „Protokoll" gibt es nur für Organizer, „Rollenverwaltung" nur für Admins |
 | **Use Cases** | Kachelwand mit Suche (bindestrich-, umlaut- und `ue`/`oe`/`ae`-unabhängig), Bereichsfilter, „nur aufrufbare" |
@@ -199,6 +199,8 @@ hinter einem Passwort; alle Start-Use-Cases sind deshalb `fenster`.
 **„Live" ohne Deployment-Link wird beim Speichern abgefangen** — sonst steht
 eine Kachel da, die nichts tut. Dasselbe für Links, die keine gültige
 `https://`-Adresse sind.
+
+**Kachelbilder des Startbestands** sind Bildschirmfotos der Demos (`data/startBilder.ts`, 1 MB, nur per `import()` geladen). Der Startbestand hängt sie als Anhang an jeden Start-Use-Case ohne Bild — auch an schon vorhandene: „Startbestand ergänzen" holt sie nach.
 
 **Die Startliste hat genau EINEN Weg** (`seedStartUseCases`): automatisch beim
 ersten Start eines Organizers oder Admins, per Knopf auf der Kachelwand und im

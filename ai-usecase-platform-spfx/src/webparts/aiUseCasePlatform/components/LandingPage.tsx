@@ -3,7 +3,7 @@
  *
  * Von oben nach unten: der Orb, die Begrüßung mit Vorname, ein Willkommens-
  * text, EINE Hinweiskarte, der Knopf „Start", für Nutzer ohne Organizer-Rolle
- * die Einladung dazu, und ganz unten „Entwickelt von …".
+ * die Einladung dazu.
  *
  * Nutzer-Ansage 29.09.2026: „Nimm nochmal DEX als Vorlage mit einer
  * Landingpage wie hier" (Screenshot der DEX-Startseite). Die Hinweiskarte ist
@@ -33,7 +33,7 @@ import { useUseCases } from '../context/UseCaseContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useHilfe } from '../context/HilfeContext';
 import { useIsMobile } from '../utils/useIsMobile';
-import { APP_NAME, KONTAKT_EMAIL, ENTWICKLER } from '../constants';
+import { APP_NAME } from '../constants';
 
 export default function LandingPage(): React.ReactElement {
   ensureDexUiStyles();
@@ -194,17 +194,6 @@ export default function LandingPage(): React.ReactElement {
               </button>
             </div>
           )}
-
-          <div style={{ fontSize: '0.95rem', color: 'var(--dex-gray-400)', textAlign: 'center', marginTop: 6, lineHeight: 1.3 }}>
-            {isDe ? 'Entwickelt von ' : 'Built by '}
-            <span style={{ fontWeight: 600, color: 'var(--dex-gray-500)' }}>
-              <a
-                href={`mailto:${KONTAKT_EMAIL}`}
-                style={{ color: 'inherit', textDecoration: 'none' }}
-                title={KONTAKT_EMAIL}
-              >{ENTWICKLER}</a>
-            </span>
-          </div>
         </div>
       </div>
     </div>

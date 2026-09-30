@@ -29,10 +29,11 @@ export function startbestandMeldung(e: StartbestandErgebnis, t: Uebersetze): Sta
       return { art: 'warn', text: t(`Die Liste ließ sich nicht lesen — es wurde nichts angelegt. SharePoint sagt: ${e.fehler}`,
         `The list could not be read — nothing was created. SharePoint says: ${e.fehler}`) };
     }
+    if (e.bilder) return { art: 'ok', text: t(`${e.bilder} Kachelbilder ergänzt.`, `${e.bilder} tile images added.`) };
     return { art: 'info', text: t('Der Startbestand ist vollständig — es fehlt nichts.', 'The starter set is complete — nothing is missing.') };
   }
   if (e.angelegt === e.fehlend) {
-    const basis = t(`${e.angelegt} Use Cases angelegt.`, `${e.angelegt} use cases created.`);
+    const basis = t(`${e.angelegt} Use Cases angelegt${e.bilder ? `, ${e.bilder} Kachelbilder ergänzt` : ''}.`, `${e.angelegt} use cases created${e.bilder ? `, ${e.bilder} tile images added` : ''}.`);
     return e.merker
       ? { art: 'ok', text: basis }
       : { art: 'warn', text: `${basis} ${t('Der Merker „schon befüllt" ließ sich nicht im Protokoll speichern — löschst du später alle Use Cases, legt die App den Startbestand beim nächsten Start wieder an.',

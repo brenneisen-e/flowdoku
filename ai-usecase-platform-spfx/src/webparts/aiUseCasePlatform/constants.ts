@@ -47,9 +47,6 @@ export function linkZumUseCase(id: number): string {
  */
 export const KONTAKT_EMAIL = 'ebrenneisen@deloitte.de';
 
-/** Wer die Plattform gebaut hat — steht unter der Karte auf dem Startbildschirm. */
-export const ENTWICKLER = 'Eike Brenneisen';
-
 /** Anzeigename der Plattform. Steht im Kopf, im Titel und in Meldungen. */
 export const APP_NAME = 'AI Use Case Platform';
 
