@@ -27,6 +27,8 @@ import { FieldDescEditor } from '../../wizard/FieldDescEditor';
 import { optionsAsDates, parseOptionDate } from '../../../utils/optionDates';
 import { DateOptionsPicker } from '../DateOptionsPicker';
 export interface FieldsStepProps {
+  /** v32.45: Hinweis „neue Fragen bei bestehenden Anmeldungen" (useFieldAnswerGuard). */
+  neueFragenHinweis?: React.ReactNode;
   visible: boolean;
   activeFieldsTabIdx: number;
   addCustomField: (at?: number) => void;
@@ -80,7 +82,7 @@ export interface FieldsStepProps {
 }
 export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
   const { visible } = p;
-  const { activeFieldsTabIdx, addCustomField, addStartblock, addSubEventCustomField, askSalutation, b2runStartblocks, bilingualFields, childTermPlural, confirmDialogEnabled, confirmDialogMode, confirmDialogText, copyParentFieldsToSubEvent, customFields, dragFieldId, dragOverFieldId, fieldExpandOverride, isDe, moveCustomField, newStartblock, openSuggestedModal, registrationLanguage, removeCustomField, removeStartblock, removeSubEventCustomField, renderShowIfConfig, renderStepIntro, reorderMode, setAskSalutation, setBilingualFields, setConfirmDialogEnabled, setConfirmDialogMode, setConfirmDialogText, setCustomFields, setDragFieldId, setDragOverFieldId, setNewStartblock, setRegistrationLanguage, setReorderMode, setSubEvents, splitLabelA, splitLabelB, subEvents, subEventsOnlyMode, t, title, toggleFieldExpand, updateCustomField, updateSubEventCustomField, useSplitCapacities } = p;
+  const { activeFieldsTabIdx, addCustomField, addStartblock, addSubEventCustomField, askSalutation, neueFragenHinweis, b2runStartblocks, bilingualFields, childTermPlural, confirmDialogEnabled, confirmDialogMode, confirmDialogText, copyParentFieldsToSubEvent, customFields, dragFieldId, dragOverFieldId, fieldExpandOverride, isDe, moveCustomField, newStartblock, openSuggestedModal, registrationLanguage, removeCustomField, removeStartblock, removeSubEventCustomField, renderShowIfConfig, renderStepIntro, reorderMode, setAskSalutation, setBilingualFields, setConfirmDialogEnabled, setConfirmDialogMode, setConfirmDialogText, setCustomFields, setDragFieldId, setDragOverFieldId, setNewStartblock, setRegistrationLanguage, setReorderMode, setSubEvents, splitLabelA, splitLabelB, subEvents, subEventsOnlyMode, t, title, toggleFieldExpand, updateCustomField, updateSubEventCustomField, useSplitCapacities } = p;
   // v31.100: „Sprache des Formulars" ist Feineinstellung und deshalb zu
   // (Nutzer-Ansage 28.09.2026: „das einklappen"). Weicht etwas vom Standard
   // ab, startet der Aufklapper offen — eine gesetzte Einstellung soll man
@@ -241,6 +243,8 @@ export const FieldsStep: React.FC<FieldsStepProps> = (p) => {
                   'Reordering via drag or arrows — numbering updates automatically',
                 ]
               )}
+
+              {neueFragenHinweis}
 
               {/* v31.2: Der Datenschutz-Hinweis ist ein sichtbarer Kasten — der
                   Organizer soll ihn lesen, BEVOR er die erste Frage anlegt.

@@ -13,6 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
+import { useFieldAnswerGuard } from './wizard/hooks/useFieldAnswerGuard';
 import { EventService } from '../services/EventService';
 import { readEventDraft, readEventDraftById, readEventDraftRaw, listEventDrafts, eventDraftKey, newEventDraftId, peekResumeDraftId, clearResumeDraftId } from '../utils/eventDraft'; // v31.61, v32.1.4
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
@@ -1148,6 +1149,12 @@ export default function EventCreationPage(): React.ReactElement {
     teamTermPlural, teamTermSingular, triedNext, updateCustomField, updateSubEventCustomField, useSplitCapacities,
     visCopyModalOpen, visCopyPendingRef, visHeader, visSnapshotRef,
   } = useWizardOptionState({ b2runStartblocks, customFields, durchstarterCapacity, editEvent, funstarterCapacity, isDe, isEditMode, newStartblock, selectedTemplate, setAddrCity, setAddrHouseNo, setAddrStreet, setAddrZip, setAgenda, setAudience, setB2runStartblocks, setContactEmail, setContactInfo, setContactName, setCurrentStep, setCustomFields, setDescription, setDurchstarterCapacity, setEmailLanguage, setEndDate, setEventImageUrl, setExcludedUsers, setFieldExpandOverride, setFilterMode, setFunstarterCapacity, setImageFile, setImageOrigAspect, setImageOrigFile, setImagePreview, setKlammerDeadline, setLastDeregisterDate, setLocation, setLocationFilter, setMaxParticipants, setNewStartblock, setNoDescription, setRegistrationDeadline, setRemovedSavedSubs, setSelectedTemplate, setShowTemplatePicker, setSplitDescA, setSplitDescB, setSplitHelpText, setSplitLabelA, setSplitLabelB, setSplitSectionTitle, setSplitSharedWaitlist, setStartDate, setSubEvents, setTemplateLoadingId, setTitle, setTransferTimes, setUnlimitedParticipants, setWaitlistEnabled, showAlert });
+  // v32.45: Entfernen beantworteter Fragen nur nach Danger-Zone-Dialog; Hinweis
+  // bei neuen Fragen, wenn schon Anmeldungen da sind.
+  const { removeCustomFieldGuarded, removeSubEventCustomFieldGuarded, neueFragenHinweis } = useFieldAnswerGuard({
+    isEditMode, editEvent, childEventsOf, customFields, subEvents, currentStep, isDe,
+    removeCustomField, removeSubEventCustomField, confirmDialog,
+  });
   const loadDemoSubEvent = (): void => {
     return loadDemoSubEventImpl({
       beforeNextSaturday, berlinLocalToUtcIso, fmtDatetime, nextSaturdayAt, resetDemoVariantBaseState,
@@ -3367,8 +3374,8 @@ export default function EventCreationPage(): React.ReactElement {
     activeFieldsTabIdx, addCustomField, addStartblock, addSubEventCustomField, askSalutation, b2runStartblocks,
     bilingualFields, childTermPlural, confirmDialogEnabled, confirmDialogMode, confirmDialogText, copyParentFieldsToSubEvent,
     customFields, dragFieldId, dragOverFieldId, fieldExpandOverride, isDe,
-    moveCustomField, newStartblock, openSuggestedModal, registrationLanguage, removeCustomField, removeStartblock,
-    removeSubEventCustomField, renderShowIfConfig, renderStepIntro, reorderMode, setAskSalutation, setBilingualFields,
+    moveCustomField, newStartblock, openSuggestedModal, registrationLanguage, removeCustomField: removeCustomFieldGuarded, removeStartblock,
+    removeSubEventCustomField: removeSubEventCustomFieldGuarded, neueFragenHinweis, renderShowIfConfig, renderStepIntro, reorderMode, setAskSalutation, setBilingualFields,
     setConfirmDialogEnabled, setConfirmDialogMode, setConfirmDialogText, setCustomFields, setDragFieldId, setDragOverFieldId,
     setNewStartblock, setRegistrationLanguage, setReorderMode, setSubEvents, splitLabelA, splitLabelB,
     subEvents, subEventsOnlyMode, t, title, toggleFieldExpand, updateCustomField,

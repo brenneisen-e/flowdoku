@@ -10,6 +10,8 @@ import * as React from 'react';
 import { DeloitteEvent } from '../../types';
 import { SPRegistration } from '../../services/EventService';
 import { cx } from '../dexUi';
+import { InfoTooltip } from '../InfoTooltip';
+import { renderFieldDescHtml } from '../registration/regHelpers';
 
 // v19.34: People-Picker-Antworten (Feldtyp `user`/`roommate`) im „Meine
 // Events"-Antwort-Tag mit Profilfoto statt als Rohtext „Name <email>"
@@ -61,17 +63,24 @@ export function FieldAnswerTag(props: { label: string; value: string; type?: str
  * Grau statt grün: grün heißt im Formular „ausgefüllt und bearbeitbar", hier
  * ist es eine Anzeige. Ändern geht über „Angaben bearbeiten" darunter.
  */
-export function FieldAnswerField(props: { label: string; value: string; type?: string; offen?: boolean; pflicht?: boolean }): React.ReactElement {
-  const { label, value, type, offen, pflicht } = props;
+export function FieldAnswerField(props: { label: string; value: string; type?: string; offen?: boolean; pflicht?: boolean; help?: { text: string; inline: boolean } }): React.ReactElement {
+  const { label, value, type, offen, pflicht, help } = props;
   const person = (type === 'user' || type === 'roommate') ? parsePersonAnswer(value) : null;
   return (
     <div style={{ minWidth: 0 }}>
       <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--dex-gray-800)', marginBottom: 6, lineHeight: 1.35, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {label}
+        {/* v32.45: Beschreibung wie im Anmeldeformular — „i" oder Text darunter,
+            je nachdem, was der Organizer beim Feld gewählt hat. */}
+        {help && !help.inline && <InfoTooltip text={help.text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()} />}
         {/* v32.44: Frage, die der Organizer nach der Anmeldung ergänzt hat und
             die noch leer ist — sichtbar statt verschwiegen. */}
         {offen && <span className="dex-ui-pill dex-ui-pill--orange dex-ui-pill--sm">{pflicht ? 'Noch offen · Pflicht' : 'Noch offen'}</span>}
       </div>
+      {help && help.inline && (
+        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: -2, marginBottom: 6 }}
+          dangerouslySetInnerHTML={{ __html: renderFieldDescHtml(help.text) }} />
+      )}
       <div
         aria-readonly="true"
         style={{

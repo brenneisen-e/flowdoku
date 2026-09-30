@@ -557,6 +557,16 @@ Anmeldeseite auf das Mail-Logo zurück (`heroImgUrl`, `usesMailImage`); die
 Cover-Hintergründe bleiben bewusst am Event-Bild, weil ein Logo im Beschnitt
 zerfällt.
 
+**Eine gemappte Spalte ist noch keine gelesene Spalte (v32.46).**
+`eventMapping` setzte `outlookIsOnlineMeeting` seit v30.26 aus
+`e.OutlookIsOnlineMeeting` — aber die Spalte stand nie in `EVENT_SELECT`
+(`services/events/eventsCrud.ts`). Der Wert war also immer false: Der
+Assistent öffnete jede von DEX erzeugte Teams-Besprechung als „kein
+Online-Meeting" und schrieb das beim Speichern zurück. Wer eine neue
+DEX_Events-Spalte einführt: Schema (`eventsListSchema`), Schreibpfad,
+Mapping UND `EVENT_SELECT` — und einmal prüfen, dass der Wert nach einem
+Reload wirklich ankommt.
+
 **`subEventsOnlyMode` heißt: das Hauptevent ist keine Anmeldeeinheit.** Alles,
 was die Kachel/Übersicht über die Klammer aussagt, ist dann eine Aussage über
 etwas, das niemand buchen kann: `MaxParticipants` bleibt 0 und wurde als

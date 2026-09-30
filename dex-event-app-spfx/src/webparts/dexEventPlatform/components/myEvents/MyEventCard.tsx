@@ -130,8 +130,13 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
             // v19.34: Feldtyp pro ID merken, damit People-Picker-Antworten
             // (`user`/`roommate`) als Foto-Tag gerendert werden können.
             const fieldTypeMap: Record<string, string> = {};
+            // v32.45: Beschreibung je Feld (wie im Anmeldeformular) — ohne sie
+            // stand in „Deine Angaben" nur die nackte Frage (Nutzer-Befund 30.09.2026).
+            const fieldHelpMap: Record<string, { text: string; inline: boolean }> = {};
             for (const field of event.eventSpecificFields) {
               fieldTypeMap[field.id] = field.type;
+              const help = (useEnDisplay && field.helpTextEn && field.helpTextEn.trim()) ? field.helpTextEn : field.helpText;
+              if (help && help.trim()) fieldHelpMap[field.id] = { text: help, inline: field.helpTextStyle === 'inline' };
               fieldLabelMap[field.id] = (useEnDisplay && field.labelEn && field.labelEn.trim())
                 ? field.labelEn
                 : field.label;
@@ -175,6 +180,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                   label: fieldLabelMap[key] || adHocLabels[key] || key,
                   value,
                   type: fieldTypeMap[key],
+                  help: fieldHelpMap[key],
                 };
               });
 
@@ -329,6 +335,18 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           </span>
                         );
                       })()}
+                      {/* v31.8: Auf der Warteliste ist „Angemeldet am" die
+                          falsche Aussage — der Zustand steht sonst nur in der
+                          Farbe der Pille (Leitfaden 6c).
+                          v32.45: direkt neben der Status-Pille statt eine Zeile
+                          unter Ort und Datum (Nutzer-Ansage 30.09.2026). */}
+                      {!zugeklappt && !sessionsOnly && !hiddenRow && (
+                        <span className="dex-ui-muted" style={{ fontSize: '0.8rem' }}>
+                          {registration.Status === 'Warteliste'
+                            ? (isDe ? 'Auf der Warteliste seit' : 'On the waiting list since')
+                            : t('myevents.registeredon')}: {formatDate(registration.RegistrationDate)}
+                        </span>
+                      )}
                     </div>
 
                     {/* Wann · Wo · Teilnahme-Link */}
@@ -356,47 +374,14 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                       )}
                       {/* v32.45: Von DEX erzeugte Teams-Besprechung — der Link
                           steht nur im Outlook-Termin, also dort nachsehen. */}
-                      {!eventTeamsLink(event) && event.outlookIsOnlineMeeting && !event.disableOutlook && !istVorbei && (
-                        <OwnCalendarTeamsLink calendarLink={event.calendarLink} isDe={isDe} />
+                      {/* Auch wenn nur der Ort „Teams" nennt: Bis v32.45 setzte das
+                          Bearbeiten im Assistenten den Schalter still auf false
+                          zurück, die Besprechung im Termin blieb aber bestehen. */}
+                      {!eventTeamsLink(event) && !event.disableOutlook && !istVorbei && (event.outlookIsOnlineMeeting || /teams/i.test(event.location || '')) && (
+                        <OwnCalendarTeamsLink calendarLink={event.calendarLink} isDe={isDe} hinweisWennLeer={!!event.outlookIsOnlineMeeting} />
                       )}
                     </div>
 
-                    {/* QR-Code und „Angemeldet am …" — die beiden Angaben, die
-                        am Einlass gebraucht werden.
-                        v31.27: Bei einem zugeklappten (vergangenen) Event
-                        entfallen sie. Der Nutzer hat ausdruecklich verlangt,
-                        im eingeklappten Zustand KEINE Angaben zur eigenen
-                        Anmeldung mehr zu zeigen — und am Einlass gebraucht
-                        wird hier ohnehin nichts mehr. */}
-                    {!zugeklappt && !sessionsOnly && !hiddenRow && (
-                      <div className="dex-ui-inline" style={{ marginTop: 10 }}>
-                        {/* v20.7: Persönlicher Check-in-QR — gleicher Code wie
-                            in der QR-Mail. v28.7: erst sichtbar, NACHDEM die
-                            QR-Codes fürs Event versendet wurden (Status
-                            'QR versendet'/'Eingecheckt') — vorher wirkte der
-                            Button, als gäbe es schon einen gültigen Check-in. */}
-                        {notEditing && !sessionsOnly && !hiddenRow && !!event.eventNumber && ['QR versendet', 'Eingecheckt'].indexOf(registration.Status) >= 0 && (
-                          <button
-                            type="button"
-                            className="btn btn-outline dex-ui-btn-sm"
-                            onClick={() => { openMyQr(event, registration).catch(() => { /* */ }); }}
-                            title={isDe ? 'Deinen persönlichen Check-in-QR-Code anzeigen' : 'Show your personal check-in QR code'}
-                          >
-                            <QrCode size={14} /> {isDe ? 'Mein QR-Code' : 'My QR code'}
-                          </button>
-                        )}
-                        {/* v31.8: Auf der Warteliste ist „Angemeldet am" die
-                            falsche Aussage — der Zustand steht sonst nur in der
-                            Farbe der Pille (Leitfaden 6c). */}
-                        {!sessionsOnly && !hiddenRow && (
-                          <span className="dex-ui-muted">
-                            {registration.Status === 'Warteliste'
-                              ? (isDe ? 'Auf der Warteliste seit' : 'On the waiting list since')
-                              : t('myevents.registeredon')}: {formatDate(registration.RegistrationDate)}
-                          </span>
-                        )}
-                      </div>
-                    )}
                   </div>
                   {/* v31.70: Die beiden Aktionen der Karte OBEN RECHTS, nebeneinander
                       und gleich breit (Nutzer-Ansage 17.09.2026: „Nachrichten und
@@ -420,9 +405,26 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                     // Knopf blieben rund 155 px. Jetzt wächst sie mit dem Text;
                     // auf schmalen Schirmen rutscht sie per flexWrap unter den Titel.
                     const btn: React.CSSProperties = { width: '100%', justifyContent: 'center', whiteSpace: 'nowrap' };
+                    // v20.7/v28.7: Persönlicher Check-in-QR — erst sichtbar, NACHDEM
+                    // die QR-Codes versendet wurden ('QR versendet'/'Eingecheckt').
+                    // v32.45: oben rechts neben „Bisherige E-Mails" und „Abmelden"
+                    // statt einer eigenen Zeile unter Ort und Datum (Nutzer-Ansage 30.09.2026).
+                    const zeigeQr = notEditing && !sessionsOnly && !hiddenRow && !!event.eventNumber && ['QR versendet', 'Eingecheckt'].indexOf(registration.Status) >= 0;
+                    const spalten = 1 + (zeigeQr ? 1 : 0) + (cancelZone ? 1 : 0);
                     return (
                       <div style={{ marginLeft: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'stretch', maxWidth: '100%' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: cancelZone ? '1fr 1fr' : '1fr', gap: 8 }}>
+                        <div className="my-event-card__aktionen" style={{ display: 'grid', gridTemplateColumns: `repeat(${spalten}, 1fr)`, gap: 8 }}>
+                          {zeigeQr && (
+                            <button
+                              type="button"
+                              className="btn btn-outline dex-ui-btn-sm"
+                              style={btn}
+                              onClick={() => { openMyQr(event, registration).catch(() => { /* */ }); }}
+                              title={isDe ? 'Deinen persönlichen Check-in-QR-Code anzeigen' : 'Show your personal check-in QR code'}
+                            >
+                              <QrCode size={14} /> {isDe ? 'Mein QR-Code' : 'My QR code'}
+                            </button>
+                          )}
                           {/* Nachrichten zum Event: Broadcast-Mails (Einladung,
                               Ankündigungen) aus dem Kommunikations-Log lesen. */}
                           <button
@@ -540,11 +542,11 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                       {(displayData.length > 0 || offeneFelder.length > 0) && (
                         // v32.44: wie im Anmeldeformular — Frage über gesperrtem Feld, zweispaltig.
                         <div className="dex-ui-grid-2" style={{ gap: 14 }}>
-                          {displayData.map(({ label, value, type }) => (
-                            <FieldAnswerField key={label} label={label} value={value} type={type} />
+                          {displayData.map(({ label, value, type, help }) => (
+                            <FieldAnswerField key={label} label={label} value={value} type={type} help={help} />
                           ))}
                           {offeneFelder.map((f: EventSpecificField) => (
-                            <FieldAnswerField key={'offen-' + f.id} label={fieldLabelMap[f.id] || f.label} value="" offen pflicht={!!f.required} />
+                            <FieldAnswerField key={'offen-' + f.id} label={fieldLabelMap[f.id] || f.label} help={fieldHelpMap[f.id]} value="" offen pflicht={!!f.required} />
                           ))}
                         </div>
                       )}
