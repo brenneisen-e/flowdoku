@@ -6,7 +6,7 @@
  * beziehen sie ihre Umgebung aus dem `deps`-Objekt.
  */
 
-import { eventHeaderImageOpts } from '../../utils/mailHeaderImage';
+import { eventHeaderImageOptsFrisch } from '../../utils/mailHeaderImageFrisch';
 import * as React from 'react';
 import { DeloitteEvent } from '../../types';
 import { EventService, SPRegistration } from '../../services/EventService';
@@ -277,7 +277,7 @@ export function makeBillingActions(deps: BillingDeps) {
         ? (isConfirm ? 'Deine Anmeldung' : 'Deine Anmeldung wurde aktualisiert')
         : (isConfirm ? 'Your registration' : 'Your registration was updated'),
       parentEvent.title, body,
-      undefined, eventHeaderImageOpts(parentEvent.emailTemplateOverrides, parentEvent.mailImageBase64), // v30.87
+      undefined, await eventHeaderImageOptsFrisch(parentEvent), // v30.87
     );
     try {
       return await eventService.queueEmail(

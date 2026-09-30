@@ -3,6 +3,7 @@
  * Gruppe aus dem Komponenten-Scope liest, kommt als `ctx` herein, was sie
  * nach aussen liefert, geht als Objekt zurueck.
  */
+import { mailLogoFrisch } from '../../../utils/mailHeaderImageFrisch';
 import * as React from 'react';
 import { DUP_ACTIVE_STATI } from '../../admin/adminConstants';
 import { DeloitteEvent } from '../../../types';
@@ -70,7 +71,7 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
     try {
       const lang = ev.emailLanguage || 'EN';
       const spTplRaw = await eventServiceRef.getEmailTemplate('Abmeldung', lang).catch(() => null);
-      const spTpl = applyEventTemplateOverride(spTplRaw, ev.emailTemplateOverrides, 'Abmeldung');
+      const spTpl = applyEventTemplateOverride(spTplRaw, ev.emailTemplateOverrides, 'Abmeldung', await mailLogoFrisch(ev));
       if (!spTpl) return fallback;
       return buildEmailFromTemplate(spTpl, {
         Name: (reg.Vorname || '').trim() || fullName,
@@ -149,7 +150,7 @@ export function useCancelPipeline(ctx: UseCancelPipelineCtx): UseCancelPipelineR
               };
               let emailData: { subject: string; body: string };
               const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);
-              const spTpl = applyEventTemplateOverride(spTplRaw, selectedEvent.emailTemplateOverrides, 'Nachruecken');
+              const spTpl = applyEventTemplateOverride(spTplRaw, selectedEvent.emailTemplateOverrides, 'Nachruecken', await mailLogoFrisch(selectedEvent));
               if (spTpl) { emailData = buildEmailFromTemplate(spTpl, promoteVars); }
               else { emailData = promotionEmail(promotedFirstName, selectedEvent.title); }
               await eventServiceRef.queueEmail(

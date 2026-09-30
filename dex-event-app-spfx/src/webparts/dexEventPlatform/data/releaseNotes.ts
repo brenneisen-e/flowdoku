@@ -128,6 +128,8 @@ export function splitReleaseNote(text: string): ReleaseNoteParts {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '32.51.0', date: '2026-09-30', bereich: 'E-Mails', type: 'Bugfix', text: 'Das Event-Bild in den Mails zu einem Event (Anmeldebestätigung, Warteliste, Abmeldung, Nachrücken, Team-, Hotel- und Organizer-Mails) steht wieder in voller Breite. Seit dem schnelleren App-Start war das Bild direkt nach dem Öffnen der App noch nicht geladen, und die Mail fiel auf den kleinen Standard-Kopf zurück.' },
+  { version: '32.51.0', date: '2026-09-30', bereich: 'E-Mails', type: 'Feature', text: 'Die Organizer-Mail „Verspätete Abmeldung“ ist jetzt eine übersichtliche Aufzählung: Vorname, Nachname, E-Mail, Event, Abmeldefrist und Zeitpunkt der Abmeldung.' },
   { version: '32.50.0', date: '2026-09-30', bereich: 'E-Mails', type: 'Bugfix', text: 'Die Anmeldebestätigung trägt nur noch EINEN Hinweis am Ende: Gab es zum Event schon Rundmails, den Hinweis „Bereits versendete Infos“ mit Link zu den Nachrichten – sonst den Tipp zur Nutzung auf dem Handy. Bisher kamen beide Kästen untereinander.' },
   { version: '32.50.0', date: '2026-09-30', bereich: 'E-Mails', type: 'Bugfix', text: 'Die Mail „Du bist jetzt Co-Organizer“ zeigt das Event-Bild jetzt in derselben Größe wie alle anderen Event-Mails (volle Breite bzw. die im Event gewählte Größe). Bisher stand es dort klein.' },
   { version: '32.49.0', date: '2026-09-30', bereich: 'Event-Erstellung', type: 'Bugfix', text: 'Die Leiste „Pflicht“/„Optional“ im Assistenten springt nicht mehr: Das Wort bleibt mittig, auch wenn der Abschnitt beantwortet ist – der Haken erscheint direkt darüber.' },

@@ -477,6 +477,14 @@ der Vollbild-Kopf seit v29.29 Standard ist. Regel: gespeichertes
 Orb-Schutz. Wer eine neue Mail zu einem Event baut, übergibt
 `eventHeaderImageOpts(ev.emailTemplateOverrides, ev.mailImageBase64)` als
 sechstes Argument — sonst ist es die nächste „bei dieser Mail fehlt es".
+**Seit v32.51: `await eventHeaderImageOptsFrisch(ev)` statt der synchronen
+Variante** (`utils/mailHeaderImageFrisch`). Seit v32.0.6/v32.0.10 fehlt das
+Mail-Logo im State, bis der Hintergrund-Nachlauf es bringt — die synchrone
+Funktion hielt jedes Event bis dahin für eines ohne Bild und lieferte 180 px
+(Anmeldebestätigung, Abmeldung, Nachrücken, Verspätete Abmeldung).
+`applyEventTemplateOverride` bekommt das Logo als viertes Argument
+(`await mailLogoFrisch(ev)`). Der Merker `_logosAusgelagert` sagt NICHT, ob
+ein Bild existiert — er wird bei jedem Kommunikations-Write gesetzt.
 
 **Berechtigungen gelten je Subsite — und jedes Sub-Event hat eine eigene.**
 `ensureOrganizerPermissions` lief bis v30.36 nur über `editEvent.subsiteUrl`.

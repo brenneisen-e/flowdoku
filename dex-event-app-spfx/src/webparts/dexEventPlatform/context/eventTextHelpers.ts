@@ -31,7 +31,11 @@ import { eventHeaderImageOpts } from '../utils/mailHeaderImage';
 export function applyEventTemplateOverride(
   spTemplate: { subject: string; headingColor: string; heading: string; subheading?: string; bodyHtml: string } | null,
   overridesJson: string | undefined,
-  templateType: string
+  templateType: string,
+  // v32.51: Mail-Logo des Events (utils/mailHeaderImageFrisch.mailLogoFrisch) —
+  // seit v32.0.10 liegt `_eventLogo` nicht mehr im JSON, ohne diesen Wert
+  // galt jedes Event bis zum Hintergrund-Nachlauf als „ohne eigenes Bild".
+  mailLogoB64?: string
 ): { subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string; headingFontSize?: string; headingBold?: boolean; headingItalic?: boolean; subheadingColor?: string; subheadingFontSize?: string; subheadingBold?: boolean; subheadingItalic?: boolean; imageWidth?: number; imagePaddingV?: number; imagePaddingH?: number } | null {
   // v15.19: Subheading-Override pro Event mitziehen. Color/Size bleiben
   // weiterhin aus dem Standard-Template (wrapTemplate-Layout fest), nur
@@ -56,7 +60,7 @@ export function applyEventTemplateOverride(
     // v30.87: Ohne gespeichertes Layout gilt der Vollbild-Kopf, sobald das
     // Event ein eigenes Mail-Logo hat (`_eventLogo`) — derselbe Default wie in
     // allen anderen App-Mails (utils/mailHeaderImage.eventHeaderImageOpts).
-    const imgSpread = eventHeaderImageOpts(overridesJson);
+    const imgSpread = eventHeaderImageOpts(overridesJson, mailLogoB64);
     const o = all[templateType];
     if (!o || (!o.subject && !o.heading && o.subheading === undefined && !o.bodyHtml && !o.headingColor && !o.headingFontSize && o.headingBold === undefined && o.headingItalic === undefined && !o.subheadingColor && !o.subheadingFontSize && o.subheadingBold === undefined && o.subheadingItalic === undefined)) {
       if (!spTemplate) return null;

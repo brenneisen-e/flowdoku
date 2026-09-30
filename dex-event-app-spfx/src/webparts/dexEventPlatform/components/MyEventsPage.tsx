@@ -8,7 +8,7 @@
  * unten sind deshalb kurz geworden.
  */
 
-import { eventHeaderImageOpts } from '../utils/mailHeaderImage';
+import { eventHeaderImageOptsFrisch } from '../utils/mailHeaderImageFrisch';
 import * as React from 'react';
 import OrganizerList from './OrganizerList';
 // v31.8: Seite nach docs/ui-leitfaden.md (Abschnitt 6) — die handgebauten
@@ -879,19 +879,35 @@ export default function MyEventsPage(): React.ReactElement {
           if (ctx) {
             const { EventService } = await import('../services/EventService');
             const svc = new EventService(ctx);
-            const userName = `${entry.registration.Vorname || ''} ${entry.registration.Nachname || ''}`.trim() || entry.registration.ParticipantEmail;
+            // v32.51: Aufzählung statt Fließtext (Nutzer-Ansage 30.09.2026: „schwer
+            // zu lesen … lieber Bulletpoints"), Vor- und Nachname getrennt.
+            const esc = (t: string): string => (t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            const vorname = (entry.registration.Vorname || '').trim();
+            const nachname = (entry.registration.Nachname || '').trim();
             const userEmail = entry.registration.ParticipantEmail || entry.registration.Title;
             const isDe = (entry.event.emailLanguage || 'EN').toUpperCase() === 'DE';
-            const deadlineStr = new Date(entry.event.lastDeregisterDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB');
+            const loc = isDe ? 'de-DE' : 'en-GB';
+            const deadlineStr = new Date(entry.event.lastDeregisterDate).toLocaleDateString(loc);
+            const jetztStr = new Date().toLocaleString(loc, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
             const subject = isDe
               ? `Verspätete Abmeldung: ${entry.event.title}`
               : `Late cancellation: ${entry.event.title}`;
+            const zeile = (k: string, v: string): string => `<li style="margin:0 0 6px;"><strong>${k}:</strong> ${v}</li>`;
+            const liste = [
+              zeile(isDe ? 'Vorname' : 'First name', esc(vorname) || '—'),
+              zeile(isDe ? 'Nachname' : 'Last name', esc(nachname) || '—'),
+              zeile('E-Mail', `<a href="mailto:${esc(userEmail)}">${esc(userEmail)}</a>`),
+              zeile('Event', esc(entry.event.title)),
+              zeile(isDe ? 'Abmeldefrist' : 'Cancellation deadline', deadlineStr),
+              zeile(isDe ? 'Abgemeldet am' : 'Cancelled on', jetztStr),
+            ].join('');
             const innerBody = isDe
-              ? `<p><strong>${userName}</strong> hat die Anmeldung für <strong>${entry.event.title}</strong> nach Ablauf der Abmeldefrist (${deadlineStr}) storniert.</p><p><strong>E-Mail:</strong> <a href="mailto:${userEmail}">${userEmail}</a></p>`
-              : `<p><strong>${userName}</strong> has cancelled their registration for <strong>${entry.event.title}</strong> after the cancellation deadline (${deadlineStr}).</p><p><strong>E-Mail:</strong> <a href="mailto:${userEmail}">${userEmail}</a></p>`;
+              ? `<p>Eine Person hat sich <strong>nach Ablauf der Abmeldefrist</strong> abgemeldet.</p><ul style="margin:0 0 16px;padding-left:20px;">${liste}</ul>`
+              : `<p>A participant has cancelled <strong>after the cancellation deadline</strong>.</p><ul style="margin:0 0 16px;padding-left:20px;">${liste}</ul>`;
             const heading = isDe ? 'Verspätete Abmeldung' : 'Late cancellation';
             const subheading = entry.event.title;
-            const body = wrapTemplate('#ed8b00', heading, subheading, innerBody, undefined, eventHeaderImageOpts(entry.event.emailTemplateOverrides, entry.event.mailImageBase64));
+            // v32.51: Kopf-Maße mit nachgelesenem Logo — der Start lädt es nicht mit.
+            const body = wrapTemplate('#ed8b00', heading, subheading, innerBody, undefined, await eventHeaderImageOptsFrisch(entry.event));
             // EINE Mail mit ';'-separierter Recipient-Liste - die Recipient-Spalte
             // ist Multi-Line (Note), kann also mehrere E-Mails enthalten. So sehen
             // alle Organizer die Mail gemeinsam (statt N separate Einzel-Mails).
