@@ -199,7 +199,7 @@ export default function UseCaseDetailPage(props: { useCaseId?: number }): React.
           role="img"
           aria-label={uc.titel}
           style={{
-            width: '100%', maxWidth: 560, aspectRatio: '16 / 9', borderRadius: 12, marginBottom: 16,
+            width: 96, height: 96, borderRadius: 20, marginBottom: 16,
             border: '1px solid var(--dex-gray-200, #e8e8e8)',
             background: `#fff center/cover no-repeat url("${sichereUrl(uc.bildUrl).replace(/"/g, '%22')}")`,
           }}

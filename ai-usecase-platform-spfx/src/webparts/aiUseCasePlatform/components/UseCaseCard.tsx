@@ -61,41 +61,35 @@ export default function UseCaseCard(props: UseCaseCardProps): React.ReactElement
       onClick={() => onOpen(uc.id)}
       aria-label={`${uc.titel} — ${statusLabel}`}
     >
-      {/* Bildbereich. Ohne Bild das Kuerzel auf gruenem Grund — nie ein
-          leerer grauer Kasten, der nach Ladefehler aussieht. */}
-      <span
-        style={{
-          display: 'block', width: '100%', aspectRatio: '16 / 9', maxWidth: '100%',
-          // Anführungszeichen in der Adresse würden den `url("…")`-Wert
-          // aufbrechen; seit dem Upload (v1.3) kommt die Adresse zwar von uns,
-          // ältere Einträge tragen aber eine von Hand getippte URL.
-          background: bild
-            ? `center/cover no-repeat url("${bild.replace(/"/g, '%22')}")`
-            : 'linear-gradient(135deg, rgba(134,188,37,0.16), rgba(134,188,37,0.05))',
-          position: 'relative', flexShrink: 0,
-        }}
-      >
-        {!bild && (
-          <span style={{
-            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '2rem', fontWeight: 700, color: 'var(--dex-green-dark, #6b9a1e)', letterSpacing: '0.04em',
-          }}>{kuerzel(uc.titel)}</span>
-        )}
+      {/* Kopf: ein KLEINES abgerundetes Quadrat (Bildschirmfoto bzw. Kürzel), daneben Bereich und Titel,
+          rechts der Status. Bis v1.3 stand oben ein großes 16:9-Bild — bei 18 Kacheln erschlug es die
+          Wand (Nutzer-Ansage 30.09.2026: „klein, rund oder quadratisch"). */}
+      <span style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 14px 0' }}>
         <span
-          className={cx('dex-ui-pill', istLive ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}
-          // Auf einem Bild liegt die Pille auf dunklem Grund: Die hellgrüne Fläche der Klasse
-          // verschwand dort (Sichtprüfung, 29.09.2026). Deckend weiß bleibt sie überall lesbar.
-          style={{ position: 'absolute', top: 10, right: 10, background: bild ? 'rgba(255,255,255,0.94)' : undefined, boxShadow: bild ? '0 1px 4px rgba(0,0,0,0.25)' : undefined }}
-        >{statusLabel}</span>
+          aria-hidden="true"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto',
+            width: 64, height: 64, borderRadius: 16, overflow: 'hidden',
+            border: '1px solid var(--dex-gray-200, #e8e8e8)',
+            // Anführungszeichen in der Adresse würden den `url("…")`-Wert aufbrechen.
+            background: bild
+              ? `center/cover no-repeat url("${bild.replace(/"/g, '%22')}")`
+              : 'linear-gradient(135deg, rgba(134,188,37,0.16), rgba(134,188,37,0.05))',
+            fontSize: '1.2rem', fontWeight: 700, color: 'var(--dex-green-dark, #6b9a1e)', letterSpacing: '0.04em',
+          }}
+        >{!bild && kuerzel(uc.titel)}</span>
+        <span style={{ display: 'block', flex: 1, minWidth: 0 }}>
+          {uc.bereich && (
+            <span className="dex-ui-muted" style={{ display: 'block', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+              {uc.bereich}
+            </span>
+          )}
+          <span className="dex-ui-tile-title" style={{ display: 'block', fontSize: '1rem' }}>{uc.titel}</span>
+        </span>
+        <span className={cx('dex-ui-pill', 'dex-ui-pill--sm', istLive ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')} style={{ flex: '0 0 auto' }}>{statusLabel}</span>
       </span>
 
-      <span style={{ display: 'block', padding: '12px 14px 14px', flex: 1 }}>
-        {uc.bereich && (
-          <span className="dex-ui-muted" style={{ display: 'block', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
-            {uc.bereich}
-          </span>
-        )}
-        <span className="dex-ui-tile-title" style={{ display: 'block', fontSize: '1rem', marginBottom: 6 }}>{uc.titel}</span>
+      <span style={{ display: 'block', padding: '10px 14px 14px', flex: 1 }}>
         <span className="dex-ui-tile-desc" style={{ display: 'block' }}>{uc.kurzbeschreibung}</span>
 
         {/* Die drei Bewertungen aus der Use-Case-Analyse. Mit Titel-Attribut

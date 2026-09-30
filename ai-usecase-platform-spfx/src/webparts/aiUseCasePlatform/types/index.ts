@@ -159,4 +159,6 @@ export interface StartbestandErgebnis {
   fehler: string;
   /** Der Merker „schon befüllt" steht im Protokoll. `false` = nicht gespeichert. */
   merker: boolean;
+  /** Wie viele Kachelbilder dieser Lauf angehängt hat (Bildschirmfotos der Demos). */
+  bilder?: number;
 }
