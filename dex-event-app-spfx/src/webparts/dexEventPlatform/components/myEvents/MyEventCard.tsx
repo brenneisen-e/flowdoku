@@ -32,8 +32,11 @@ import { selfCancelLocked, selfCancelLockReason } from '../../utils/cancelPolicy
 import { X, Pencil, QrCode, Mail, Info, AlertCircle, ChevronDown } from '../Icons';
 import { cx } from '../dexUi';
 import DexLogo from '../DexLogo';
+import { getCachedOrbBase64 } from '../../services/EmailTemplates';
+import { DEX_ORB_PNG } from '../../data/brandLogos';
 import { istDexEinfuehrung } from '../../utils/dexIntro';
 import { TeamsJoinButton } from '../TeamsJoinButton';
+import OwnCalendarTeamsLink from './OwnCalendarTeamsLink';
 import { eventTeamsLink, locationWithoutTeamsUrl } from '../../utils/teamsLink';
 import DocumentsViewer from './DocumentsViewer';
 import QuizPlayer from './QuizPlayer';
@@ -232,7 +235,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
             const zugeklappt = istVorbei && zuKlappStand[event.id] !== true;
 
             return (
-              <div key={event.id} id={`dex-myevent-${event.id}`} className="card my-event-card">
+              <div key={event.id} id={`dex-myevent-${event.id}`} className={cx('card my-event-card', !zugeklappt && 'my-event-card--kreis')}>
 
                 {/* ============================================================
                     1. KOPFZONE — Bild, Titel, Status, Wann/Wo, QR, „Angemeldet am"
@@ -242,49 +245,28 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                    ============================================================ */}
                 {/* v31.70: `flexWrap` — die Knopfspalte rechts (s.u.) rutscht auf
                     dem Handy unter Bild und Titel statt sie zu quetschen. */}
-                {/* v32.41: Einführungs-Event — die animierte Kugel als Kreis ÜBER der
-                    Karte, wie auf der Anmeldeseite (Nutzer-Befund 29.09.2026: „auf
-                    einmal oben links und nicht als Kreis oben drüber"). */}
-                {dexIntro && (
-                  <div style={{ display: 'flex', justifyContent: 'center', margin: '-4px 0 14px', ...(istVorbei ? { filter: 'grayscale(1)', opacity: 0.7 } : {}) }}>
-                    <div style={{ width: 150, height: 150, borderRadius: '50%', overflow: 'hidden', border: '6px solid #fff', boxShadow: '0 6px 20px rgba(0,0,0,0.12)', background: '#fff' }}>
-                      <DexLogo title="DEX" motion="oscillate" size={138} paused={istVorbei} pointerSpin={!istVorbei} />
-                    </div>
+                {/* v32.45: JEDES Event bekommt den Kreis oben mittig, halb über der
+                    Kartenkante — wie auf der Anmeldeseite (Nutzer-Ansage 30.09.2026:
+                    „dann haben Anmeldeformular und Meine Events ähnliches Design").
+                    Vorher: Einführungs-Event als Kreis IN der Karte, alle anderen
+                    als Vorschaubild links neben dem Titel. Reihenfolge wie dort:
+                    Event-Bild (cover), sonst Mail-Logo (contain, Logos haben Ränder
+                    und Schrift), sonst der DEX-Orb. Zugeklappte vergangene Events
+                    bleiben kompakt und ohne Kreis. */}
+                {!zugeklappt && (
+                  <div className="my-event-card__kreis" style={istVorbei ? { filter: 'grayscale(1)', opacity: 0.7 } : undefined}>
+                    {dexIntro ? (
+                      <DexLogo title="DEX" motion="oscillate" size={108} paused={istVorbei} pointerSpin={!istVorbei} />
+                    ) : event.imageUrl ? (
+                      <CachedImg src={event.imageUrl} alt={event.title} loading="lazy" decoding="async"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    ) : (
+                      <img src={event.mailImageBase64 || getCachedOrbBase64() || DEX_ORB_PNG} alt=""
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', padding: 14, boxSizing: 'border-box' }} />
+                    )}
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                  {!dexIntro && event.imageUrl && (
-                    <div
-                      className="my-event-card__thumb"
-                      style={{
-                        flexShrink: 0,
-                        width: 140,
-                        height: 100,
-                        borderRadius: 'var(--dex-radius, 12px)',
-                        background: 'var(--dex-gray-50, #fafafa)',
-                        border: '1px solid var(--dex-gray-200)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        overflow: 'hidden',
-                        // v32.11: vergangene Events grau (Nutzer-Ansage 29.09.2026).
-                        ...(istVorbei ? { filter: 'grayscale(1)', opacity: 0.7 } : {}),
-                      }}
-                    >
-                      <CachedImg
-                        src={event.imageUrl}
-                        alt={event.title}
-                        loading="lazy"
-                        decoding="async"
-                        style={{
-                          maxWidth: '100%',
-                          maxHeight: '100%',
-                          objectFit: 'contain',
-                          display: 'block',
-                        }}
-                      />
-                    </div>
-                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {/* Titel + Status-Pille + Gruppe (alles reine Anzeige) */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -371,6 +353,11 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           Besprechung, nicht erst den Kalender suchen. */}
                       {eventTeamsLink(event) && (
                         <TeamsJoinButton url={eventTeamsLink(event)} isDe={isDe} variant="link" />
+                      )}
+                      {/* v32.45: Von DEX erzeugte Teams-Besprechung — der Link
+                          steht nur im Outlook-Termin, also dort nachsehen. */}
+                      {!eventTeamsLink(event) && event.outlookIsOnlineMeeting && !event.disableOutlook && !istVorbei && (
+                        <OwnCalendarTeamsLink calendarLink={event.calendarLink} isDe={isDe} />
                       )}
                     </div>
 

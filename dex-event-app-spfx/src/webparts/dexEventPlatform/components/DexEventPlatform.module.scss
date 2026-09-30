@@ -735,6 +735,17 @@
     .dex-tl-dot.is-reg { background: var(--dex-green); box-shadow: 0 0 0 1px var(--dex-green); }
     .dex-tl-dot.is-wait { background: var(--dex-orange, #ed8b00); box-shadow: 0 0 0 1px var(--dex-orange, #ed8b00); }
     .my-event-card { padding: 24px; }
+    /* v32.45: Kreis oben mittig, halb über der Kartenkante (wie Anmeldeseite).
+       Die Karte rückt um den halben Kreis nach unten; Monat und Punkt der
+       Zeitleiste rücken mit, sonst stünden sie neben dem Kreis statt an der Karte. */
+    .my-event-card--kreis { margin-top: 60px; }
+    .my-event-card__kreis {
+      width: 120px; height: 120px; margin: -84px auto 8px; border-radius: 50%; overflow: hidden;
+      background: #fff; border: 1px solid var(--dex-gray-200); box-shadow: 0 2px 12px rgba(0,0,0,0.10);
+      display: flex; align-items: center; justify-content: center; box-sizing: border-box;
+    }
+    .dex-tl-rail:has(+ div > .my-event-card--kreis) .dex-tl-month { padding-top: 78px; }
+    .dex-tl-rail:has(+ div > .my-event-card--kreis) .dex-tl-dot { top: 86px; }
     .my-event-card__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
     .my-event-card__header h3 { font-size: 1.1rem; }
     .my-event-card__details { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; font-size: 0.9rem; margin-bottom: 12px; }
@@ -874,6 +885,8 @@
       .my-event-card__actions .btn { width: 100%; justify-content: center; }
       /* Thumbnail kleiner auf Mobile, damit es nicht die halbe Karte einnimmt */
       .my-event-card__thumb { width: 90px !important; height: 70px !important; }
+      .my-event-card__kreis { width: 100px; height: 100px; margin-top: -70px; }
+      .my-event-card--kreis { margin-top: 50px; }
 
       /* Event Creation */
       .creation-layout { grid-template-columns: 1fr; }
@@ -903,6 +916,8 @@
          enthält. KPI- und Action-Tile-Grids fallen auf eine bzw.
          zwei Spalten zurück damit Tap-Targets gross genug bleiben. */
       .card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      /* v32.45: Der Kreis ragt über die Kante — overflow-x:auto würde ihn oben abschneiden. */
+      .card.my-event-card--kreis { overflow: visible; }
       .card > table,
       .dex-table-wrapper, .admin-table-wrapper, .settings-table-wrapper {
         overflow-x: auto;

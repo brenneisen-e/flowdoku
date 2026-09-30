@@ -533,7 +533,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                   hatten nur „Teilnahme" und „Veröffentlichung" eine, die vier
                   vorderen nicht. Auf einem Sub-Event-Reiter heißt der erste
                   Abschnitt wie der Termin selbst, nicht „Event". */}
-              <div className="dex-ui-section dex-ui-section--pflicht" data-art={isDe ? 'Pflicht' : 'Required'}>
+              <div className="dex-ui-section dex-ui-section--pflicht" data-art={isDe ? 'Pflicht' : 'Required'} data-erledigt={(scTitle || '').trim() ? '1' : undefined}>
                 <div className="dex-ui-section-title">{scopeSub ? (childTermSingular || 'Sub-Event') : 'Event'}</div>
                 <label className="dex-ui-label">
                   <StepBadge n={1} />
@@ -584,7 +584,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
 
               {/* v9.24: Event-Datum direkt nach Title — auto-fillt die Deadlines.
                   Vorher in Step 1, jetzt in Step 0 weil das fundamentale Info ist. */}
-              <div className="dex-ui-section dex-ui-section--pflicht" data-art={isDe ? 'Pflicht' : 'Required'}>
+              <div className="dex-ui-section dex-ui-section--pflicht" data-art={isDe ? 'Pflicht' : 'Required'} data-erledigt={scStart && scEnd ? '1' : undefined}>
                 <div className="dex-ui-section-title">{isDe ? 'Zeitraum' : 'Dates'}</div>
                 <div className="dex-ui-label">
                   <StepBadge n={2} />
@@ -767,7 +767,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
               {p.seriesSlot}
               </div>
 
-              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'} data-erledigt={(scDescription || '').replace(/<[^>]*>/g, '').trim() ? '1' : undefined}>
                 {/* v28.7: kein <label> mehr, sondern <div> — rechts sitzt jetzt
                     der „Beschreibung anzeigen"-Schalter mit eigenem <label>;
                     verschachtelte Labels würden Klicks auf die Überschrift
@@ -906,7 +906,7 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                 })()}
               </div>
 
-              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'}>
+              <div className="dex-ui-section dex-ui-section--optional" data-art={isDe ? 'Optional' : 'Optional'} data-erledigt={scImagePreview ? '1' : undefined}>
                 <div className="dex-ui-section-title">{isDe ? 'Bild' : 'Image'}</div>
                 <div className="dex-ui-label">
                   <StepBadge n={4} />
