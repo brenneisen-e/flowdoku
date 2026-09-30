@@ -143,3 +143,20 @@ export interface SpeicherErgebnis {
   /** Warum `ok` false ist. */
   grund?: 'rechte' | 'speichern' | 'bild';
 }
+
+/**
+ * Ergebnis der Start-Use-Case-Anlage (`seedStartUseCases`).
+ *
+ * `fehlend` ist, wie viele Use Cases dieser Lauf anlegen wollte (die Startliste
+ * abzüglich der Titel, die es schon gibt). Vollständig ist der Lauf nur bei
+ * `angelegt === fehlend` — alles andere ist ein Teilerfolg und muss gemeldet
+ * werden (Review 29.09.2026: 7 von 18 blieben dauerhaft und stumm stehen).
+ */
+export interface StartbestandErgebnis {
+  angelegt: number;
+  fehlend: number;
+  /** Klartext von SharePoint bzw. ein Kurzcode (`rechte`, `laeuft`, `lesefehler`) — leer bei Erfolg. */
+  fehler: string;
+  /** Der Merker „schon befüllt" steht im Protokoll. `false` = nicht gespeichert. */
+  merker: boolean;
+}

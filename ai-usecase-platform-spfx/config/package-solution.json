@@ -19,22 +19,13 @@
         "default": "AI Use Case Platform - Agentic Banking Demo Hub"
       },
       "longDescription": {
-        "default": "Zentrale, Deloitte-intern zugaengliche Plattform fuer Agent-Demos im Banking-Sektor. Use Cases werden ueber Kacheln aufgerufen; je Demo stehen Kurzbeschreibung, Aufruf und die Ressourcen (Source Code, Deployment, Guide, Wiki, Video) bereit."
+        "default": "Zentrale, Deloitte-intern zugängliche Plattform für Agent-Demos im Banking-Sektor. Use Cases werden über Kacheln aufgerufen; je Demo stehen Kurzbeschreibung, Aufruf und die Ressourcen (Source Code, Deployment, Guide, Wiki, Video) bereit."
       },
       "screenshotPaths": [],
       "videoUrl": "",
       "categories": []
     },
-    "webApiPermissionRequests": [
-      {
-        "resource": "Microsoft Graph",
-        "scope": "User.Read"
-      },
-      {
-        "resource": "Microsoft Graph",
-        "scope": "User.Read.All"
-      }
-    ],
+    "webApiPermissionRequests": [],
     "features": [
       {
         "title": "AI Use Case Platform Feature",

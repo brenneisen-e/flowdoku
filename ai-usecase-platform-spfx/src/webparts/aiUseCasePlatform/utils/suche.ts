@@ -23,6 +23,19 @@ export function normSuche(s: string): string {
     .replace(/[^a-z0-9]/g, '');
 }
 
+/**
+ * Die Ersatzschreibweise gefaltet: Wer „verguetung" tippt (Tastatur ohne Umlaute, Handy),
+ * muss „Vergütungswerk" finden.
+ *
+ * Gefaltet wird NUR zusätzlich: Ein Treffer im ungefalteten Text zählt immer. Die Faltung
+ * verschluckt sonst das `e` eines Worts, das hinter einem Wort auf a, o oder u steht —
+ * „Data Engineering" wurde zu `datangineering`, und „engineering" fand es nicht mehr
+ * (Gegenprüfung 29.09.2026). Vergleich also gegen beide Fassungen.
+ */
+function faltErsatz(s: string): string {
+  return s.replace(/ae/g, 'a').replace(/oe/g, 'o').replace(/ue/g, 'u');
+}
+
 /** Die Suchbegriffe: ein Wort je Begriff, alle müssen passen. */
 export function suchTokens(suche: string): string[] {
   return (suche || '').trim().split(/\s+/).map(normSuche).filter(Boolean);
@@ -32,5 +45,6 @@ export function suchTokens(suche: string): string[] {
 export function passtZurSuche(uc: UseCase, tokens: string[]): boolean {
   if (tokens.length === 0) return true;
   const heu = normSuche(uc.titel) + ' ' + normSuche(uc.kurzbeschreibung) + ' ' + normSuche(uc.bereich) + ' ' + normSuche(uc.schlagworte.join(' '));
-  return tokens.every(tok => heu.indexOf(tok) >= 0);
+  const heuGefaltet = faltErsatz(heu);
+  return tokens.every(tok => heu.indexOf(tok) >= 0 || heuGefaltet.indexOf(faltErsatz(tok)) >= 0);
 }

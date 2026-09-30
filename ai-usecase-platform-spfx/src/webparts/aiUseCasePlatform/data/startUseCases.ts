@@ -42,8 +42,37 @@
  * naechste Fehlerquelle. Einbetten waere technisch erlaubt (`_headers` setzt
  * `X-Frame-Options: ALLOWALL`), ist hier aber die schlechtere Wahl.
  *
- * Ein Kurator kann das je Demo umstellen — die Voreinstellung ist nur die
+ * Ein Organizer kann das je Demo umstellen — die Voreinstellung ist nur die
  * Voreinstellung.
+ *
+ * ## Abgleich vom 29.09.2026 (v1.3)
+ *
+ * Jede Aussage dieser Liste wurde gegen den damaligen Stand von
+ * `kiarbeitsplatz` nachgezählt; jede vorgeschlagene Korrektur hat ein
+ * zweiter, unabhängiger Prüfer am Code belegt oder verworfen (43 Änderungen
+ * bestätigt, ein Teil erst in einer zweiten Runde). Ergebnis:
+ *
+ *  - Alle 18 Deployment-Ziele stimmen: 16 liegen im Repo und sind gebaute
+ *    Einstiege (kein Vite-Entwicklungs-Einstieg), zwei liegen auf eigenen
+ *    Hosts und antworteten am 29.09.2026 mit HTTP 200.
+ *  - „Bank der Zukunft" heißt im Repo jetzt **Banking Horizon** (Kachel,
+ *    Seitentitel, CLAUDE.md). Der Titel „KI-Vertriebsarbeitsplatz" bleibt:
+ *    Die App heißt selbst so, nur die Kachel im Repo sagt
+ *    „Vertriebsarbeitsplatz".
+ *  - Mehrere Aussagen waren von Anfang an nicht belegt und stehen jetzt
+ *    richtig da — etwa: Die Gewichte im Vermittler-Scoring sind fest (sie
+ *    ließen sich nie verstellen), der KI-Chat im ControlHub ist beim Start
+ *    geschlossen, die HR-Pipeline-Analyse ist hinterlegt und liest den
+ *    Lebenslauf nicht, und die VST-Cockpit-Filter oben ändern die Zahlen
+ *    nicht (gefiltert wird über die Karte).
+ *  - Wo sich etwas nicht belegen ließ, wurde die Aussage gestrichen oder
+ *    abgeschwächt statt ersetzt. Das ist Absicht: Eine kürzere, wahre
+ *    Beschreibung ist besser als eine ausführliche, geratene.
+ *
+ * **Wirkung:** Die Liste wird nur in eine LEERE `AIUC_UseCases` geschrieben
+ * (`darfErstbefuellen`). Ist die Liste auf der Site schon befüllt, ändern
+ * sich die Kacheln dort NICHT von selbst — die Texte müssen im Use Case
+ * Studio angepasst werden.
  */
 
 import { UseCase } from '../types';
@@ -65,7 +94,7 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
     titel: 'KI-Vertriebsarbeitsplatz',
     bereich: 'Vertrieb & Beratung',
     kurzbeschreibung: 'Der Arbeitsplatz einer Beraterin: Tagesübersicht, Kundenliste, Kundenakte und Vertriebspotenziale in einer Oberfläche — mit KI-Assistent daneben.',
-    beschreibung: '<p>Vier Ansichten greifen ineinander: <strong>Landing</strong> (Chat-Einstieg mit Schnellbefehlen), <strong>Übersicht</strong> (KPI-Kacheln plus sechs bis neun Reiter je Modus — Stammdaten, Neugeschäft, Bestand, Storno, Vergütung, Qualität, Kunden, Potenziale), <strong>Kundenakte</strong> (sieben bis acht Reiter von der Finanzübersicht über Open Finance bis Produktabschluss) und <strong>Cockpit</strong> (Vertriebssteuerung mit anklickbarer Deutschlandkarte, Vermittler-Ranking und Forecast).</p><p>Derselbe Arbeitsplatz lässt sich per Reiter zwischen <strong>Versicherung</strong>, <strong>Banking</strong> und <strong>Vermögensverwaltung</strong> umschalten — mitsamt Institut, Farbwelt, Rollenbezeichnung und KPI-Satz; je Modus stehen vier bis sechs weitere Institutsvarianten für White-Label-Vorführungen bereit. Die Daten sind seed-basiert erzeugt und damit bei jeder Vorführung identisch (45 Kunden Versicherung, 40 Banking, 12 Mandate, davon 19 handgebaute Personas). Zweisprachig, mit geführter Tour und Screen-Recorder.</p><p><em>Eine Einschränkung, die man vor dem Kundentermin kennen sollte:</em> Navigation und Schnellbefehle laufen ohne Backend. Nur <strong>freie</strong> Fragen an den Assistenten gehen an eine API; fehlt der Schlüssel, zeigt der Assistent eine Fehlermeldung und die Demo läuft weiter.</p>',
+    beschreibung: '<p>Vier Ansichten greifen ineinander: <strong>Landing</strong> (Chat-Einstieg mit Schnellbefehlen), <strong>Übersicht</strong> (KPI-Kacheln plus fünf bis neun Reiter je Modus (die Übersicht eingerechnet) — im Modus Versicherung Stammdaten, Neugeschäft, Bestand, Storno, Vergütung, Qualität, Kunden, Potenziale; Banking ersetzt Storno und Vergütung durch Erträge, die Vermögensverwaltung hat mit Mein Tag, Mandanten, Leads, Revenue und Compliance ihre eigenen fünf), <strong>Kundenakte</strong> (sieben bis acht Reiter je Modus) und <strong>Cockpit</strong> (Vertriebssteuerung mit anklickbarer Deutschlandkarte, Vermittler-Ranking und Vertriebsbericht).</p><p>Derselbe Arbeitsplatz lässt sich per Reiter zwischen <strong>Versicherung</strong>, <strong>Banking</strong> und <strong>Vermögensverwaltung</strong> umschalten — mitsamt Institut, Farbwelt, Rollenbezeichnung und KPI-Satz; je Modus stehen vier bis sechs Institutsvarianten für White-Label-Vorführungen bereit. Die Daten werden mit festem Seed erzeugt (45 Kunden Versicherung, 40 Banking, 12 Mandate, davon 19 handgebaute Personas). Ein Teil der Werte wird allerdings bei jedem Start per Zufall gewürfelt (etwa der NPS-Startwert der generierten Kunden), sodass sich die generierten Kunden von Start zu Start unterscheiden können. Zweisprachig, mit Screen-Recorder.</p><p><em>Eine Einschränkung, die man vor dem Kundentermin kennen sollte:</em> Navigation und Schnellbefehle laufen ohne Backend. Nur <strong>freie</strong> Fragen an den Assistenten gehen an eine API; fehlt der Schlüssel, zeigt der Assistent eine Fehlermeldung und die Demo läuft weiter.</p>',
     salesRelevanz: 'Hoch', machbarkeit: 'Hoch', demoTauglichkeit: 'Hoch',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 10,
     schlagworte: ['Vertrieb', 'Beratung', 'Kundenakte', 'Cross-Selling', 'Cockpit', 'Versicherung', 'Banking', 'Asset Management'],
@@ -74,8 +103,8 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
   {
     titel: 'Vermittler-Scoring',
     bereich: 'Vertrieb & Beratung',
-    kurzbeschreibung: 'Parametrisierbares Scoring-Modell für Versicherungsvermittler: Gewichte verstellen und sofort sehen, wie sich Ranking und Verteilung verschieben.',
-    beschreibung: '<p>Links stehen die Parameter in sechs Abschnitten, rechts das Ergebnis: die Score-Verteilung über den Vermittlerbestand, Vertriebsstatistiken und eine Auswahl von Verbesserungsmaßnahmen mit Vorher-Nachher-Vergleich.</p><p>Der Kern der Vorführung ist die Gewichtung: Wer sie verändert, sieht die Verschiebung sofort — das macht ein Scoring-Modell verhandelbar, statt es als Black Box zu zeigen.</p>',
+    kurzbeschreibung: 'Parametrisierbares Scoring-Modell für Versicherungsvermittler: Kennzahlen verstellen und sofort sehen, wie sich Gesamt-Score und Ampel verschieben — und was Verbesserungsmaßnahmen an der Verteilung über den Vermittlerbestand ändern.',
+    beschreibung: '<p>Zwei Reiter: <strong>Vermittler-Scoring</strong> und <strong>Unternehmensperspektive</strong>. Im ersten stehen links die Parameter in sechs Abschnitten (Vermittler-Auswahl mit sechs Beispielprofilen von A bis D, dann Geschäftsperformance, Risikoscore, Bestandsstabilität, Kundenorientierung und Profitabilität), rechts das Scoring-Ergebnis mit Ampel, Gesamt-Score, A- bis D-Einstufung und den fünf Teilscores. Im zweiten stehen die Score-Verteilung über den Vermittlerbestand (nach Vertriebssilo wählbar), Vertriebsstatistiken und Haupt-KPIs sowie sechs zuschaltbare Verbesserungsmaßnahmen mit Vorher-Nachher-Vergleich.</p><p>Der Kern der Vorführung sind die Kennzahlen: Wer einen Regler verschiebt, sieht Score, Ampel und Einstufung sofort kippen — das macht ein Scoring-Modell nachvollziehbar, statt es als Black Box zu zeigen. Die Gewichte der fünf Blöcke (Risikoscore 40, Geschäftsperformance 20, Bestandsstabilität 15, Profitabilität 15, Kundenorientierung 10 Prozent) sind fest hinterlegt und lassen sich nicht verstellen.</p>',
     salesRelevanz: 'Hoch', machbarkeit: 'Hoch', demoTauglichkeit: 'Mittel',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 20,
     schlagworte: ['Scoring', 'Vermittler', 'Risikobewertung', 'Simulation', 'Versicherung'],
@@ -85,7 +114,7 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
     titel: 'Vergütungswerk',
     bereich: 'Vertrieb & Beratung',
     kurzbeschreibung: 'Zwei Werkzeuge auf einer Rechen-Engine: Was bewirkt eine Umstellung des Vergütungsmodells — und was heißt das je Institut in der Verhandlung?',
-    beschreibung: '<p><strong>Makro:</strong> Links die Steuerung mit Beispielhaus-Auswahl, rechts Regler je Vergütungsbaustein, eine editierbare Bonusstaffel, Garantien und Zuschüsse. Daneben rechnen Wirkungstafeln sofort mit — Produktionszeilen Alt/Neu/Differenz, Staffelverteilung, Verlauf.</p><p><strong>Mikro:</strong> Je Sparkasse bzw. Vertriebspartner eine Institutsakte als Dashboard mit Stammdaten, gestapeltem Alt/Neu-Balken, Sparten-Säulen und Vergleichstabellen für Abschluss- und Folgeprovisionen.</p><p>Das tragende Prinzip: Makro ist <strong>exakt</strong> die Summe der Mikro-Ergebnisse, geprüft über eine Konsistenzfunktion. Drei Budget-Sichten (eingeschwungen, Barwert je Jahrgang, kassenwirksames Startjahr) werden immer gemeinsam gezeigt, die Gesamtampel ist stets das schlechteste der drei Signale. Marke, Farben und Sprachbausteine sind vollständig austauschbar.</p>',
+    beschreibung: '<p><strong>Makro:</strong> Links die Steuerung mit Beispielhaus-Auswahl, rechts Regler je Vergütungsbaustein, eine editierbare Bonusstaffel, Garantien und Zuschüsse. Daneben rechnen Wirkungstafeln sofort mit — Produktionszeilen Alt/Neu/Differenz, Staffelverteilung, Verlauf.</p><p><strong>Mikro:</strong> Je Sparkasse bzw. Vertriebspartner eine Institutsakte als Dashboard mit Stammdaten, gestapeltem Alt/Neu-Balken, Sparten-Säulen und Vergleichstabellen für Abschluss- und Folgeprovisionen.</p><p>Das tragende Prinzip: Makro ist <strong>exakt</strong> die Summe der Mikro-Ergebnisse, geprüft über eine Konsistenzfunktion. Zwei Budget-Sichten (Vergleich Referenzzeitraum, kumuliert bis 2030 im Barwert) stehen im Simulationskasten und in der Institutsakte als Plaketten, die Gesamtampel ist stets das schlechtere der beiden Budget-Signale; der Barwert je Jahrgang läuft nur nachrichtlich mit. Marke, Farben und Sprachbausteine sind vollständig austauschbar.</p>',
     salesRelevanz: 'Hoch', machbarkeit: 'Mittel', demoTauglichkeit: 'Hoch',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 30,
     schlagworte: ['Vergütung', 'Provision', 'Simulation', 'White-Label', 'Verhandlung', 'Sparkasse'],
@@ -95,7 +124,7 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
     titel: 'KI-Kreditanalyse',
     bereich: 'Vertrieb & Beratung',
     kurzbeschreibung: 'Der komplette Firmenkredit-Prozess: von der Antragserfassung über KYC, Bilanzanalyse, Rating und Sicherheiten bis Entscheidung, Vertrag und Monitoring.',
-    beschreibung: '<p>Vierzehn Ansichten hängen an einer Sidebar: Dashboard mit KPI-Karten und Kanban-Pipeline, Antragserfassung, KYC &amp; Compliance, §18-KWG-Analyse, Rating, Sicherheiten, Kreditvorlage, Entscheidung, Vertrag, Monitoring, Kundenantrag, Compliance, PDF-Upload und Kreditkonto-Neuanlage.</p><p>Hinterlegt sind Branchen-Benchmarks, Ratingskalen, Haircut-Sätze, eine Kompetenzmatrix und LMA-/Konsortialvertragsvorlagen; Muster-Verträge liegen als Assets bei. Ein angedocktes KI-Panel begleitet jeden Schritt.</p><p><em>Für die Vorführung angenehm:</em> Der Assistent fällt bei fehlendem API-Zugang automatisch auf vorbereitete Antworten zurück — die Demo funktioniert also auch ohne Schlüssel vollständig.</p>',
+    beschreibung: '<p>Vierzehn Ansichten hängen an einer Sidebar: Dashboard mit KPI-Karten und Kanban-Pipeline, Antragserfassung, KYC &amp; Compliance, §18-KWG-Analyse, Rating, Sicherheiten, Kreditempfehlung, Entscheidung, Vertrag, Monitoring, Kundenantrag, Compliance, PDF-Upload und Kreditkonto-Neuanlage.</p><p>Hinterlegt sind Branchen-Benchmarks, Ratingskalen, Haircut-Sätze, eine Kompetenzmatrix und LMA-/Konsortialvertragsvorlagen; Muster-Verträge liegen als Assets bei. Ein angedocktes KI-Panel begleitet jeden Schritt.</p><p><em>Für die Vorführung angenehm:</em> Der Assistent fällt bei fehlendem API-Zugang automatisch auf vorbereitete Antworten zurück — die Demo funktioniert also auch ohne Schlüssel vollständig.</p>',
     salesRelevanz: 'Hoch', machbarkeit: 'Hoch', demoTauglichkeit: 'Hoch',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 40,
     schlagworte: ['Kredit', 'Firmenkunden', 'Rating', 'KYC', 'Sicherheiten', 'Monitoring', 'Banking'],
@@ -104,8 +133,8 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
   {
     titel: 'HR Pipeline',
     bereich: 'Vertrieb & Beratung',
-    kurzbeschreibung: 'Recruiting aus drei Perspektiven in einer App: Bewerber-Portal, Recruiting-Dashboard und HR-Cockpit — mit KI-Analyse des Lebenslaufs gegen die Stellenanforderung.',
-    beschreibung: '<p>Der Kopf schaltet zwischen <strong>Bewerber-Portal</strong>, <strong>Recruiting Dashboard</strong> und <strong>HR-Cockpit</strong>. Im Bewerberteil wird ein Profil eingereicht und analysiert — und die Analyse ist an die Quellstellen im Lebenslauf rückgebunden: Wer einen Befund anzweifelt, sieht die Stelle im Dokument, aus der er stammt.</p><p>Der Arbeitgeberteil führt Bewerberlisten und Stellen, das Cockpit zeigt die regionale Verteilung auf einer Deutschlandkarte. Rechts ist durchgängig ein KI-Assistent angedockt, mit getrennten Fragensets für Bewerber und Recruiter.</p>',
+    kurzbeschreibung: 'Recruiting aus drei Perspektiven in einer App: Bewerber-Portal, Recruiting-Dashboard und HR-Cockpit — mit hinterlegter, simulierter KI-Analyse von Demo-Profilen.',
+    beschreibung: '<p>Der Kopf schaltet zwischen <strong>Bewerber-Portal</strong>, <strong>Recruiting Dashboard</strong> und <strong>HR-Cockpit</strong>. Im Bewerberteil wird ein Profil eingereicht; die Analyse dazu ist hinterlegt (ein hochgeladener Lebenslauf wird nicht gelesen, sondern über den Dateinamen einem der drei Demo-Profile zugeordnet, jede andere Datei landet beim Standardprofil). Bei den Profilen der Zukunfts AG ist sie an die Quellstellen im Lebenslauf rückgebunden: Wer einen Befund anzweifelt, sieht die Stelle im Dokument, aus der er stammt. Bei den Versicherungs-Instituten (Voreinstellung ERGO) fehlt diese Rückbindung.</p><p>Der Arbeitgeberteil führt Bewerberlisten und Stellen, das Cockpit zeigt die regionale Verteilung auf einer Deutschlandkarte. Rechts ist durchgängig ein KI-Assistent angedockt, mit getrennten Fragensets für Bewerber und Recruiter.</p>',
     salesRelevanz: 'Mittel', machbarkeit: 'Hoch', demoTauglichkeit: 'Hoch',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 50,
     schlagworte: ['Recruiting', 'Lebenslauf', 'Bewerbermanagement', 'Skill-Gap', 'HR'],
@@ -119,7 +148,7 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
     titel: 'VST-Cockpit',
     bereich: 'Cockpits & Monitoring',
     kurzbeschreibung: 'Neun-KPI-Cockpit der Vertriebssteuerung mit 12-Monats-Verlauf, Forecast und anklickbarer Deutschlandkarte nach Bundesländern.',
-    beschreibung: '<p>Die Kennzahlen: Neugeschäftsvolumen, Bestandsvolumen, Stornoquote, NPS, Risikoscore, Combined Ratio, Gesamtergebnis, Underwriting-Qualität und Deckungsbeitrag. Gefiltert wird nach Jahr, Vertriebsweg (Ausschließlichkeit, Makler, Direktvertrieb, Banken) und Segment (Leben, Kranken, Schaden, Kfz); jede Kachel lässt sich vergrößern, ein Forecast zuschalten.</p><p>Dazu Vermittler-Ranking, Abschlussliste und die Bundesland-Karte mit Neugeschäft, Bestand, Storno und Vermittlerzahl je Land.</p><p><em>Unterschied zur gleichnamigen Ansicht im Vertriebsarbeitsplatz:</em> Diese Fassung erzeugt ihre Zahlen über einen Generator, der auf die letzten zwölf Monate ab dem aktuellen Datum rollt — die Demo veraltet also nicht.</p>',
+    beschreibung: '<p>Die Kennzahlen: Neugeschäftsvolumen, Bestandsvolumen, Stornoquote, NPS, Risikoscore, Combined Ratio, Gesamtergebnis, Underwriting-Qualität und Deckungsbeitrag. In der Kopfleiste stehen Auswahlfelder für Jahr, Vertriebsweg (Ausschließlichkeit, Makler, Direktvertrieb, Banken), Segment (Leben, Kranken, Schaden, Kfz) und Agentur — sie ändern die Zahlen in dieser Demo aber nicht. Gefiltert wird über die Deutschlandkarte: Ein Klick auf ein oder mehrere Bundesländer rechnet Neugeschäftsvolumen, Bestandsvolumen, Gesamtergebnis und Deckungsbeitrag auf den Bestandsanteil der gewählten Länder um; Quoten und Scores (Storno, NPS, Risiko, Combined Ratio, Underwriting) verschieben sich dabei nur um wenige Prozent. Jede Kachel lässt sich vergrößern, ein Forecast zuschalten.</p><p>Dazu Vermittler-Ranking, Abschlussliste und die Bundesland-Karte, die beim Überfahren Neugeschäft und Vermittlerzahl je Land zeigt; Bestand und Stornoquote stehen in der Tabelle „Bundesländer".</p><p><em>Unterschied zur gleichnamigen Ansicht im Vertriebsarbeitsplatz:</em> Diese Fassung erzeugt ihre Zahlen über einen Generator, der auf die letzten zwölf Monate ab dem aktuellen Datum rollt — die Demo veraltet also nicht.</p>',
     salesRelevanz: 'Hoch', machbarkeit: 'Hoch', demoTauglichkeit: 'Hoch',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 60,
     schlagworte: ['KPI', 'Cockpit', 'Vertriebssteuerung', 'Deutschlandkarte', 'Forecast', 'Storno', 'Versicherung'],
@@ -129,7 +158,7 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
     titel: 'Active Equities',
     bereich: 'Cockpits & Monitoring',
     kurzbeschreibung: 'Der Morgen eines Portfolio Managers: AUM-Verlauf, Cashflows von gestern, Workflow-Status — und danach ein Dashboard, in dem Fonds-Workflows Schritt für Schritt abgearbeitet werden.',
-    beschreibung: '<p>Der Ablauf ist dreistufig: Welcome-Screen (AUM der letzten fünf Tage, gestrige Cashflows, Workflow-Status, Highlights) → Ladeanimation → Dashboard.</p><p>Im Dashboard stehen Fonds wie „AI and Robotics Equity Fund" oder „Global Leaders Equity" mit AUM, Cash-Quote, Drift, Status (Trade required / PTC pending / SOD break) und offenen Orders. Jeder Workflow besteht aus Schritten, die teils automatisch laufen, teils eine Freigabe brauchen — „Wait for all cashflows", „Publish cash &amp; check portfolio", „Optimize portfolio", „Run PTC", „Approve PTC overrides", „Request 4-eye check", „Send orders". Ein Chatbot begleitet die Bearbeitung.</p><p><strong>Die Oberfläche ist englisch</strong> — als einzige der Demos.</p>',
+    beschreibung: '<p>Der Ablauf ist dreistufig: Welcome-Screen (AUM der letzten fünf Tage, gestrige Cashflows, Workflow-Status, Highlights) → Ladeanimation → Dashboard.</p><p>Im Dashboard stehen Fonds wie „AI and Robotics Equity Fund" oder „Global Leaders Equity" mit AUM, Cash-Quote, Drift, Status (Trade required / PTC pending / SOD break) und offenen Orders. Ein Cashflow-Workflow besteht aus Schritten, die teils automatisch laufen, teils eine Freigabe brauchen — „Wait for all cashflows", „Publish cash &amp; check portfolio", „Optimize portfolio", „Run PTC", „Approve PTC overrides", „Request 4-eye check", „Send orders". Ein Chatbot begleitet die Bearbeitung.</p><p><strong>Die Oberfläche ist englisch</strong> — als einzige der Demos.</p>',
     salesRelevanz: 'Mittel', machbarkeit: 'Hoch', demoTauglichkeit: 'Hoch',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 70,
     schlagworte: ['Portfolio Management', 'AUM', 'Pre-Trade Compliance', 'Workflow', 'Orders', 'Asset Management'],
@@ -139,7 +168,7 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
     titel: 'Banken-KPI',
     bereich: 'Cockpits & Monitoring',
     kurzbeschreibung: 'Monatlicher KPI-Bericht einer Bank über sieben Segmente — mit Ampelbewertung, Plan-/Ist-Abweichung und KI-Kommentar je Kennzahl, exportierbar als PowerPoint und PDF.',
-    beschreibung: '<p>Umgeschaltet wird zwischen Konzern, Firmenkunden, Structured Finance, Immobilienkunden, Markets, Privatkunden und Treasury. Die Kennzahlen sind gruppiert: Neugeschäft und Neugeschäftsmarge, Volumina (Aktivvolumen/-marge, Einlagenvolumen/-marge) sowie Rentabilität und Produktivität (RWA, RWA-Produktivität, RoRaC, Cost/Income Ratio).</p><p>Jede Kachel zeigt einen 12-Monats-Verlauf und öffnet im Klick eine Detailansicht mit KI-Erläuterung; eine KPI-Matrix stellt die Segmente nebeneinander. Das Institut ist wählbar und wird gemerkt. Export als PowerPoint und über den Druckdialog als PDF.</p>',
+    beschreibung: '<p>Umgeschaltet wird zwischen Konzern, Firmenkunden, Structured Finance, Immobilienkunden, Markets, Privatkunden und Treasury. Die Kennzahlen sind gruppiert: Neugeschäft und Neugeschäftsmarge, Volumina (Aktivvolumen/-marge, Einlagenvolumen/-marge) sowie Rentabilität und Produktivität (RWA, RWA-Produktivität, RoRaC, Cost/Income Ratio).</p><p>Jede Kachel zeigt einen 12-Monats-Verlauf; die Detailansicht mit KI-Erläuterung öffnet das Vergrößern-Symbol unten rechts an der Kachel (ein Klick auf die Kachel selbst öffnet nichts); eine KPI-Matrix stellt die Segmente nebeneinander. Das Institut ist wählbar und wird gemerkt. Export als PowerPoint und über den Druckdialog als PDF.</p>',
     salesRelevanz: 'Hoch', machbarkeit: 'Hoch', demoTauglichkeit: 'Hoch',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 80,
     schlagworte: ['KPI', 'Banksteuerung', 'RWA', 'Cost/Income', 'Segmentbericht', 'PowerPoint-Export', 'Banking'],
@@ -149,7 +178,7 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
     titel: 'PMO Toolbox',
     bereich: 'Cockpits & Monitoring',
     kurzbeschreibung: 'Steuerungswerkzeug für ein Transformationsprogramm: Projekte und Workstreams, Programm-Timeline, Gantt-Chart der Meilensteine, Risiken und Entscheidungen.',
-    beschreibung: '<p>Die Oberfläche führt Projekte je Workstream mit Statuserfassung, eine Programm-Timeline, ein Gantt-Chart der Meilensteine, ein Register „Risiken &amp; Herausforderungen", ein Entscheidungs-Management und ein Stichwortverzeichnis. Value-Map, KPI-Karten und ein Warnungs-Bereich kommen dazu; Details lassen sich in Modals öffnen und bearbeiten, Pakete exportieren.</p>',
+    beschreibung: '<p>Die Oberfläche führt Projekte je Workstream mit Statuserfassung, eine Programm-Timeline, ein Gantt-Chart der Meilensteine, ein Register „Risiken &amp; Herausforderungen", ein Entscheidungs-Management und ein Stichwortverzeichnis. Value-Map, KPI-Karten und ein Warnungs-Bereich kommen dazu; Details lassen sich in Modals öffnen und bearbeiten; der Status eines Workstreams lässt sich als PowerPoint-Folie (auf Basis der Status-Vorlage) und über den Druckdialog als PDF exportieren.</p>',
     salesRelevanz: 'Mittel', machbarkeit: 'Hoch', demoTauglichkeit: 'Mittel',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 90,
     schlagworte: ['PMO', 'Transformation', 'Gantt', 'Meilensteine', 'Risiken', 'Entscheidungen'],
@@ -163,7 +192,7 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
     titel: 'Bestandsübertragung',
     bereich: 'Backoffice-Prozesse',
     kurzbeschreibung: 'Wie ein KI-Agent unstrukturierte Bestandsübertragungs-Mails samt Anhängen klassifiziert, Vollmachten erkennt und Multi-Verträge splittet — statt manueller Prüfung im Gruppenpostfach.',
-    beschreibung: '<p>Elf Ansichten: Dashboard, Vorgänge, Makler, E-Mails, KI-Upload, Prüfstrecke, Simulation, Vorlagen sowie Architektur, Prozess und Projektplan.</p><p><strong>Der fachliche Hintergrund macht die Demo stark:</strong> Jährlich eine sechsstellige Zahl an Bestandsübertragungen, überwiegend als unstrukturierte E-Mails; heute laufen drei bis vier Prüfschritte manuell, die bestehende KI verarbeitet nur einfache Text-Mails ohne Anhänge. Zielbild ist ein KI-Agent früh in der Kette — Klassifikation, Vollmachtserkennung, Vertragssplitting, direkte JSON-Übergabe an Robotics. Durchlaufzeit von Tagen auf Minuten.</p><p>Vorgänge lassen sich als JSON exportieren und importieren; die Fachunterlagen (Wissensdokument, PDD, Prüfbot) liegen bei.</p>',
+    beschreibung: '<p>Elf Ansichten: Dashboard, Vorgänge, Makler, E-Mails, KI-Upload, Prüfstrecke, Simulation, Vorlagen sowie Architektur, Prozess und Projektplan.</p><p><strong>Der fachliche Hintergrund macht die Demo stark:</strong> Jährlich eine sechsstellige Zahl an Bestandsübertragungen, überwiegend als unstrukturierte E-Mails; heute laufen drei bis vier Prüfschritte manuell, die bestehende KI verarbeitet nur einfache Text-Mails ohne Anhänge. Zielbild ist ein KI-Agent früh in der Kette — Klassifikation, Vollmachtserkennung, Vertragssplitting, direkte JSON-Übergabe an Robotics. Durchlaufzeit von Tagen auf Minuten.</p><p>Ein Outlook-Export als JSON lässt sich importieren (per Knopf „JSON Import“ oder Drag-and-drop), über „Demo JSON“ lädt man einen Beispiel-Export herunter, und die exportbereiten Vorgänge gehen als CSV an Robotics; die Fachunterlagen (Wissensdokument, PDD, Prüfbot) liegen bei.</p><p><em>Eine Einschränkung, die man vor dem Kundentermin kennen sollte:</em> Der KI-Upload und das Auslesen eigener Eingänge in der Prüfstrecke rufen die Anthropic-API direkt aus dem Browser auf und brauchen deshalb einen eigenen API-Key, den man dort hinterlegt (er bleibt im Browser). Ohne Key laufen die übrigen Ansichten und die Prüfstrecke mit den hinterlegten Demo-Eingängen weiter.</p>',
     salesRelevanz: 'Hoch', machbarkeit: 'Mittel', demoTauglichkeit: 'Hoch',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 100,
     schlagworte: ['Bestandsübertragung', 'Dokumentenverarbeitung', 'Vollmacht', 'Dunkelverarbeitung', 'RPA', 'Makler', 'Versicherung'],
@@ -206,7 +235,7 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
     beschreibung: '<p>Ein eigener Font-Encoder baut aus Encoding, ToUnicode und Widths einen Encoder für die eingebettete Schrift; fehlt ein Zeichen in der eingebetteten Teilmenge, fällt der Block auf eine passende Standardschrift zurück — und der Nutzer bekommt einen Hinweis, statt dass es still anders aussieht.</p><p>Dazu ein <strong>Stapelmodus</strong>: Die Änderungen einer Vorlage werden über Seite, Position, Schriftgröße, Schrift und Text auf gleich aufgebaute PDFs übertragen und gesammelt als ZIP gespeichert; optional wird ein übergreifendes PDF (Anschreiben, AGB) an jedes Ergebnis angehängt.</p><p><strong>Alles läuft im Browser — die Datei verlässt den Rechner nicht.</strong> Das ist bei Kundendokumenten das eigentliche Verkaufsargument.</p>',
     salesRelevanz: 'Mittel', machbarkeit: 'Hoch', demoTauglichkeit: 'Hoch',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 140,
-    schlagworte: ['PDF', 'Textbearbeitung', 'Schrifterhalt', 'Stapelverarbeitung', 'Serienbrief'],
+    schlagworte: ['PDF', 'Textbearbeitung', 'Schrifterhalt', 'Stapelverarbeitung'],
     ressourcen: { sourceCode: '', deployment: url('pdfeditor/dist/index.html'), deploymentGuide: '', wiki: '', video: '' },
   },
 
@@ -216,8 +245,8 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
   {
     titel: 'ControlHub',
     bereich: 'Risiko & IKS',
-    kurzbeschreibung: 'Liest Prozessdokumente und Arbeitsanweisungen einer Bank ein und leitet daraus Risiken und Kontrollen ab — mit Analyse des Ist-IKS, Optimierungsvorschlägen und Soll-/Ist-Abgleich.',
-    beschreibung: '<p>Fünf Bereiche: <strong>Navigator</strong> (Ableitung aus Dokumenten), <strong>Analyzer</strong>, <strong>Optimizer</strong>, <strong>Gap Analyzer</strong> (als Ausblick markiert) und <strong>Methodik &amp; Regelkreis</strong>.</p><p>Als Ausgangsmaterial liegen konkrete Beispieldokumente bereit — Prozessleitfaden Kreditvergabe Firmenkunden, Operations-Handbuch SEPA/SWIFT-Zahlungsverkehr, Kompetenzmatrix Kreditgeschäft, Sicherheiten-Bewertung, Zahlungsverkehr-Limits, Prozessbeschreibung Wertpapier-Settlement, Schaden-Operations-Handbuch. Hinterlegt sind ein Risikokatalog und mehrere Agenten-Definitionen; Ergebnisse lassen sich exportieren, ein KI-Chat steht dauerhaft rechts.</p>',
+    kurzbeschreibung: 'Zeigt an einem vorbereiteten Beispiel (Auszahlungsprozess einer Bank, synthetische Daten), wie sich aus Prozessdokumenten und Arbeitsanweisungen Risiken und Kontrollen ableiten lassen — mit Analyse des Ist-IKS, Optimierungsvorschlägen und Soll-/Ist-Abgleich.',
+    beschreibung: '<p>Fünf Bereiche: <strong>Navigator</strong> (Ableitung aus Dokumenten), <strong>Analyzer</strong>, <strong>Optimizer</strong>, <strong>Gap Analyzer</strong> (als Ausblick markiert) und <strong>Methodik &amp; Regelkreis</strong>.</p><p>Über „Demo-PDFs“ in der Kopfzeile lassen sich konkrete Beispieldokumente herunterladen — Prozessleitfaden Kreditvergabe Firmenkunden, Operations-Handbuch SEPA/SWIFT-Zahlungsverkehr, Kompetenzmatrix Kreditgeschäft, Sicherheiten-Bewertung, Zahlungsverkehr-Limits, Prozessbeschreibung Wertpapier-Settlement, Schaden-Operations-Handbuch. Der Navigator selbst arbeitet mit einem vorbereiteten Beispiel („Beispiel-Arbeitsanweisung verwenden“: Auszahlungsprozess einer Bank); welche Datei du auch hochlädst, es erscheint dieselbe Analyse. Hinterlegt sind ein Risikokatalog und mehrere Agenten-Definitionen; Ergebnisse lassen sich exportieren, und über den Knopf „KI-Assistent“ in der Kopfzeile lässt sich ein KI-Chat rechts einblenden (beim Start ist er geschlossen).</p>',
     salesRelevanz: 'Hoch', machbarkeit: 'Mittel', demoTauglichkeit: 'Hoch',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 150,
     schlagworte: ['IKS', 'Kontrollen', 'Risiko', 'Prozessdokumente', 'Gap-Analyse', 'Regelkreis', 'Banking'],
@@ -240,8 +269,8 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
   {
     titel: 'Versicherungs-1×1',
     bereich: 'Wissen',
-    kurzbeschreibung: 'Nachschlagewerk zum deutschen Versicherungsmarkt in neun Kapiteln — jedes mit Leitkennzahl, Diagrammen, drei Vertiefungsstufen und Quiz, dazu ein Glossar mit 153 Einträgen.',
-    beschreibung: '<p>Die Kapitel: Der Markt im Überblick, Marktteilnehmer, Produktlandschaft, Vertriebswege, Vergütung und Provision, Regulatorik, Wertschöpfungskette, Zukunftsthemen, Verbände und Institutionen.</p><p>Jedes Kapitel öffnet mit einer Leitzahl — Kapitel 1 etwa „254 Mrd. € Beitragsvolumen des deutschen Versicherungsmarktes 2025, +6,6 % gegenüber 2024" — und drei Schnellzahlen (349 Versicherer, 501,5 Mio. Verträge, 1,9 Bio. € Kapitalanlagen). Der Inhalt ist <strong>dreistufig</strong> aufgebaut, sodass Einsteiger und Fachleute dieselbe Seite verschieden tief lesen; dazu Diagramme und je Kapitel ein Quiz mit Auflösungstext.</p>',
+    kurzbeschreibung: 'Nachschlagewerk zum deutschen Versicherungsmarkt in 13 Kapiteln (73 Lerneinheiten) — jedes mit Leitkennzahl und Quiz, dazu ein Glossar mit 223 Einträgen.',
+    beschreibung: '<p>Die Kapitel: Grundlagen (Risiko, Ausgleich, Prämie), Der Markt im Überblick, Marktteilnehmer, Kundengruppen, Produktlandschaft, Vertriebswege, Vergütung und Provision, Regulatorik, Wertschöpfungskette, Geschäftsmodell und Kennzahlen, Zukunftsthemen, Verbände und Institutionen, Beratungspraxis.</p><p>Jedes Kapitel öffnet mit einer Leitzahl — Kapitel 2 (Der Markt im Überblick) etwa „254 Mrd. € Beitragsvolumen des deutschen Versicherungsmarktes 2025, +6,6 % gegenüber 2024" — und drei Schnellzahlen (349 Versicherer, 488 Mio. Verträge (2024), 1,9 Bio. € Kapitalanlagen). Der Inhalt ist <strong>dreistufig</strong> aufgebaut (Basis, Vertiefung, Experte), sodass Einsteiger und Fachleute dieselbe Seite verschieden tief lesen — nicht jede Lerneinheit hat alle drei Stufen (37 von 73), fehlende sind im Schalter ausgegraut; dazu Diagramme und je Kapitel ein Quiz mit Auflösungstext.</p>',
     salesRelevanz: 'Mittel', machbarkeit: 'Hoch', demoTauglichkeit: 'Mittel',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 170,
     schlagworte: ['Versicherungsmarkt', 'Grundlagenwissen', 'Regulatorik', 'Vertriebswege', 'Glossar', 'Quiz'],
@@ -256,10 +285,10 @@ export const START_USE_CASES: Array<Partial<UseCase>> = [
   // Workshops & Strategie                                                //
   // ------------------------------------------------------------------ //
   {
-    titel: 'Bank der Zukunft',
+    titel: 'Banking Horizon',
     bereich: 'Workshops & Strategie',
-    kurzbeschreibung: 'Ein KI-Chatbot „erzeugt" zum Auftakt das Strukturbild der Bank — danach ist das Bild eine begehbare Karte, die je Zone über Hypothesen bis in eine Live-Demo führt.',
-    beschreibung: '<p>Der Ablauf: <strong>Intro</strong> (vorbereitete Frage, sichtbares Nachdenken, das Strukturbild baut sich auf) → <strong>Übersicht</strong> (Master-Bild füllt den Bildschirm, Zonen mit Hover-Glow) → <strong>Kameraflug</strong> in eine Zone → <strong>Kapitel</strong> (Bild links, Text rechts, Pager durch drei Hypothesen je Zone: Status quo ↔ Zielbild) → <strong>Absprung</strong>.</p><p>Neun Kapitel: Kunde, Vertrieb, Marktfolge, Corporate, IT, Compliance, Transformation, Projekt, Vorstand. Die Absprünge sind je Kapitel verschieden — eingebettete Live-Demos (unter anderem der Vertriebsarbeitsplatz selbst), ein Strategy Lab, ein Co-Creation-Canvas, ein Kredit-Dilemma. In derselben App stecken zwei weitere Werkzeuge: das <strong>EDEKABANK Holodeck 2031</strong> (fünf Steuerungsräume der KI-nativen Bank) und <strong>„Ein Tag in Banking Operations 2030"</strong>.</p>',
+    kurzbeschreibung: 'Ein KI-Chatbot „erzeugt" zum Auftakt das Strukturbild der Bank — danach ist das Bild eine begehbare Karte, die über Hypothesen zu Absprüngen führt, von der Live-Demo des Vertriebsarbeitsplatzes bis zum Kredit-Dilemma.',
+    beschreibung: '<p>Der Ablauf: <strong>Intro</strong> (vorbereitete Frage, sichtbares Nachdenken, das Strukturbild baut sich auf) → <strong>Übersicht</strong> (Master-Bild füllt den Bildschirm, Zonen mit nummeriertem Hotspot und Kapitelname beim Überfahren) → <strong>Kameraflug</strong> in eine Zone → <strong>Kapitel</strong> (Pager durch die Hypothesen: Status quo ↔ Zielbild) → <strong>Absprung</strong>.</p><p>Neun Kapitel: Kunde, Vertrieb, Marktfolge, Corporate, IT, Compliance, Transformation, Projekt, Vorstand. Projekt ist nur ein Teaser ohne Hypothesen und Absprung, Transformation zeigt statt der Hypothesen das Deloitte AI Transformation Framework. Die Absprünge sind je Kapitel verschieden — die eingebettete Live-Demo des Vertriebsarbeitsplatzes, ein Co-Creation-Canvas, ein Kredit-Dilemma; bei Kunde, IT und Vorstand ist die Demo noch nicht verdrahtet. In derselben App steckt ein weiteres Werkzeug: <strong>„Ein Tag in Banking Operations 2030"</strong> (Maras Arbeitstag, auch als Absprung aus dem Kapitel Marktfolge). Das <strong>EDEKABANK Holodeck 2031</strong> ist im Code vorhanden, aber abgeschaltet und nicht erreichbar.</p>',
     salesRelevanz: 'Hoch', machbarkeit: 'Mittel', demoTauglichkeit: 'Hoch',
     status: 'Live', aufrufArt: 'fenster', reihenfolge: 180,
     schlagworte: ['Workshop', 'Zielbild', 'Strukturbild', 'Hypothesen', 'Vorstand', 'Transformation', 'Banking'],

@@ -36,7 +36,8 @@ import { SucheProvider } from '../context/SucheContext';
 import { HilfeProvider } from '../context/HilfeContext';
 import { APP_NAME } from '../constants';
 import { APP_VERSION } from '../version';
-import { rolleLabel } from '../utils/rollen';
+import { rolleAnzeige } from '../utils/rollen';
+import ErrorBoundary from './ErrorBoundary';
 
 const UseCaseDetailPage = React.lazy(() => import('./UseCaseDetailPage'));
 const ManagePage = React.lazy(() => import('./ManagePage'));
@@ -117,7 +118,7 @@ function AppContent(): React.ReactElement {
   ensureDexUiStyles();
   const { t, isDe } = useLanguage();
   const { currentPage, currentUseCaseId } = useNavigation();
-  const { isRolesLoading, rolesReadStatus, currentUserRole } = useRoles();
+  const { isRolesLoading, currentUserRole, rolesReadStatus } = useRoles();
   const layoutRef = useShellHeight();
 
   const seitenName =
@@ -128,6 +129,12 @@ function AppContent(): React.ReactElement {
             : currentPage === 'protokoll' ? t('Protokoll', 'Log')
               : APP_NAME;
   const istLanding = currentPage === 'landing';
+  // Feste Höchstbreite für die schmalen Seiten. `.page-container` ist ein Flex-Kind mit
+  // `margin: 0 auto` und damit shrink-to-fit: Ohne Breite war die Pflegeseite 528 px schmal, das
+  // Protokoll eine andere Breite und die Kachelwand voll breit (Sichtprüfung, 29.09.2026).
+  // Die Kachelwand und die Start-Übersicht bringen ihre Breite selbst mit.
+  const seitenBreite = currentPage === 'rollen' ? 1100
+    : (currentPage === 'detail' || currentPage === 'studio' || currentPage === 'protokoll') ? 900 : 0;
 
   // v1.2: Der Seitenwechsel muss den Scroller zuruecksetzen, der WIRKLICH
   // scrollt. In DEX setzt der Effekt `scrollTop` auf window, body und
@@ -140,15 +147,20 @@ function AppContent(): React.ReactElement {
   }, [currentPage, currentUseCaseId, layoutRef]);
 
   const seite = (
-    <React.Suspense fallback={<LazyFallback name={seitenName} />}>
-      {currentPage === 'landing' && <LandingPage />}
-      {currentPage === 'start' && <StartPage />}
-      {currentPage === 'usecases' && <UseCasesPage />}
-      {currentPage === 'detail' && <UseCaseDetailPage useCaseId={currentUseCaseId} />}
-      {currentPage === 'studio' && <ManagePage editId={currentUseCaseId} />}
-      {currentPage === 'rollen' && <RolePage />}
-      {currentPage === 'protokoll' && <LogPage useCaseId={currentUseCaseId} />}
-    </React.Suspense>
+    <ErrorBoundary isDe={isDe} resetKey={`${currentPage}:${currentUseCaseId || 0}`}>
+      <React.Suspense fallback={<LazyFallback name={seitenName} />}>
+        {currentPage === 'landing' && <LandingPage />}
+        {currentPage === 'start' && <StartPage />}
+        {currentPage === 'usecases' && <UseCasesPage />}
+        {/* `key`: Beim Wechsel von einem Use Case zum nächsten (Suche in der Kopfzeile) bleibt die
+            Seite sonst dieselbe Komponente — ein offenes iframe und „Link kopiert" liefen mit
+            hinüber (Review 29.09.2026). */}
+        {currentPage === 'detail' && <UseCaseDetailPage key={currentUseCaseId} useCaseId={currentUseCaseId} />}
+        {currentPage === 'studio' && <ManagePage editId={currentUseCaseId} />}
+        {currentPage === 'rollen' && <RolePage />}
+        {currentPage === 'protokoll' && <LogPage useCaseId={currentUseCaseId} />}
+      </React.Suspense>
+    </ErrorBoundary>
   );
 
   return (
@@ -156,17 +168,17 @@ function AppContent(): React.ReactElement {
       <div className="app-layout" ref={layoutRef}>
         <Header />
 
-        {/* Der Fall, den DEX teuer gelernt hat: Die Person steht in der
-            Rollenliste, darf sie aber nicht lesen — dann ist ihre Rolle
-            wirkungslos, und das muss dastehen statt still zu wirken. */}
-        {!isRolesLoading && rolesReadStatus === 'forbidden' && (
-          <div className="dex-ui-callout dex-ui-callout--warn" role="status" style={{ margin: '12px 24px 0' }}>
-            <span>
-              {t('Deine Rolle konnte nicht geprüft werden — dir fehlt das Leserecht auf der Rollenliste. Falls du eigentlich Use Case Organizer oder Admin bist: Ein Admin muss dir das Leserecht nachsetzen.',
-                'Your role could not be checked — you lack read access to the roles list. If you are meant to be a Use Case Organizer or admin, an admin has to grant it.')}
-            </span>
-          </div>
-        )}
+        {/* Hier stand bis v1.2 eine Warnleiste „Deine Rolle konnte nicht geprüft
+            werden", sobald die Rollenliste mit 403 antwortete. Das ist aber
+            der NORMALFALL jedes gewöhnlichen Nutzers: Die Liste hat eigene
+            Rechte (Owners und vergebene Personen), wer nicht darin steht,
+            darf sie nicht lesen. Die Leiste stand damit auf jeder Seite bei
+            jedem Nutzer und versprach „ein Admin muss dir das Leserecht
+            nachsetzen" — und ein Admin, der das ernst nimmt, öffnet die
+            Adressliste für alle (Review-Fund 7, 29.09.2026).
+            Wie in DEX steht der Hinweis jetzt NUR an der Kachel „Use Case
+            Studio" (StartPage), wo die Frage „bin ich Organizer?" gestellt
+            wird. */}
 
         {/* `display:flex` und `flex-direction:column` stehen INLINE, nicht im
             SCSS — und sie sind nicht kosmetisch: `.page-container` hat
@@ -181,7 +193,9 @@ function AppContent(): React.ReactElement {
               `height:100%`, um den grauen Grund bis zum unteren Rand zu
               ziehen — ein gepolsterter Wrapper darum macht daraus eine Karte
               mit weissem Rand, und genau so sah es vorher aus. */}
-          {istLanding ? seite : <div className="page-container">{seite}</div>}
+          {istLanding ? seite : (
+            <div className="page-container" style={seitenBreite ? { width: '100%', maxWidth: seitenBreite } : undefined}>{seite}</div>
+          )}
         </main>
 
         {/* Dritter Flex-Sohn, ausserhalb des Scrollers: `flex-shrink: 0`,
@@ -191,7 +205,7 @@ function AppContent(): React.ReactElement {
         <footer style={{ padding: '8px 16px', textAlign: 'center', flexShrink: 0, borderTop: '1px solid var(--dex-gray-200)', background: 'var(--dex-white)' }}>
           <span className="dex-ui-muted" style={{ fontSize: '0.72rem' }}>
             {APP_NAME} v{APP_VERSION}
-            {!isRolesLoading && ` · ${t('Deine Rolle', 'Your role')}: ${rolleLabel(currentUserRole)}`}
+            {!isRolesLoading && ` · ${t('Deine Rolle', 'Your role')}: ${rolleAnzeige(currentUserRole, rolesReadStatus, t)}`}
           </span>
         </footer>
       </div>
@@ -199,14 +213,25 @@ function AppContent(): React.ReactElement {
   );
 }
 
+/**
+ * Die äußere Fehlergrenze: fängt auch Fehler, die NICHT auf einer Seite entstehen (Kopfzeile,
+ * Kontakt- und Info-Dialog). Die Grenze um die Seiten in `AppContent` fängt nur deren Inhalt —
+ * ein Fehler in der Kopfzeile ließ die ganze Seite weiß (Gegenprüfung 29.09.2026).
+ */
+function AppMitGrenze(): React.ReactElement {
+  const { isDe } = useLanguage();
+  return (
+    <ErrorBoundary isDe={isDe} resetKey="app">
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
+
 export default function AiUseCasePlatform(props: IAiUseCasePlatformProps): React.ReactElement {
-  // v1.1: Der SPFx-Context als Fenster-Merker — dasselbe Muster wie
-  // `__dexSpfxContext` in DEX. Komponenten, die tief im Baum sitzen und den
-  // Context nur einmal brauchen, holen ihn sich hier, statt ihn durch fuenf
-  // Ebenen durchzureichen. (Seit v1.3 liest die Begruessung den Namen ueber
-  // `UserContext`; der Merker bleibt fuer kuenftige Stellen.)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).__aiucSpfxContext = props.context;
+  // Bis v1.3 stand hier der SPFx-Context als Fenster-Merker (`window.__aiucSpfxContext`,
+  // wie `__dexSpfxContext` in DEX). Niemand las ihn — aber jedes Skript auf der Seite
+  // hätte damit `spHttpClient` und den Token-Anbieter in der Hand gehabt (Sicherheits-Review
+  // 29.09.2026). Der UserContext liefert den Namen, alles andere geht über die Provider.
   return (
     <LanguageProvider>
       <DialogProvider>
@@ -216,7 +241,7 @@ export default function AiUseCasePlatform(props: IAiUseCasePlatformProps): React
               <UseCaseProvider context={props.context}>
                 <SucheProvider>
                   <HilfeProvider>
-                    <AppContent />
+                    <AppMitGrenze />
                   </HilfeProvider>
                 </SucheProvider>
               </UseCaseProvider>

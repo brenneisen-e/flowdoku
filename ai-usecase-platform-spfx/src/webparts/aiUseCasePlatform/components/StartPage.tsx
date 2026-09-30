@@ -37,6 +37,8 @@ interface MenuItem {
   /** Ohne Rechte: ausgegraut, mit dem Weg zur Rolle statt einer Sackgasse. */
   anfrage?: boolean;
   cta?: string;
+  /** Was der Knopf `cta` tut — ohne Angabe: die Rolle anfragen. */
+  ctaAktion?: () => void;
   /** Sichtbarer Grund, warum der Punkt gesperrt ist — auf BEIDEN Wegen. */
   note?: string | null;
   /** Zusatzklasse der Kachel (Farbakzent bzw. Symbol-Animation aus dem SCSS-Modul). */
@@ -50,17 +52,37 @@ export default function StartPage(): React.ReactElement {
 
   const isMobile = useIsMobile();
   const { navigate } = useNavigation();
-  const { isAdmin, isOrganizer, isRolesLoading, rolesReadStatus } = useRoles();
+  const { isAdmin, isOrganizer, isRolesLoading, rolesReadStatus, erstinstallation, refreshRoles, service } = useRoles();
   const { t } = useLanguage();
   const { openKontakt } = useHilfe();
+  // Erneut prüfen: Bis zur Antwort gesperrt (Doppelklick = zwei Lesevorgänge), und bleibt es beim Fehler,
+  // sagt ein Satz es — sonst wirkte der Knopf tot (Gegenprüfung 29.09.2026).
+  const [pruefLaeuft, setPruefLaeuft] = React.useState(false);
+  const [pruefFehlt, setPruefFehlt] = React.useState(false);
 
   // Ein 403 auf der Rollenliste heißt „nicht lesbar", nicht „kein Organizer".
   // Ohne den Satz sieht jemand, der Organizer IST, nur „Organizer werden?" —
   // und niemand weiß, warum die Kachel grau ist (DEX v30.81).
-  const rechteHinweis = rolesReadStatus === 'forbidden'
-    ? t('Deine Rolle konnte nicht geprüft werden (fehlendes Leserecht). Bist du bereits Organizer? Dann bitte einen Admin, in der Rollenverwaltung „Rechte prüfen" auszuführen.',
-      'Your role could not be checked (missing read access). Already an organizer? Ask an admin to run "Check rights" in role management.')
-    : null;
+  //
+  // Scheitert das Speichern des ersten Admin-Eintrags (frische Plattform),
+  // wird niemand still Admin — und ohne diesen Satz sähe die Person nur eine
+  // normale Oberfläche mit „Organizer werden?" und wüsste nicht, warum
+  // (Review 29.09.2026). Sie ist ja gerade NICHT Admin und erreicht deshalb
+  // keine Seite, die es sagen könnte.
+  const rechteHinweis = erstinstallation === 'nicht-gespeichert'
+    ? t('Die Erstinstallation konnte nicht gespeichert werden — du bist deshalb noch nicht als Admin eingetragen. Lade die Seite neu, um es erneut zu versuchen.',
+      'The initial setup could not be saved — so you are not registered as admin yet. Reload the page to try again.')
+    : rolesReadStatus === 'forbidden'
+      ? t('Deine Rolle konnte nicht geprüft werden (fehlendes Leserecht). Bist du bereits Organizer? Dann bitte einen Admin, in der Rollenverwaltung „Rechte prüfen" auszuführen.',
+        'Your role could not be checked (missing read access). Already an organizer? Ask an admin to run "Check rights" in role management.')
+      // Ein echter Lesefehler (Drosselung, Netz) ist etwas anderes als 403: Die Rolle ist UNBEKANNT,
+      // nicht „User". Ohne diesen Satz sah ein Admin „Organizer werden?" und keine Verwaltungskachel,
+      // und niemand sagte ihm, dass ein erneutes Laden hilft (Review 29.09.2026).
+      : rolesReadStatus === 'error'
+        ? t('Deine Rolle konnte nicht gelesen werden (Netzwerk oder Drosselung). Bis dahin siehst du die Ansicht eines normalen Nutzers.',
+          'Your role could not be read (network or throttling). Until then you see the view of a regular user.')
+        : null;
+  const rolleUnbekannt = rolesReadStatus === 'error' && erstinstallation !== 'nicht-gespeichert';
 
   const itemUseCases: MenuItem = {
     key: 'usecases',
@@ -85,8 +107,20 @@ export default function StartPage(): React.ReactElement {
     // ist: ausgegraut, aber ohne Angebot — sonst blitzt „Organizer werden?"
     // bei jedem Organizer kurz auf.
     anfrage: !isRolesLoading,
-    cta: t('Organizer werden?', 'Become an organizer?'),
-    note: rechteHinweis,
+    cta: rolleUnbekannt ? (pruefLaeuft ? t('Prüfe …', 'Checking …') : t('Erneut prüfen', 'Check again')) : t('Organizer werden?', 'Become an organizer?'),
+    ctaAktion: rolleUnbekannt ? () => {
+      if (pruefLaeuft) return;
+      setPruefLaeuft(true);
+      setPruefFehlt(false);
+      void refreshRoles().then(() => {
+        const st = service.lastRolesReadStatus;
+        setPruefFehlt(!(st >= 200 && st < 300) && st !== 403);
+        setPruefLaeuft(false);
+      }, () => { setPruefFehlt(true); setPruefLaeuft(false); });
+    } : undefined,
+    note: pruefFehlt && rolleUnbekannt
+      ? `${rechteHinweis || ''} ${t('Weiterhin nicht lesbar — versuch es gleich noch einmal.', 'Still not readable — please try again shortly.')}`.trim()
+      : rechteHinweis,
   };
 
   const itemProtokoll: MenuItem = {
@@ -121,7 +155,7 @@ export default function StartPage(): React.ReactElement {
   ].filter(c => c.items.length > 0);
 
   const oeffne = (it: MenuItem): void => {
-    if (it.anfrage) { openKontakt('organizer'); return; }
+    if (it.anfrage) { if (it.ctaAktion) it.ctaAktion(); else openKontakt('organizer'); return; }
     if (it.onClick) { it.onClick(); return; }
     if (it.ziel) navigate(it.ziel);
   };
@@ -214,6 +248,9 @@ export default function StartPage(): React.ReactElement {
           flex: 0 0 auto !important; width: 380px !important; max-width: 100% !important;
           padding: 32px 22px !important; min-height: 0 !important; aspect-ratio: 1 / 1; gap: 10px !important;
         }
+        /* v1.3: Die gesperrte Kachel trägt Knopf und ggf. einen Hinweis und wächst deshalb mit
+           dem Inhalt; im Quadrat lief das Symbol oben und der Hinweis unten über den Rand. */
+        .dex-cluster .start-card--locked { aspect-ratio: auto !important; min-height: 300px !important; }
         /* Echter KREIS hinter dem Symbol: flex 0 0 auto + aspect-ratio verhindern,
            dass die Flex-Stauchung den Kreis zur Ellipse macht. */
         .dex-cluster .start-card__icon { width: 104px !important; height: 104px !important; flex: 0 0 auto !important; aspect-ratio: 1 / 1 !important; border-radius: 50% !important; margin-bottom: 6px !important; }
@@ -244,33 +281,35 @@ export default function StartPage(): React.ReactElement {
               {c.items.map(it => (
                 <div
                   key={it.key}
-                  className={cx('card', !it.anfrage && 'card-clickable', 'start-card', it.cardClass)}
-                  style={it.anfrage ? { position: 'relative', cursor: 'default', opacity: 0.55 } : (isRolesLoading && it.key === 'studio' && !isOrganizer ? { opacity: 0.55, cursor: 'default' } : undefined)}
+                  className={cx('card', !it.anfrage && 'card-clickable', 'start-card', it.anfrage && 'start-card--locked', it.cardClass)}
+                  style={isRolesLoading && it.key === 'studio' && !isOrganizer ? { opacity: 0.55, cursor: 'default' } : (it.anfrage ? { cursor: 'default' } : undefined)}
                   onClick={it.anfrage ? undefined : () => oeffne(it)}
                   role={it.anfrage ? undefined : 'button'}
                   tabIndex={it.anfrage ? undefined : 0}
                   onKeyDown={it.anfrage ? undefined : e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); oeffne(it); } }}
                 >
-                  <div className="start-card__icon">{it.icon(64, 1)}</div>
-                  <h2>{it.title}</h2>
-                  <p>{it.desc}</p>
+                  {/* v1.3: Bei der gesperrten Kachel ist nur der INHALT abgedunkelt, nicht die ganze
+                      Karte. Vorher lag der Knopf samt Hinweis als Overlay über dem Symbol, und die
+                      Abdunklung traf auch den Hinweis — orange auf grauem Grund, kaum lesbar
+                      (Sichtprüfung mit dem Harness, 29.09.2026). */}
+                  <div className="start-card__icon" style={it.anfrage ? { opacity: 0.55 } : undefined}>{it.icon(64, 1)}</div>
+                  <h2 style={it.anfrage ? { opacity: 0.55 } : undefined}>{it.title}</h2>
+                  <p style={it.anfrage ? { opacity: 0.55 } : undefined}>{it.desc}</p>
                   {it.anfrage && (
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', justifyContent: 'center', padding: 10 }}>
+                    <>
                       <button
                         type="button"
                         onClick={e => { e.stopPropagation(); oeffne(it); }}
                         style={{
                           background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 14,
-                          padding: '8px 12px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
-                          fontSize: '0.74rem', lineHeight: 1.25, textAlign: 'center', fontFamily: 'inherit',
+                          padding: '10px 18px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
+                          fontSize: '0.86rem', lineHeight: 1.25, textAlign: 'center', fontFamily: 'inherit',
                         }}
                       >{it.cta}</button>
                       {it.note && (
-                        <div style={{ fontSize: '0.7rem', lineHeight: 1.3, textAlign: 'center', color: 'var(--dex-orange-dark, #b35a00)', background: 'rgba(255,255,255,0.92)', borderRadius: 8, padding: '6px 8px', maxWidth: 240 }}>
-                          {it.note}
-                        </div>
+                        <span className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" style={{ display: 'flex', textAlign: 'left', maxWidth: 260 }}>{it.note}</span>
                       )}
-                    </div>
+                    </>
                   )}
                 </div>
               ))}

@@ -27,7 +27,9 @@ import { useRoles } from '../context/RoleContext';
 import { useDialog } from '../context/DialogContext';
 import { useHilfe } from '../context/HilfeContext';
 import { UseCase, UseCaseStatus, Bewertung, AufrufArt, BildAenderung } from '../types';
-import { START_USE_CASES } from '../data/startUseCases';
+import { sichereUrl, sichereMail } from '../utils/sicher';
+import { statusText, bewertungText } from '../utils/anzeige';
+import { startbestandMeldung } from '../utils/startbestandText';
 
 /** Die leeren Ressourcen als eigene Konstante: So braucht weder der
  *  Compiler ein Ausrufezeichen noch der Leser eine Annahme. */
@@ -49,13 +51,11 @@ interface BetreuerZeile { name: string; email: string }
 /** Größte Bilddatei, die der Zuschnitt annimmt — danach ist es ein 1280-px-JPEG. */
 const MAX_BILD_MB = 15;
 
-const EMAIL_FORMAT = /^[^\s@;]+@[^\s@;]+\.[^\s@;]+$/;
-
 export default function ManagePage(props: { editId?: number }): React.ReactElement {
   ensureDexUiStyles();
-  const { useCases, ladeStatus, saveUseCase, remove } = useUseCases();
+  const { useCases, ladeStatus, letzterStatus, letzterFehler, aktualisierungFehler, startbestandTeilweise, reload, saveUseCase, remove, seedStartUseCases } = useUseCases();
   const { t, isDe } = useLanguage();
-  const { navigate } = useNavigation();
+  const { navigate, clearUseCaseId } = useNavigation();
   const { isOrganizer } = useRoles();
   const { confirmDialog, showAlert } = useDialog();
   const { openKontakt } = useHilfe();
@@ -81,7 +81,9 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
   React.useEffect(() => {
     if (aufgerufenRef.current || !props.editId || ladeStatus !== 'ok') return;
     const uc = useCases.filter(u => u.id === props.editId)[0];
-    if (uc) { aufgerufenRef.current = true; oeffne(uc); }
+    // Die Id danach vergessen: Sonst öffnete sich der Dialog nach „Protokoll → Zurück" von selbst
+    // wieder, weil der Stapeleintrag sie noch trug.
+    if (uc) { aufgerufenRef.current = true; oeffne(uc); clearUseCaseId(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.editId, ladeStatus, useCases]);
 
@@ -109,8 +111,9 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
     if (uc) {
       setEditId(uc.id);
       setEntwurf({ ...uc, ressourcen: { ...uc.ressourcen } });
-      setBildVorschau(uc.bildUrl || '');
-      setUrsprungBild(uc.bildUrl || '');
+      // Nur eine http(s)-Adresse wird als Vorschau übernommen (die Liste ist auch direkt beschreibbar).
+      setBildVorschau(sichereUrl(uc.bildUrl));
+      setUrsprungBild(sichereUrl(uc.bildUrl));
       // Namen und Adressen sind parallele Listen; fehlt ein Name, gilt die Adresse.
       setBetreuer(uc.betreuerEmails.map((email, i) => ({ email, name: uc.betreuerNamen[i] && uc.betreuerNamen[i] !== email ? uc.betreuerNamen[i] : '' })));
     } else {
@@ -178,6 +181,30 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
       return;
     }
 
+    // Links: nur absolute http(s)-Adressen. `type="url"` prüft ohne <form> nichts, und ein
+    // `javascript:` im Deployment-Link lief bei „eingebettet" im Origin der SharePoint-Seite
+    // (Sicherheits-Review 29.09.2026). „github.com/x" ohne Schema hätte auf die SharePoint-Seite
+    // selbst gezeigt.
+    const res0 = entwurf.ressourcen || LEER_RESSOURCEN;
+    const linkFelder: Array<{ name: string; wert: string }> = [
+      { name: t('Deployment-Link', 'Deployment link'), wert: (res0.deployment || '').trim() },
+      { name: 'Source Code', wert: (res0.sourceCode || '').trim() },
+      { name: t('Deployment-Guide', 'Deployment guide'), wert: (res0.deploymentGuide || '').trim() },
+      { name: 'Wiki', wert: (res0.wiki || '').trim() },
+      { name: 'Video', wert: (res0.video || '').trim() },
+    ];
+    for (const f of linkFelder) {
+      if (f.wert && !sichereUrl(f.wert)) {
+        showAlert(t(`${f.name}: Die Adresse muss mit https:// (oder http://) beginnen und darf keine Leerzeichen enthalten.`,
+          `${f.name}: The address must start with https:// (or http://) and must not contain spaces.`), { variant: 'error' });
+        return;
+      }
+    }
+    const ressourcen = {
+      deployment: linkFelder[0].wert, sourceCode: linkFelder[1].wert, deploymentGuide: linkFelder[2].wert,
+      wiki: linkFelder[3].wert, video: linkFelder[4].wert,
+    };
+
     // Betreuer: Namen und Adressen sind PARALLELE Listen. `mapUseCase` filtert
     // leere Einträge je Liste einzeln — hätte eine Person einen Namen, aber
     // keine Adresse, verschöbe sich die Zuordnung aller folgenden. Deshalb
@@ -185,12 +212,13 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
     // Adresse). Ein Semikolon würde die Liste zerschneiden — es wird ersetzt.
     const zeilen = betreuer.filter(b => b.email.trim() || b.name.trim());
     for (const z of zeilen) {
-      if (!EMAIL_FORMAT.test(z.email.trim())) {
+      // Streng: `a@b.de?bcc=…` in einem Betreuer hängt beim Klick auf seinen Namen Empfänger an.
+      if (!sichereMail(z.email)) {
         showAlert(t(`Für den Betreuer „${z.name || z.email || '?'}" fehlt eine gültige E-Mail-Adresse.`, `The maintainer "${z.name || z.email || '?'}" needs a valid email address.`), { variant: 'error' });
         return;
       }
     }
-    const betreuerEmails = zeilen.map(z => z.email.trim());
+    const betreuerEmails = zeilen.map(z => sichereMail(z.email));
     const betreuerNamen = zeilen.map(z => (z.name.trim() || z.email.trim()).replace(/;/g, ','));
 
     const bild: BildAenderung = bildDatei
@@ -199,7 +227,7 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
 
     setSpeichert(true);
     try {
-      const res = await saveUseCase(editId, { ...entwurf, betreuerEmails, betreuerNamen }, bild);
+      const res = await saveUseCase(editId, { ...entwurf, ressourcen, betreuerEmails, betreuerNamen }, bild);
       if (!res.ok) {
         // Der Grund gehört in die Meldung: „Speichern hat nicht geklappt" lässt
         // raten, ob es an den Rechten, am Bild oder an der Verbindung lag.
@@ -237,33 +265,22 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
   }
 
   /**
-   * Den Startbestand anlegen — nacheinander, nicht parallel.
+   * Den Startbestand anlegen — über `seedStartUseCases`, den EINEN Weg dafür.
    *
-   * Fuenf gleichzeitige POSTs gegen dieselbe Liste sind genau das Muster,
-   * das SharePoint drosselt; in DEX hat ein `Promise.all` ueber alle Personen
-   * unbemerkt Verweise liegen lassen (v29.2). Nacheinander dauert zwei
-   * Sekunden laenger und geht durch.
+   * Bis v1.3 lief hier eine eigene Schleife über `saveUseCase`: kein Merker „schon befüllt"
+   * (löschte jemand später alles, legte der nächste Start den Bestand wieder an), 18 Reloads,
+   * 18 Protokollzeilen und bei Teilerfolg die Meldung „bitte noch einmal versuchen", obwohl der
+   * Knopf nur bei leerer Liste da war. Jetzt legt der Kontext nur die FEHLENDEN an, nacheinander
+   * (parallele POSTs drosselt SharePoint), und die Meldung nennt Zahl und Grund.
    */
   async function startbestand(): Promise<void> {
     setSpeichert(true);
-    let angelegt = 0;
     try {
-      for (const uc of START_USE_CASES) {
-        // eslint-disable-next-line no-await-in-loop
-        const r = await saveUseCase(null, uc, { art: 'unveraendert' });
-        if (r.ok) angelegt++;
-      }
+      const erg = await seedStartUseCases();
+      const m = startbestandMeldung(erg, t);
+      showAlert(m.text, { variant: m.art === 'ok' ? 'success' : m.art === 'info' ? 'info' : 'error' });
     } finally {
       setSpeichert(false);
-    }
-    if (angelegt === START_USE_CASES.length) {
-      showAlert(t(`${angelegt} Use Cases angelegt. Trag jetzt die Links nach, sobald die Demos stehen.`,
-        `${angelegt} use cases created. Add the links once the demos exist.`), { variant: 'success' });
-    } else {
-      // Teilerfolg BENENNEN. „Angelegt" bei drei von fuenf waere die Sorte
-      // Meldung, der man beim naechsten Mal nicht mehr glaubt.
-      showAlert(t(`Nur ${angelegt} von ${START_USE_CASES.length} Use Cases konnten angelegt werden. Der Rest fehlt — bitte noch einmal versuchen.`,
-        `Only ${angelegt} of ${START_USE_CASES.length} use cases could be created. The rest are missing — please try again.`), { variant: 'error' });
     }
   }
 
@@ -281,20 +298,88 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
         <div>
           <h1 className="dex-ui-page-head-title">Use Case Studio</h1>
           <p className="dex-ui-page-head-meta">
-            {useCases.length} {t('Einträge', 'entries')} · {useCases.filter(u => u.status === 'Live').length} {t('aufrufbar', 'callable')}
+            {ladeStatus === 'ok'
+              ? `${useCases.length} ${t('Einträge', 'entries')} · ${useCases.filter(u => u.status === 'Live').length} ${t('aufrufbar', 'callable')}`
+              : ladeStatus === 'laedt' ? t('Wird geladen …', 'Loading …') : t('Nicht lesbar', 'Not readable')}
           </p>
         </div>
         <div className="dex-ui-page-head-actions">
           <button type="button" className="dex-ui-textbtn" onClick={() => navigate('protokoll')}>
             {t('Protokoll', 'Log')}
           </button>
-          <button type="button" className="btn btn-primary" onClick={() => oeffne()}>
+          {/* Dauerhaft, nicht nur bei leerer Liste: Ein Teilerfolg (7 von 18 angelegt, 429) überlebt kein
+              Neuladen — der Hinweis hängt an einem State. Der Lauf ist idempotent: Er legt nur Start-Use-Cases
+              an, deren Titel es noch nicht gibt (Gegenprüfung 29.09.2026). */}
+          {useCases.length > 0 && (
+            <button
+              type="button"
+              className="dex-ui-textbtn"
+              disabled={speichert || ladeStatus !== 'ok'}
+              title={t('Legt die Start-Use-Cases an, die es noch nicht gibt — vorhandene bleiben unberührt.', 'Creates the starter use cases that do not exist yet — existing ones stay untouched.')}
+              onClick={() => { void startbestand(); }}
+            >
+              {t('Startbestand ergänzen', 'Complete starter set')}
+            </button>
+          )}
+          {/* Bei einem Lesefehler kennt niemand den Bestand — ein neuer Eintrag könnte
+              eine Dublette sein. Erst wieder anbieten, wenn die Liste gelesen ist. */}
+          <button type="button" className="btn btn-primary" disabled={ladeStatus !== 'ok'} onClick={() => oeffne()}>
             <Plus size={15} /> {t('Neuer Use Case', 'New use case')}
           </button>
         </div>
       </div>
 
-      {useCases.length === 0 ? (
+      {/* Drei Zustände, drei Aussagen. Bis v1.2 zeigte diese Seite bei einem Lesefehler
+          „0 Einträge · Noch nichts angelegt" und bot an, die Start-Use-Cases anzulegen —
+          auf einer bereits befüllten Liste wären das Dubletten gewesen. Ein Lesefehler ist
+          keine leere Liste (Sichtprüfung mit dem Harness, 29.09.2026). */}
+      {ladeStatus === 'ok' && aktualisierungFehler && (
+        <div className="dex-ui-callout dex-ui-callout--warn dex-ui-callout--sm" role="status" style={{ marginBottom: 12 }}>
+          <span className="dex-ui-callout-body">
+            {t('Der aktuelle Stand konnte nicht nachgeladen werden — du siehst den zuletzt geladenen. ',
+              'The current state could not be reloaded — you see the last loaded one. ')}
+            <button type="button" className="dex-ui-textbtn" onClick={() => { void reload(); }}>{t('Erneut versuchen', 'Try again')}</button>
+          </span>
+        </div>
+      )}
+
+      {startbestandTeilweise && (
+        <div className="dex-ui-callout dex-ui-callout--warn" role="status" style={{ marginBottom: 12 }}>
+          <span className="dex-ui-callout-body">
+            {startbestandMeldung(startbestandTeilweise, t).text}{' '}
+            {startbestandTeilweise.angelegt < startbestandTeilweise.fehlend && (
+              <button type="button" className="dex-ui-textbtn" disabled={speichert} onClick={() => { void startbestand(); }}>
+                {speichert ? t('Wird angelegt …', 'Creating …') : t('Fehlende anlegen', 'Add missing ones')}
+              </button>
+            )}
+          </span>
+        </div>
+      )}
+
+      {ladeStatus === 'laedt' && (
+        <div className="dex-ui-empty" role="status" aria-live="polite">
+          <div className="dex-ui-progress dex-ui-progress--indeterminate"><div className="dex-ui-progress-bar" /></div>
+          <div className="dex-ui-empty-desc" style={{ marginTop: 12 }}>{t('Use Cases werden geladen …', 'Loading use cases …')}</div>
+        </div>
+      )}
+
+      {ladeStatus === 'fehler' && (
+        <div className="dex-ui-callout dex-ui-callout--danger" role="alert" style={{ marginBottom: 16 }}>
+          <span>
+            <strong>{t('Die Use Cases konnten nicht gelesen werden.', 'The use cases could not be read.')}</strong>
+            <br />
+            {letzterStatus === 403
+              ? t('Dir fehlt das Leserecht auf der Liste.', 'You do not have read access to the list.')
+              : t('Das ist ein Lesefehler, keine leere Liste — es wurde nichts angelegt und nichts gelöscht. Versuch es gleich noch einmal.', 'This is a read error, not an empty list — nothing was created or deleted. Please try again shortly.')}
+            {letzterStatus > 0 && <span className="dex-ui-muted"> (HTTP {letzterStatus})</span>}
+            {letzterFehler && (<><br /><span className="dex-ui-muted" style={{ fontSize: '0.78rem' }}>{letzterFehler}</span></>)}
+            <br />
+            <button type="button" className="dex-ui-textbtn" style={{ marginTop: 8 }} onClick={() => { void reload(); }}>{t('Erneut versuchen', 'Try again')}</button>
+          </span>
+        </div>
+      )}
+
+      {ladeStatus === 'ok' && useCases.length === 0 ? (
         <div className="dex-ui-empty">
           <div className="dex-ui-empty-title">{t('Noch nichts angelegt', 'Nothing here yet')}</div>
           <div className="dex-ui-empty-desc">
@@ -312,15 +397,15 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
               : t('Die Start-Use-Cases anlegen', 'Create the starter use cases')}
           </button>
         </div>
-      ) : (
+      ) : useCases.length > 0 && (
         <div className="dex-ui-stack">
           {useCases.map(uc => (
             <div key={uc.id} className="dex-ui-row dex-ui-row--bordered">
               <span className="dex-ui-row-main">
                 <span className="dex-ui-row-title dex-ui-row-title--wrap">
                   {uc.titel}
-                  <span className={cx('dex-ui-pill', 'dex-ui-pill--sm', uc.status === 'Live' ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}>
-                    {uc.status === 'InArbeit' ? t('In Arbeit', 'In progress') : uc.status}
+                  <span className={cx('dex-ui-pill', 'dex-ui-pill--sm', 'dex-ui-pill--trail', uc.status === 'Live' ? 'dex-ui-pill--green' : 'dex-ui-pill--gray')}>
+                    {statusText(uc.status, t)}
                   </span>
                 </span>
                 <span className="dex-ui-row-sub">
@@ -524,7 +609,7 @@ export default function ManagePage(props: { editId?: number }): React.ReactEleme
                     <span className="dex-ui-label">{dim.label}</span>
                     <select id={`uc-${dim.k}`} className="dex-ui-select" value={(entwurf[dim.k] as Bewertung) || 'unbewertet'} onChange={e => patch({ [dim.k]: e.target.value as Bewertung })}>
                       {BEWERTUNGEN.map(b => (
-                        <option key={b} value={b}>{b === 'unbewertet' ? t('noch nicht bewertet', 'not assessed yet') : b}</option>
+                        <option key={b} value={b}>{b === 'unbewertet' ? t('noch nicht bewertet', 'not assessed yet') : bewertungText(b, t)}</option>
                       ))}
                     </select>
                   </label>

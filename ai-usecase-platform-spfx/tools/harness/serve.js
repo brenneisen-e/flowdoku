@@ -29,6 +29,18 @@ function start(port) {
       });
       return;
     }
+    // Beispiel-Kachelbild der Startdaten (Adresse baut `bildSvg` in fakeSharePoint.ts).
+    if (url.pathname === '/harness-bild.svg') {
+      const k = (url.searchParams.get('k') || '?').replace(/[^A-Za-z0-9]/g, '').slice(0, 3);
+      const f = (url.searchParams.get('f') || '#1f7a8c').replace(/[^#A-Za-z0-9(),. ]/g, '');
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">`
+        + `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${f}"/><stop offset="1" stop-color="#0b2e4f"/></linearGradient></defs>`
+        + `<rect width="640" height="360" fill="url(#g)"/>`
+        + `<g fill="none" stroke="rgba(255,255,255,.25)" stroke-width="2"><circle cx="500" cy="90" r="120"/><circle cx="520" cy="110" r="70"/><path d="M0 300 L160 240 L260 270 L400 190 L640 250"/></g>`
+        + `<text x="40" y="320" font-family="Arial" font-size="64" font-weight="700" fill="#fff">${k}</text></svg>`;
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-store' }).end(svg);
+      return;
+    }
     if (anhaenge.has(decodeURIComponent(url.pathname))) {
       const a = anhaenge.get(decodeURIComponent(url.pathname));
       res.writeHead(200, { 'Content-Type': a.typ }).end(a.daten);

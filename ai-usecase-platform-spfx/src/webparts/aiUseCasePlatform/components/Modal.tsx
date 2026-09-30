@@ -92,8 +92,16 @@ function ensureModalStyles(): void {
    Die Regeln stehen hier statt in dexUi.ts, weil sie nur den Modal-Rahmen
    betreffen und das Overlay seine Maße per Inline-Style setzt — dagegen
    kommt eine Klasse nur mit !important an. */
+/* v1.3: Der Fuß mit Speichern/Abbrechen bleibt am unteren Rand der Karte stehen, statt beim
+   Blättern mitzurutschen. Bei langen Formularen (Neuer Use Case) lag der Speichern-Knopf sonst
+   unterhalb des Fensters und war erst nach dem Blättern erreichbar (Harness, 29.09.2026).
+   Die Karte ist der Scroller; der Fuß reicht mit negativen Rändern in ihren Innenabstand, und
+   bottom ist genauso negativ — sticky misst ab der Innenkante des Innenabstands, sonst blieben
+   22 px Formular unterhalb des Fußes sichtbar (Sichtprüfung, 29.09.2026). */
+.dex-modal-overlay .dex-ui-modal-foot { position: sticky; bottom: -22px; z-index: 2; background: #fff; margin: 4px -26px -22px; padding: 14px 26px 22px; }
 @media (max-width: 520px) {
   .dex-modal-overlay { padding: 10px 8px !important; }
+  .dex-modal-overlay .dex-ui-modal-foot { bottom: -16px; margin: 4px -14px -16px; padding: 12px 14px 16px; }
   .dex-modal-overlay .dex-modal-card-pad { padding: 16px 14px !important; }
   .dex-modal-overlay .dex-ui-modal-head { gap: 10px; }
   .dex-modal-overlay .dex-ui-modal-head-icon { width: 32px; height: 32px; border-radius: 10px; }
@@ -150,6 +158,20 @@ interface ModalProps {
   children: React.ReactNode;
 }
 
+/**
+ * v1.3: Der Stapel der offenen Dialoge (oberster = letzter).
+ *
+ * Jedes offene Modal hörte bis v1.3 auf Escape am `document`, ohne zu wissen, ob es das
+ * oberste ist. Öffnete sich über dem Studio-Dialog eine Meldung (Bild zu groß, Speichern
+ * fehlgeschlagen), schloss ein Druck auf Escape die Meldung UND den Dialog dahinter — und
+ * der getippte Entwurf war weg (Review 29.09.2026). Jetzt reagiert nur das oberste, auf
+ * Escape wie auf Tab (Fokus-Falle).
+ */
+let modalStapel: number[] = [];
+let modalZaehler = 0;
+
+const FOKUSSIERBAR = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export default function Modal({
   open,
   onClose,
@@ -191,14 +213,64 @@ export default function Modal({
   const localeSafe = useLocaleSafe();
   const modalLang = inputLocaleTag(localeSafe === 'de');
 
+  // Aufrufer geben `onClose` meist als neue Pfeilfunktion je Render herein. Würde der Effekt
+  // davon abhängen, träte ein Dialog bei jedem Render aus dem Stapel aus und oben wieder ein —
+  // und stünde dann VOR dem Dialog, der über ihm liegt. Deshalb lesen die Handler aus Refs.
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
+  const dismissableRef = React.useRef(dismissable);
+  dismissableRef.current = dismissable;
+  const idRef = React.useRef(0);
+  if (!idRef.current) idRef.current = ++modalZaehler;
+  const kartenRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Eintragen, Fokus hineinsetzen, beim Schließen zurückgeben. Der Fokus geht auf die KARTE,
+  // nicht auf das erste Feld: Auf dem Handy öffnete ein Feld die Tastatur, noch bevor man den
+  // Dialog gelesen hat. Die Karte ist per `tabindex=-1` fokussierbar, Tab führt danach zum
+  // ersten Bedienelement.
   React.useEffect(() => {
     if (!open) return undefined;
+    const id = idRef.current;
+    modalStapel.push(id);
+    const vorher = document.activeElement as HTMLElement | null;
+    if (kartenRef.current) {
+      try { kartenRef.current.focus({ preventScroll: true }); } catch { /* alte Browser */ }
+    }
+    return () => {
+      modalStapel = modalStapel.filter(x => x !== id);
+      if (vorher && typeof vorher.focus === 'function' && document.body.contains(vorher)) {
+        try { vorher.focus({ preventScroll: true }); } catch { /* alte Browser */ }
+      }
+    };
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const id = idRef.current;
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && dismissable) onClose();
+      if (modalStapel[modalStapel.length - 1] !== id) return;
+      if (e.key === 'Escape') {
+        if (dismissableRef.current) onCloseRef.current();
+        return;
+      }
+      if (e.key !== 'Tab' || !kartenRef.current) return;
+      // Fokus-Falle: Tab läuft im Dialog im Kreis, statt in die Seite dahinter zu wandern.
+      const karte = kartenRef.current;
+      const alle = Array.prototype.slice.call(karte.querySelectorAll(FOKUSSIERBAR)) as HTMLElement[];
+      const sichtbar = alle.filter(el => el.offsetWidth > 0 || el.offsetHeight > 0 || el === document.activeElement);
+      if (sichtbar.length === 0) { e.preventDefault(); karte.focus(); return; }
+      const erstes = sichtbar[0];
+      const letztes = sichtbar[sichtbar.length - 1];
+      const aktiv = document.activeElement;
+      if (e.shiftKey && (aktiv === erstes || aktiv === karte || !karte.contains(aktiv))) {
+        e.preventDefault(); letztes.focus();
+      } else if (!e.shiftKey && (aktiv === letztes || !karte.contains(aktiv))) {
+        e.preventDefault(); erstes.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, dismissable, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -265,9 +337,12 @@ export default function Modal({
       } as React.CSSProperties}
     >
       <div
+        ref={kartenRef}
+        tabIndex={-1}
         className={`dex-ui-modal-card${hasOwnPadding ? '' : ' dex-modal-card-pad'}`}
         onClick={e => e.stopPropagation()}
         style={{
+          outline: 'none',
           background: '#fff', borderRadius: 18,
           padding: padding ?? '22px 26px',
           maxWidth, width: '100%',

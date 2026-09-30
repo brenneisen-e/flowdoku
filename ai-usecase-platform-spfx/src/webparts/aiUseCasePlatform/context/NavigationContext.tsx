@@ -50,6 +50,12 @@ interface NavigationContextType {
   navigate: (page: Page, useCaseId?: number) => void;
   goBack: () => void;
   canGoBack: boolean;
+  /**
+   * Die Id der AKTUELLEN Seite vergessen (v1.3). Die Pflegeseite öffnet bei „Bearbeiten" aus der
+   * Detailseite den Dialog für diese Id — und ohne diesen Aufruf tat sie es nach jedem Zurück
+   * aus dem Protokoll wieder, weil der Stapeleintrag die Id noch trug.
+   */
+  clearUseCaseId: () => void;
 }
 
 const NavigationContext = React.createContext<NavigationContextType | undefined>(undefined);
@@ -80,13 +86,18 @@ export function NavigationProvider(props: { children: React.ReactNode }): React.
     });
   }, []);
 
+  const clearUseCaseId = React.useCallback((): void => {
+    setEntry(e => (e.useCaseId === undefined ? e : { page: e.page }));
+  }, []);
+
   const value = React.useMemo<NavigationContextType>(() => ({
     currentPage: entry.page,
     currentUseCaseId: entry.useCaseId,
     navigate,
     goBack,
     canGoBack: stack.length > 0,
-  }), [entry, navigate, goBack, stack.length]);
+    clearUseCaseId,
+  }), [entry, navigate, goBack, stack.length, clearUseCaseId]);
 
   return React.createElement(NavigationContext.Provider, { value }, props.children);
 }

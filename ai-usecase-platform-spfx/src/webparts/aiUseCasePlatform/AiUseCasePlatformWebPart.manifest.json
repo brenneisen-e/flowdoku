@@ -20,7 +20,7 @@
       "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
       "group": { "default": "Deloitte" },
       "title": { "default": "AI Use Case Platform" },
-      "description": { "default": "Agentic Banking Demo Hub - Agent-Demos ueber Kacheln aufrufen" },
+      "description": { "default": "Agentic Banking Demo Hub – Agent-Demos über Kacheln aufrufen" },
       "officeFabricIconFontName": "Robot",
       "properties": {}
     }

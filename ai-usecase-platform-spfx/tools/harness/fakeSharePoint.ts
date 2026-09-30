@@ -20,7 +20,7 @@ import { START_USE_CASES } from '../../src/webparts/aiUseCasePlatform/data/start
 import { LIST } from '../../src/webparts/aiUseCasePlatform/constants';
 
 export type Rolle = 'admin' | 'organizer' | 'user' | 'first';
-export type Zustand = 'ok' | 'forbidden' | 'error' | 'empty' | 'leer' | 'roles403' | 'logerror' | 'fresh';
+export type Zustand = 'ok' | 'forbidden' | 'error' | 'empty' | 'leer' | 'nolog' | 'roles403' | 'logerror' | 'fresh';
 
 export interface Params {
   role: Rolle;
@@ -43,7 +43,7 @@ export function parseParams(search: string): Params {
     role: pick<Rolle>('role', ['admin', 'organizer', 'user', 'first'], 'admin'),
     lang: pick<'de' | 'en'>('lang', ['de', 'en'], 'de'),
     mobile: q.get('mobile') === '1',
-    state: pick<Zustand>('state', ['ok', 'forbidden', 'error', 'empty', 'leer', 'roles403', 'logerror', 'fresh'], 'ok'),
+    state: pick<Zustand>('state', ['ok', 'forbidden', 'error', 'empty', 'leer', 'nolog', 'roles403', 'logerror', 'fresh'], 'ok'),
     delay: Math.max(0, Math.min(20000, parseInt(q.get('delay') || '25', 10) || 0)),
     data: pick<'variety' | 'start'>('data', ['variety', 'start'], 'variety'),
   };
@@ -104,14 +104,15 @@ const SPALTEN_LOG = ['UseCaseId', 'Aktion', 'Detail', 'Wer'];
 
 /* ------------------------------------------------------- Beispiel-Zeilen -- */
 
+/**
+ * Die Adresse eines Beispiel-Kachelbilds. Bis v1.3 war das eine `data:`-URL; die App
+ * nimmt aber als Bild-Adresse nur `http(s)` an (`utils/sicher.ts` — die echte Adresse
+ * ist immer die eines Anhangs auf der Site), und die Detailseite zeigte dann kein Bild.
+ * `serve.js` baut das SVG zu dieser Adresse (`/harness-bild.svg`).
+ */
 function bildSvg(titel: string, farbe: string): string {
   const k = titel.split(/[\s/-]+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">`
-    + `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${farbe}"/><stop offset="1" stop-color="#0b2e4f"/></linearGradient></defs>`
-    + `<rect width="640" height="360" fill="url(#g)"/>`
-    + `<g fill="none" stroke="rgba(255,255,255,.25)" stroke-width="2"><circle cx="500" cy="90" r="120"/><circle cx="520" cy="110" r="70"/><path d="M0 300 L160 240 L260 270 L400 190 L640 250"/></g>`
-    + `<text x="40" y="320" font-family="Arial" font-size="64" font-weight="700" fill="#fff">${k}</text></svg>`;
-  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  return `${window.location.origin}/harness-bild.svg?k=${encodeURIComponent(k)}&f=${encodeURIComponent(farbe)}`;
 }
 
 /** Abweichungen von den Startdaten, damit die Zustände sichtbar werden, die beim Umbau kaputtgehen. */
@@ -221,7 +222,7 @@ export function baueListen(p: Params): { lists: Record<string, Liste>; prinzipal
     }
     const merker = (): void => { add(log, { Title: 'erstbefuellung', UseCaseId: 0, Aktion: 'erstbefuellung', Detail: `${START_USE_CASES.length} Start-Use-Cases angelegt`, Wer: 'max.beispiel@deloitte.de', Created: iso(40 * TAG) }); };
     if (p.state === 'leer') merker();
-    if (p.state !== 'empty' && p.state !== 'leer') {
+    if (p.state !== 'empty' && p.state !== 'leer' && p.state !== 'nolog') {
       merker();
       const e = (tage: number, id: number, aktion: string, detail: string, wer: string): void => {
         add(log, { Title: aktion, UseCaseId: id, Aktion: aktion, Detail: detail, Wer: wer, Created: iso(tage * TAG) });
@@ -368,6 +369,17 @@ export function baueKontext(p: Params): any {
     }
     if (method === 'GET' && pfad === 'web/currentuser') {
       return { status: 200, kind: 'single', body: { Id: ICH.Id, Title: ICH.Title, Email: ICH.Email, LoginName: ICH.LoginName } };
+    }
+    if (method === 'GET' && pfad === 'web/effectivebasepermissions') {
+      // Die App fragt so, ob die Person Listen verwalten darf (Bit 11, „Manage Lists", 0x800), bevor sie eine Liste oder Spalte anlegt.
+      // Nur Admins haben es — Organizer bearbeiten Zeilen, verwalten aber keine Listen.
+      const low = darfStruktur ? 2147483647 : (1011028719 & ~0x800);
+      return { status: 200, kind: 'single', body: { Low: low, High: darfStruktur ? 2147483647 : 432061 } };
+    }
+    if (method === 'GET' && (t = m(/^web\/sitegroups\/getbyid\((\d+)\)\/users$/i))) {
+      // Mitglieder der SharePoint-Gruppen der Site: Die Owners (3) tragen Full Control auf allem, Members (4) und Visitors (5) sind leer.
+      const ids = parseInt(t[1], 10) === 3 ? [12].concat(p.role === 'admin' || p.role === 'first' ? [ICH.Id] : []) : [];
+      return { status: 200, kind: 'list', body: prinzipale.filter(x => ids.indexOf(x.Id) >= 0).map(x => ({ Id: x.Id, Email: x.Email, LoginName: x.LoginName, PrincipalType: x.PrincipalType })) };
     }
     if (method === 'GET' && pfad === 'web/associatedownergroup') {
       return { status: 200, kind: 'single', body: { Id: 3, Title: 'AIUC Owners' } };

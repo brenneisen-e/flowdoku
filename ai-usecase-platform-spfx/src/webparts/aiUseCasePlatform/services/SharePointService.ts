@@ -12,13 +12,13 @@
  *    leeren Liste auf „nichts da" schliesst, braucht den geprueften Status.
  *
  * 2. **Eine Rechtevergabe ist erst gesetzt, wenn sie nachgelesen wurde.**
- *    `_grantVerified` wiederholt und liest danach `roledefinitionbindings` —
+ *    `grantVerified` wiederholt und liest danach `roledefinitionbindings` —
  *    ein `addroleassignment`-POST allein ist keine Vergabe. In DEX fehlten
  *    18 von 126 Rollen-Eintraegen mindestens ein Recht, und jede dieser
  *    Zuweisungen hatte „erfolgreich" gemeldet (v30.85).
  *
  * 3. **Wer Rechte vergibt, baut den Entzug im selben Commit.**
- *    `revokeAccessOnRolesList` liest danach nach; SharePoint antwortet auf
+ *    `entzieheListe` und `reduziereListe` lesen danach nach; SharePoint antwortet auf
  *    einen DELETE ohne vorhandene Zuweisung mit 404 ODER 500, der Status
  *    allein traegt also nicht (v30.67).
  *
@@ -74,7 +74,6 @@ const SEED_MARKER = 'erstbefuellung';
 const BILD_PREFIX = '__ucbild__';
 
 /** Was beim Lesen herauskam — `ok` heisst: die Daten sind belastbar. */
-export type LeseStatus = 'ok' | 'forbidden' | 'notfound' | 'error';
 
 interface SpUseCaseRow {
   Id: number;
@@ -117,9 +116,9 @@ interface SpLogRow {
  * mindestens braucht. Das ist die EINE Tabelle, gegen die „Rechte prüfen"
  * (`auditRoleRights`) liest und nach der `repairRoleRights` nachsetzt.
  *
- * Sie muss zu den Vergaben passen: `grantFullControlOnRolesList` /
- * `grantReadOnRolesList` (Rollenliste) und `grantOrganizerPermissions`
- * (Use-Case-Liste, Protokoll). Steht hier etwas anderes als dort, meldet der
+ * Sie muss zu den Vergaben passen: `grantRoleRights` und `grantListRights`
+ * lesen diese Tabelle selbst — es gibt keine zweite Liste von Stufen. Steht
+ * irgendwo im Code eine andere Stufe als hier, meldet der
  * Audit „fehlt" für ein Recht, das die Vergabe nie setzt — und die Meldung
  * kommt bei jedem Lauf wieder. Die Matrix in `data/rollenMatrix.ts` (Kategorie
  * „SharePoint") beschreibt dieselben Zeilen in Sätzen.
@@ -128,11 +127,63 @@ export type RechteListe = 'roles' | 'useCases' | 'log';
 
 interface RechteSoll { key: RechteListe; liste: string; admin: number; organizer: number }
 
+/**
+ * v1.3 (Review-Nachzug): Ein Admin bekommt auf ALLEN drei Listen Vollzugriff.
+ * `addroleassignment`, `removeroleassignment`, `breakroleinheritance` und das
+ * Lesen der `roleassignments` verlangen „Berechtigungen verwalten" auf der
+ * jeweiligen Liste — das steckt in Full Control (oder Site-Owner), NICHT in
+ * Edit/Contribute. Mit Edit auf den Use Cases und Contribute im Protokoll
+ * scheiterte ein Admin, der nicht Site-Owner ist, beim Vergeben und beim
+ * „Rechte prüfen" auf genau diesen zwei Listen (403, je 5,5 s Wartezeit).
+ * Ein Organizer bekommt weiter nur, was er zum Pflegen braucht.
+ */
 const RECHTE_SOLL: RechteSoll[] = [
   { key: 'roles', liste: LIST.roles, admin: ROLE_DEF.full, organizer: ROLE_DEF.read },
-  { key: 'useCases', liste: LIST.useCases, admin: ROLE_DEF.edit, organizer: ROLE_DEF.edit },
-  { key: 'log', liste: LIST.log, admin: ROLE_DEF.contribute, organizer: ROLE_DEF.contribute },
+  // Contribute reicht: Zeilen anlegen, ändern, recyceln und Anhänge tragen nur Add/Edit/Delete Items.
+  // „Edit“ enthielte zusätzlich „Manage Lists“ — ein Organizer könnte Spalten oder die ganze Liste
+  // löschen (Sicherheits-Review 29.09.2026).
+  { key: 'useCases', liste: LIST.useCases, admin: ROLE_DEF.full, organizer: ROLE_DEF.contribute },
+  { key: 'log', liste: LIST.log, admin: ROLE_DEF.full, organizer: ROLE_DEF.contribute },
 ];
+
+/**
+ * Ein Recht, das gesetzt oder entzogen werden sollte — als CODE, nicht als
+ * Satz. Der Service kennt keine Sprache; die Oberfläche formuliert mit `t()`
+ * (Review-Fund 19: deutsche Klartexte und ASCII-Umschreibungen wie
+ * „unvollstaendig" gelangten bis in englische Meldungen).
+ *
+ * `<liste>:<stufe>` = diese Stufe konnte nicht gesetzt werden; `konto` = die
+ * Person ließ sich nicht auflösen (ausgeschieden oder gedrosselt).
+ */
+export type RechteCode =
+  | 'roles:read' | 'roles:full'
+  | 'useCases:edit' | 'useCases:contribute' | 'useCases:full'
+  | 'log:contribute' | 'log:full'
+  | 'konto';
+
+/** Ergebnis eines Entzugs — Codes statt `true`/`false`, damit „Selbstschutz" nicht wie „erledigt" aussieht. */
+export type EntzugsCode =
+  /** Entzogen UND nachgelesen. */
+  | 'ok'
+  /** Das ist das eigene Konto (auch unter einer anderen Schreibweise der Adresse) — nichts wurde angefasst. */
+  | 'selbst'
+  /** Das Konto ließ sich nicht auflösen und war auf den Listen nicht zu finden — der Entzug ist nicht belegt. */
+  | 'konto'
+  /** Die Zuweisungen waren nicht lesbar — nicht belegt. */
+  | 'lesefehler'
+  /** Der Entzug ging durch, das Nachlesen zeigt die Rechte aber noch. */
+  | 'offen';
+
+/** Wie eine Liste beim Nachschlagen dasteht: es gibt sie, es gibt sie nicht (404), oder wir wissen es nicht. */
+export type ListenStatus = 'ja' | 'nein' | 'unbekannt';
+
+/** Warum das Lesen der Rechte scheiterte — Code, keine Prosa. */
+export interface LeseFehler {
+  code: 'http' | 'zu-gross' | 'ausnahme' | 'keine-antwort';
+  /** `rollen` = die Rollenliste selbst (Inhalt), sonst die Liste, deren Zuweisungen gelesen wurden. */
+  liste: RechteListe | 'rollen';
+  status: number;
+}
 
 /** Rechtestufen aufsteigend: jede enthält die davor (Read < Contribute < Edit < Design < Full Control). */
 const STUFEN = [ROLE_DEF.read, ROLE_DEF.contribute, ROLE_DEF.edit, ROLE_DEF.design, ROLE_DEF.full];
@@ -159,6 +210,24 @@ function vereint(a: number[] | undefined, b: number[] | undefined): number[] {
   const out: number[] = [];
   (a || []).concat(b || []).forEach(x => { if (out.indexOf(x) < 0) out.push(x); });
   return out;
+}
+
+/** Zwei Adress-Listen zusammenlegen (ohne Doppelte). */
+function vereint2(a: string[] | undefined, b: string[] | undefined): string[] {
+  const out: string[] = [];
+  (a || []).concat(b || []).forEach(x => { if (out.indexOf(x) < 0) out.push(x); });
+  return out;
+}
+
+/** Ergebnis von `entzieheUeberschuss` — getrennte Zustände je Liste (siehe dort). */
+export interface UeberschussErgebnis {
+  entzogen: RechteListe[];
+  lesenFehlt: RechteListe[];
+  offen: RechteListe[];
+  /** Das war das eigene Konto: nichts wurde angefasst. */
+  selbst: boolean;
+  /** Mindestens eine Liste war nicht lesbar — der Entzug ist dort nicht belegt. */
+  lesefehler: boolean;
 }
 
 /** Ein Treffer der Personensuche — mit der Adresse, die SharePoint führt. */
@@ -213,6 +282,20 @@ export interface RechteBericht {
   ueberschuss: RechteUeberschuss[];
   /** Rechte da — aber unter einer anderen Schreibweise der Adresse als in der Rollenliste. */
   aliase: Array<{ name: string; email: string; spEmail: string }>;
+  /**
+   * Rechte, die die Person NICHT direkt, sondern über eine SharePoint-Gruppe der
+   * Liste hat (Owners, Members …). Kein Befund und keine Lücke: „Nachsetzen"
+   * würde dort nur ein redundantes Direktrecht danebenlegen. Eigene Rubrik,
+   * damit die Oberfläche „über Gruppe gedeckt" sagen kann statt „ok" oder
+   * „Rechte fehlen".
+   */
+  ueberGruppe: Array<{ email: string; name: string; rolle: UserRole; listen: RechteListe[] }>;
+  /**
+   * Adressen (klein, getrimmt) von Zeilen, die beim Auflösen zum ANGEMELDETEN
+   * Konto führten, obwohl sie nicht die bekannten Schreibweisen der Person sind
+   * (ein Alias in der Rollenliste). Die Oberfläche sperrt diese Zeilen.
+   */
+  eigeneKonten: string[];
   /** Zeilen ohne Adresse: nicht prüfbar, nicht „in Ordnung". */
   ohneAdresse: number;
 }
@@ -230,6 +313,10 @@ interface ListenZuweisungen {
   nachAdresse: Map<string, number[]>;
   nachId: Map<number, number[]>;
   adresseZuId: Map<number, string>;
+  /** Alle bekannten Schreibweisen je Konto (Email und Adresse aus dem LoginName). */
+  adressenZuId: Map<number, string[]>;
+  /** SharePoint-Gruppen (PrincipalType 8) mit ihren Stufen auf dieser Liste. */
+  gruppen: Array<{ id: number; stufen: number[] }>;
 }
 
 /** Ein Eintrag der Antwort des People-Pickers — nur die Felder, die wir lesen. */
@@ -245,6 +332,33 @@ interface SpZuweisung {
   PrincipalId?: number;
   Member?: { Email?: string; LoginName?: string; PrincipalType?: number };
   RoleDefinitionBindings?: Array<{ Id: number }> | { results?: Array<{ Id: number }> };
+}
+
+/**
+ * Gehört diese Domain zu Deloitte? Geprüft wird die REGISTRIERBARE Domain, nicht
+ * irgendein Label darin (Review-Fund 17): Der frühere Filter `(^|\.)deloitte…\.`
+ * ließ `deloitte.evil.com`, `deloitte-fake.net` und `deloittecom.evil.org`
+ * durch — ein Gast-Konto mit solcher Adresse erschien als normaler Treffer.
+ *
+ * Erlaubt sind (mit beliebigen Subdomains davor):
+ *  - `deloitte.<endung>` — `deloitte.de`, `deloitte.com`, `deloitte.co.uk` (Endungen
+ *    mit zweiter Ebene wie `co.uk` / `com.au` zählen als EINE Endung);
+ *  - `deloitte<zusatz>.com` — der Zusatz nur aus Buchstaben und Ziffern, ohne
+ *    Bindestrich (deloitteCE.com).
+ * Restrisiko: Eine Endung wie `co.cc` wäre selbst frei registrierbar; das ist
+ * hier nicht ausgeschlossen. Eine feste Liste der Member-Firm-Domains wäre die
+ * strengere Lösung, aber auch die, die ein Mensch pflegen müsste.
+ */
+export function istDeloitteDomain(domain: string): boolean {
+  const teile = (domain || '').toLowerCase().trim().split('.');
+  if (teile.length < 2 || teile.some(t => !/^[a-z0-9-]+$/.test(t))) return false;
+  const endung = teile[teile.length - 1];
+  const zweite = teile[teile.length - 2];
+  const mitZweiterEbene = teile.length >= 3 && endung.length === 2 && /^(co|com|org|net|ac|gov|edu)$/.test(zweite);
+  const name = mitZweiterEbene ? teile[teile.length - 3] : zweite;
+  const tld = mitZweiterEbene ? `${zweite}.${endung}` : endung;
+  if (name === 'deloitte') return true;
+  return tld === 'com' && /^deloitte[a-z0-9]{1,12}$/.test(name);
 }
 
 export class SharePointService {
@@ -266,6 +380,11 @@ export class SharePointService {
   public lastLogReadError = '';
   /** Spalten, die beim Sicherstellen der Liste NICHT entstanden sind. */
   public fehlendeSpalten: string[] = [];
+  /**
+   * Warum `getRoles` null lieferte, wenn es kein HTTP-Status ist: die Liste ist
+   * zu groß für den Lesepfad (`zu-gross`). Ein Code, keine Prosa.
+   */
+  public lastRolesReadCode: '' | 'zu-gross' = '';
 
   /**
    * Ersatz fuer `context.spHttpClient` — gleiche Signatur.
@@ -280,6 +399,15 @@ export class SharePointService {
       this.context.spHttpClient.get(url, cfg, options),
     post: (url: string, cfg: SPHttpClientConfiguration, options?: ISPHttpClientOptions): Promise<SPHttpClientResponse> =>
       withThrottleRetry(() => this.context.spHttpClient.post(url, cfg, options), url),
+    /**
+     * v1.3 (Review-Fund 20): POST OHNE Wiederholung — für Anfragen, die nur
+     * LESEN, obwohl sie ein POST sind (Personensuche des People-Pickers). Die
+     * Schranke wiederholt bis zu zweimal mit Retry-After (bis 45 s); für eine
+     * Suche, deren Ergebnis beim nächsten Tastendruck verworfen wird, wäre das
+     * reine Wartezeit — und jede Wiederholung zählt aufs Kontingent.
+     */
+    postEinmal: (url: string, cfg: SPHttpClientConfiguration, options?: ISPHttpClientOptions): Promise<SPHttpClientResponse> =>
+      this.context.spHttpClient.post(url, cfg, options),
   };
 
   public constructor(context: WebPartContext) {
@@ -358,6 +486,19 @@ export class SharePointService {
     return this._sp.post(url, SPHttpClient.configurations.v1, options);
   }
 
+  /** POST ohne Wiederholung (Suche) — dieselben Kopfzeilen wie `_post`. */
+  private async _postEinmal(url: string, body: object): Promise<SPHttpClientResponse> {
+    const options: ISPHttpClientOptions = {
+      headers: {
+        'Accept': 'application/json;odata=verbose',
+        'Content-Type': 'application/json;odata=verbose',
+        'odata-version': '',
+      },
+      body: JSON.stringify(body),
+    };
+    return this._sp.postEinmal(url, SPHttpClient.configurations.v1, options);
+  }
+
   /** MERGE auf ein bestehendes Element. */
   private async _merge(url: string, body: object): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
@@ -389,13 +530,83 @@ export class SharePointService {
     return `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(name)}')`;
   }
 
-  public async listExists(listName: string): Promise<boolean> {
+  /**
+   * Gibt es die Liste? DREI Antworten, nicht zwei (Review-Fund 11).
+   *
+   * Bis v1.3 machte `listExists` aus JEDEM Fehlerstatus „gibt es nicht". Für
+   * einen gewöhnlichen User ist die Rollenliste unlesbar (403) — sie galt damit
+   * als nicht vorhanden, und jeder Seitenaufruf jeder Person löste `createList`
+   * plus je vier Spalten-Probes und -Anlagen aus, alle aussichtslos. Das
+   * verletzt „erst prüfen, dann anlegen" und „ein Lesefehler ist keine Null".
+   *
+   *  - `ja`        — 200: die Liste ist da und lesbar.
+   *  - `nein`      — 404, und NUR 404: die Liste gibt es nicht. Nur dann darf angelegt werden.
+   *  - `unbekannt` — 403, 429, 5xx, Ausnahme: wir wissen es nicht. Es wird nichts geschrieben.
+   */
+  public async listStatus(listName: string): Promise<ListenStatus> {
     try {
       const r = await this._sp.get(this.list(listName), SPHttpClient.configurations.v1);
-      return r.ok;
+      if (r.ok) return 'ja';
+      return r.status === 404 ? 'nein' : 'unbekannt';
     } catch {
-      return false;
+      return 'unbekannt';
     }
+  }
+
+  private _basisRechteMerker: Promise<number | null> | null = null;
+
+  /**
+   * Darf die angemeldete Person auf dieser Site Listen verwalten (Berechtigung
+   * „Manage Lists")? Gilt für das Anlegen von Listen und Spalten. Wer es nicht
+   * darf, dem sagt SharePoint 403 — die Anfrage vorher zu stellen ist nur Lärm
+   * und Kontingent. Nicht lesbar heißt „nein": im Zweifel nichts schreiben.
+   * Einmal je Sitzung gelesen und gemerkt (lazy — nur dort, wo wirklich
+   * geschrieben werden soll).
+   */
+  private kannListenVerwalten(): Promise<boolean> {
+    // Bit 11 (0x800) = ManageLists. `&` rechnet auf 32 Bit — die unteren Bits
+    // bleiben auch bei Werten über 2^31 erhalten.
+    return this.basisRechte().then(low => low !== null && (low & 0x800) !== 0);
+  }
+
+  /**
+   * Darf dieses Konto Berechtigungen setzen (ManagePermissions, Bit 25 = 0x2000000)?
+   *
+   * `breakroleinheritance` und `addroleassignment` brauchen dieses Recht, NICHT
+   * ManageLists. Wer die Listen anlegen darf (Edit-Mitglied), kann die Rollenliste
+   * deshalb noch lange nicht sperren — der Guard über `kannListenVerwalten` allein
+   * ließ solche Konten bis an den POST kommen, der dann mit 403 scheiterte
+   * (Review 29.09.2026, Fund 8).
+   */
+  private kannRechteVerwalten(): Promise<boolean> {
+    return this.basisRechte().then(low => low !== null && (low & 0x2000000) !== 0);
+  }
+
+  /** Die unteren 32 Bit der effektiven Web-Rechte — `null` = nicht lesbar. Einmal je Sitzung gemerkt. */
+  private basisRechte(): Promise<number | null> {
+    if (!this._basisRechteMerker) {
+      this._basisRechteMerker = (async (): Promise<number | null> => {
+        try {
+          const r = await this._sp.get(
+            `${this.siteUrl}/_api/web/effectivebasepermissions`,
+            SPHttpClient.configurations.v1,
+            { headers: { 'Accept': 'application/json;odata=nometadata' } },
+          );
+          // Nicht lesbar heißt „nein" für DIESEN Aufruf, wird aber nicht gemerkt:
+          // Eine Drosselung beim ersten Start würde sonst die Erstinstallation
+          // für die ganze Sitzung sperren.
+          if (!r.ok) { this._basisRechteMerker = null; return null; }
+          const d = await r.json();
+          const low = Number(d.Low ?? d.d?.EffectiveBasePermissions?.Low ?? d.d?.Low);
+          if (isNaN(low)) { this._basisRechteMerker = null; return null; }
+          return low;
+        } catch {
+          this._basisRechteMerker = null;
+          return null;
+        }
+      })();
+    }
+    return this._basisRechteMerker;
   }
 
   /** Die Antwort von SharePoint lesbar machen — der Text sagt, was fehlt. */
@@ -441,7 +652,28 @@ export class SharePointService {
         SPHttpClient.configurations.v1,
       );
       if (probe.ok) return true;
+      // 403 und 429 sagen NICHTS über die Spalte (kein Recht, gedrosselt) — weder anlegen
+      // noch als fehlend melden: Ein Anlegeversuch auf eine vorhandene Spalte scheitert bei
+      // SharePoint mit 400/500 (Lehre 4 im Kopfkommentar), und „Spalte fehlt" behauptete
+      // bei normalen Nutzern etwas Unbelegtes (Review 29.09.2026).
+      if (probe.status === 403) return true;
+      if (probe.status === 429) {
+        // Gedrosselt: EIN neuer Versuch nach kurzer Pause. Ohne ihn galt die Spalte als „vorhanden",
+        // obwohl niemand es wusste — fehlte sie, scheiterten später Anlegen und Protokoll mit 400
+        // (Gegenprüfung 29.09.2026). Bleibt es bei 429, zählt sie als vorhanden: nichts anlegen,
+        // nichts Unbelegtes melden; der nächste Start eines Organizers prüft erneut.
+        await new Promise<void>(res => setTimeout(res, 1500));
+        const zweite = await this._sp.get(
+          `${this.list(listName)}/fields/getbytitle('${encodeURIComponent(internalName)}')`,
+          SPHttpClient.configurations.v1,
+        );
+        if (zweite.ok || zweite.status === 429 || zweite.status === 403) return true;
+      }
     } catch { /* nicht lesbar -> Anlegen versuchen */ }
+
+    // v1.3 (Fund 11): Wer keine Listen verwalten darf, bekommt auf das Anlegen
+    // ein sicheres 403 — die Spalte fehlt dann eben, und `fehlendeSpalten` sagt es.
+    if (!(await this.kannListenVerwalten())) return false;
 
     try {
       const r = await this._post(`${this.list(listName)}/fields`, {
@@ -500,14 +732,30 @@ export class SharePointService {
     });
   }
 
-  private async createList(listName: string, description: string): Promise<void> {
-    await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': description,
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
+  /**
+   * Eine Liste anlegen — aber nur, wenn das möglich ist. `true` = der Aufruf
+   * wurde abgeschickt und von SharePoint angenommen. Ob die Liste danach da
+   * ist, klärt der nächste `listStatus`; hier zählt nur, dass eine Person ohne
+   * Recht (Fund 11) gar nicht erst anfragt.
+   */
+  private async createList(listName: string, description: string): Promise<boolean> {
+    if (!(await this.kannListenVerwalten())) {
+      console.warn(`[AIUC] ${listName} fehlt, aber dieses Konto darf keine Listen anlegen — es wird nichts geschrieben.`);
+      return false;
+    }
+    try {
+      const r = await this._post(`${this.siteUrl}/_api/web/lists`, {
+        '__metadata': { 'type': 'SP.List' },
+        'Title': listName,
+        'Description': description,
+        'BaseTemplate': 100,
+        'AllowContentTypes': false,
+      });
+      return r.ok;
+    } catch (e) {
+      console.warn(`[AIUC] ${listName} konnte nicht angelegt werden:`, e);
+      return false;
+    }
   }
 
   // ===================================================================
@@ -522,14 +770,45 @@ export class SharePointService {
    * werden. In DEX lief das einmal ueber „getRoles ist leer" — und ein 403
    * beim Lesen machte damit JEDEN Aufrufer zum Admin (v6.34).
    */
-  public async ensureRolesList(): Promise<{ isNewlyCreated: boolean }> {
-    const name = LIST.roles;
-    if (await this.listExists(name)) {
-      await this.ensureRolesListPermissions(name);
-      return { isNewlyCreated: false };
-    }
+  public ensureRolesList(): Promise<{ isNewlyCreated: boolean; status: ListenStatus }> {
+    return this.einmalig('roles', () => this.ensureRolesListNeu());
+  }
 
-    await this.createList(name, 'Rollenverwaltung der AI Use Case Platform');
+  /**
+   * Zwei gleichzeitige Aufrufe teilen sich EINEN Lauf. Beim allerersten Start
+   * rufen `RoleProvider` (Erstinstallation) und `UseCaseProvider` dieselben
+   * `ensure*`-Methoden gleichzeitig; ohne das würden beide eine fehlende Liste
+   * anlegen, und der zweite Aufruf bekäme von SharePoint einen Fehler
+   * („Liste existiert schon") und ließe die Spalten aus.
+   */
+  private _laeufe: Record<string, Promise<unknown>> = {};
+
+  private einmalig<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const laufend = this._laeufe[key];
+    if (laufend) return laufend as Promise<T>;
+    const p = fn().then(
+      r => { delete this._laeufe[key]; return r; },
+      e => { delete this._laeufe[key]; throw e; },
+    );
+    this._laeufe[key] = p;
+    return p;
+  }
+
+  private async ensureRolesListNeu(): Promise<{ isNewlyCreated: boolean; status: ListenStatus }> {
+    const name = LIST.roles;
+    const status = await this.listStatus(name);
+    if (status === 'ja') {
+      await this.ensureRolesListPermissions(name);
+      return { isNewlyCreated: false, status };
+    }
+    // Nur bei einem EINDEUTIGEN 404 wird angelegt (Review-Fund 11). „Unbekannt"
+    // ist für jeden gewöhnlichen User der Normalfall — die Rollenliste ist für
+    // ihn unlesbar (403) —, und dann darf nichts geschrieben werden.
+    if (status !== 'nein') return { isNewlyCreated: false, status };
+
+    if (!(await this.createList(name, 'Rollenverwaltung der AI Use Case Platform'))) {
+      return { isNewlyCreated: false, status };
+    }
     await this.feldText(name, 'UserName');
     // Die Auswahlwerte bleiben die des Altbestands (`Kurator` steht für den Use
     // Case Organizer) — `utils/rollen.ts` erklärt, warum.
@@ -537,7 +816,7 @@ export class SharePointService {
     await this.feldText(name, 'AssignedBy');
     await this.feldDatum(name, 'AssignedDate');
     await this.ensureRolesListPermissions(name);
-    return { isNewlyCreated: true };
+    return { isNewlyCreated: true, status };
   }
 
   /**
@@ -560,30 +839,56 @@ export class SharePointService {
       const has = d.HasUniqueRoleAssignments ?? d.d?.HasUniqueRoleAssignments;
       if (has) return;
 
-      await this._post(`${this.list(listName)}/breakroleinheritance(copyRoleAssignments=false,clearSubscopes=true)`, {});
+      // Nur wer Listen verwalten darf, kappt die Vererbung. Diese Funktion läuft
+      // bei JEDEM Start jeder Person, die die Rollenliste lesen kann; erbt sie
+      // (der Rechte-Schritt bei der Installation ist gescheitert), löste sonst
+      // jeder Nutzer aussichtslose Schreibanfragen aus — und ein Site-Owner, der
+      // in der App nur „User" ist, vergäbe sich beim Start selbst Full Control auf
+      // der Rollenliste, ohne dass es eine Rolle gibt (Review 29.09.2026).
+      if (!(await this.kannRechteVerwalten())) return;
 
-      const owners = await this._sp.get(
-        `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
-        SPHttpClient.configurations.v1,
-      );
-      if (owners.ok) {
-        const od = await owners.json();
-        const ownerId = od.Id ?? od.d?.Id;
-        if (ownerId) {
-          await this._post(
-            `${this.list(listName)}/roleassignments/addroleassignment(principalid=${ownerId}, roledefid=${ROLE_DEF.full})`,
-            {},
-          );
-        }
-      }
-      // Die anlegende Person braucht Full Control, sonst sperrt sie sich
-      // selbst aus der gerade erzeugten Liste aus.
+      // Ohne bekannte eigene Id gäbe es nach dem Kappen niemanden, dem man Full Control
+      // nachweisbar zurückgeben könnte — dann wird gar nicht erst gekappt.
       const me = this.context.pageContext.legacyPageContext?.userId;
-      if (me) {
-        await this._post(
-          `${this.list(listName)}/roleassignments/addroleassignment(principalid=${me}, roledefid=${ROLE_DEF.full})`,
-          {},
+      if (!me) return;
+
+      // Reihenfolge nach dem Sicherheits-Review (29.09.2026, Fund 4): Vor dem Kappen
+      // steht fest, wer Owner ist; nach dem Kappen kommt die anlegende Person ZUERST
+      // (mit Nachlesen), dann die Owners. Bis v1.3 waren das zwei rohe POSTs ohne Prüfung
+      // von `ok` — schlug der Lesevorgang auf die Owners-Gruppe fehl oder scheiterten
+      // beide POSTs, stand die Liste ohne jede Zuweisung da, alle Rollenlesungen
+      // antworteten 403, und nur ein Site-Collection-Admin konnte helfen.
+      let ownerId = 0;
+      try {
+        const owners = await this._sp.get(
+          `${this.siteUrl}/_api/web/associatedownergroup?$select=Id`,
+          SPHttpClient.configurations.v1,
         );
+        if (owners.ok) {
+          const od = await owners.json();
+          ownerId = Number(od.Id ?? od.d?.Id) || 0;
+        }
+      } catch { /* ohne Owners-Gruppe wird nur die anlegende Person eingetragen */ }
+
+      const brk = await this._post(`${this.list(listName)}/breakroleinheritance(copyRoleAssignments=false,clearSubscopes=true)`, {});
+      if (!brk.ok) return;
+
+      // Die anlegende Person braucht Full Control, sonst sperrt sie sich selbst aus.
+      const ichOk = await this.grantVerified(this.list(listName), me, ROLE_DEF.full, 'ensureRolesListPermissions:me');
+      if (ownerId) await this.grantVerified(this.list(listName), ownerId, ROLE_DEF.full, 'ensureRolesListPermissions:owners');
+      if (!ichOk) {
+        // Nicht gesetzt oder nicht nachlesbar: die Vererbung zurückholen, statt eine Liste
+        // ohne Zugriff zu hinterlassen. Das Zurücksetzen darf nur, wer noch Rechte hat —
+        // scheitert es, steht die Warnung in der Konsole, und der Audit meldet die Lücke.
+        //
+        // Bewusste Abwägung (Gegenprüfung 29.09.2026): Bei einem nur nicht LESBAREN Ergebnis
+        // (429 beim Nachlesen) öffnet das die Liste kurz wieder für alle mit Schreibrecht auf der
+        // Site. Die Alternative — geschlossen lassen — kann eine Liste hinterlassen, die niemand
+        // mehr lesen kann (alle „User", keine Erstinstallation, nur ein Site-Collection-Admin hilft).
+        // Das Öffnen ist sichtbar („Rechte prüfen": Rollenliste erbt) und heilt sich beim nächsten
+        // Start einer Person mit „Manage Permissions" von selbst; die Aussperrung nicht.
+        console.warn('[AIUC] Rollenliste: Full Control der anlegenden Person ließ sich nicht bestätigen — die Vererbung wird zurückgeholt.');
+        await this._post(`${this.list(listName)}/resetroleinheritance`, {}).catch(() => undefined);
       }
     } catch (e) {
       console.warn('[AIUC] Rechte der Rollenliste konnten nicht gesetzt werden:', e);
@@ -599,24 +904,46 @@ export class SharePointService {
    */
   public async getRoles(): Promise<Array<{ Id: number; Title: string; UserName: string; Role: string; AssignedBy: string; AssignedDate: string }> | null> {
     this.lastRolesReadStatus = 0;
+    this.lastRolesReadCode = '';
+    type Zeile = { Id: number; Title: string; UserName: string; Role: string; AssignedBy: string; AssignedDate: string };
     try {
       // Auch hier ohne `$select` — aus demselben Grund wie bei den Use Cases.
       // Fehlt eine der Spalten, antwortet SharePoint mit HTTP 400, `getRoles`
       // liefert `null`, und die Person ist „User", obwohl sie Admin sein
       // sollte. Das war der Zustand auf dem Screenshot vom 10.09.2026.
-      const r = await this._sp.get(
-        `${this.list(LIST.roles)}/items?$top=500`,
-        SPHttpClient.configurations.v1,
-        { headers: { 'Accept': 'application/json;odata=nometadata' } },
-      );
-      this.lastRolesReadStatus = r.status;
-      if (!r.ok) {
-        this.lastReadError = await this.fehlertext(r);
-        console.warn(`[AIUC] Rollen lesen: HTTP ${r.status} — ${this.lastReadError}`);
-        return null;
+      //
+      // v1.3 (Fund 15): Mit Paging. `$top=500` liefert bei mehr Zeilen nur die
+      // ersten 500 — wer in Zeile 501 als Admin steht, war für die App „User",
+      // und der Audit meldete „geprüft, in Ordnung", ohne ihn gelesen zu haben.
+      // Der `nextLink` wird verfolgt; ist die Liste größer als der Lesepfad
+      // (5 000 Zeilen), ist das Ergebnis `null` mit Code — kein stiller
+      // Teil-Erfolg (`leseZuweisungen` macht es ebenso).
+      let url: string | null = `${this.list(LIST.roles)}/items?$top=500`;
+      const alle: Zeile[] = [];
+      let seiten = 0;
+      while (url) {
+        seiten++;
+        const r: SPHttpClientResponse = await this._sp.get(
+          url,
+          SPHttpClient.configurations.v1,
+          { headers: { 'Accept': 'application/json;odata=nometadata' } },
+        );
+        this.lastRolesReadStatus = r.status;
+        if (!r.ok) {
+          this.lastReadError = await this.fehlertext(r);
+          console.warn(`[AIUC] Rollen lesen: HTTP ${r.status} — ${this.lastReadError}`);
+          return null;
+        }
+        const d = await r.json();
+        ((d.value || []) as Zeile[]).forEach(z => alle.push(z));
+        url = d['odata.nextLink'] || d['@odata.nextLink'] || null;
+        if (url && (alle.length >= 5000 || seiten >= 10)) {
+          this.lastRolesReadCode = 'zu-gross';
+          console.warn(`[AIUC] Rollen lesen: mehr als ${alle.length} Zeilen — der Lesepfad ist gekappt, das Ergebnis gilt als NICHT lesbar.`);
+          return null;
+        }
       }
-      const d = await r.json();
-      return (d.value || []) as Array<{ Id: number; Title: string; UserName: string; Role: string; AssignedBy: string; AssignedDate: string }>;
+      return alle;
     } catch {
       return null;
     }
@@ -638,9 +965,22 @@ export class SharePointService {
     }
   }
 
-  public async updateRole(itemId: number, role: UserRole): Promise<boolean> {
+  /**
+   * Die Rolle einer Zeile ändern.
+   *
+   * v1.3 (Fund 18): Mit `assignedBy` schreibt derselbe MERGE auch `AssignedBy`
+   * und `AssignedDate` — die Zeile zeigt „Vergeben von … · Datum", und bei
+   * einer Erhöhung stand dort sonst weiter die Erstvergabe. Wer wann jemanden
+   * zum Admin gemacht hat, wäre nirgends zu finden.
+   */
+  public async updateRole(itemId: number, role: UserRole, assignedBy?: string): Promise<boolean> {
     try {
-      const r = await this._mergeItem(LIST.roles, itemId, { 'Role': rolleFuerSpeicher(role) });
+      const body: Record<string, unknown> = { 'Role': rolleFuerSpeicher(role) };
+      if (assignedBy !== undefined) {
+        body.AssignedBy = assignedBy;
+        body.AssignedDate = new Date().toISOString();
+      }
+      const r = await this._mergeItem(LIST.roles, itemId, body);
       return r.ok;
     } catch (e) {
       console.error('[AIUC] updateRole:', e);
@@ -662,27 +1002,68 @@ export class SharePointService {
   // Rechte vergeben und entziehen — spiegelbildlich
   // ===================================================================
 
+  /**
+   * Status der zuletzt gescheiterten `ensureuser`-Anfrage (0 = Ausnahme). Er
+   * trennt „dieses Konto gibt es nicht" (400/404/500) von „SharePoint hat nicht
+   * geantwortet" (0/429/503/504): Nur im ersten Fall ist eine Person, die auf
+   * den Listen nirgends steht, belegt ohne Rechte — im zweiten wissen wir es nicht.
+   */
+  private lastResolveStatus = 0;
+
+  private resolveUnklar(): boolean {
+    const s = this.lastResolveStatus;
+    return s === 0 || s === 429 || s === 503 || s === 504 || s === 408;
+  }
+
   private async resolveUserId(userEmail: string): Promise<number | null> {
     // `ensureuser` legt das Konto an, falls die Person die Site noch nie
     // besucht hat — deshalb nicht `siteusers/getbyemail`, das dann 404 liefert
     // (DEX v31.84). v1.3: Zweiter Versuch im Claims-Format wie in DEX; manche
     // Konten löst SharePoint nur so auf.
     const namen = [userEmail, `i:0#.f|membership|${userEmail}`];
+    this.lastResolveStatus = 0;
     for (let i = 0; i < namen.length; i++) {
       try {
         const r = await this._post(
           `${this.siteUrl}/_api/web/ensureuser`,
           { 'logonName': namen[i] },
         );
-        if (!r.ok) continue;
+        if (!r.ok) { this.lastResolveStatus = r.status; continue; }
         const d = await r.json();
         const id = d.d?.Id ?? d.Id;
         if (typeof id === 'number') return id;
       } catch {
+        this.lastResolveStatus = 0;
         // nächster Versuch
       }
     }
     return null;
+  }
+
+  /** Die Id des angemeldeten Kontos auf DIESER Site (0 = unbekannt — dann gilt nichts als „ich"). */
+  private meineId(): number {
+    const id = Number(this.context.pageContext.legacyPageContext?.userId);
+    return isNaN(id) || id <= 0 ? 0 : id;
+  }
+
+  /**
+   * Ist diese Adresse — in irgendeiner Schreibweise — die angemeldete Person?
+   *
+   * v1.3 (Review-Fund 4): Der Selbstschutz verglich bis dahin nur die
+   * ADRESS-ZEICHENKETTE (`isCurrentUser`: `user.email` und die Adresse im
+   * `loginName`). Steht dieselbe Person zusätzlich unter einem Alias in der
+   * Rollenliste — genau der Fall, den „Rechte prüfen" als „andere
+   * Schreibweise" meldet —, lösen beide Adressen zum SELBEN Konto auf, und der
+   * Entzug nahm dem Admin die eigene Zuweisung (Full Control auf der
+   * Rollenliste); beim nächsten Laden: 403, ausgesperrt. Deshalb zählt zuletzt
+   * das AUFGELÖSTE Konto. `null` = nicht auflösbar (dann weiß man es nicht; die
+   * Entzugspfade prüfen die Id noch einmal selbst).
+   */
+  public async istMeinKonto(email: string): Promise<boolean | null> {
+    if (isCurrentUser(this.context, email)) return true;
+    const id = await this.resolveUserId(email);
+    if (!id) return null;
+    return id === this.meineId();
   }
 
   /**
@@ -691,9 +1072,14 @@ export class SharePointService {
    * Ein `addroleassignment`-POST allein ist keine Vergabe: Ein 429 kostet das
    * Recht still, und es faellt erst auf, wenn jemand seine Kachel vermisst.
    * Full Control deckt jedes niedrigere Recht ab, deshalb zaehlt es beim
-   * Nachlesen mit.
+   * Nachlesen mit — das bleibt so.
+   *
+   * `exakt`: Full Control zählt NICHT als Deckung, gelesen wird genau diese
+   * Stufe. Das braucht nur der Rückbau (`reduziereListe`): Wer von Full Control
+   * auf Lesen zurückgestuft wird, muss Lesen wirklich als EIGENE Stufe tragen,
+   * sonst bliebe nach dem Entzug von Full Control nichts übrig.
    */
-  private async grantVerified(base: string, userId: number, roleDefId: number, label: string): Promise<boolean> {
+  private async grantVerified(base: string, userId: number, roleDefId: number, label: string, exakt = false): Promise<boolean> {
     const sleep = (ms: number): Promise<void> => new Promise(res => setTimeout(res, ms));
     const verify = async (): Promise<boolean> => {
       try {
@@ -706,7 +1092,7 @@ export class SharePointService {
         const d = await chk.json();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ids: number[] = ((d.value || d.d?.results || []) as any[]).map(b => Number(b.Id));
-        return ids.indexOf(roleDefId) >= 0 || ids.indexOf(ROLE_DEF.full) >= 0;
+        return ids.indexOf(roleDefId) >= 0 || (!exakt && ids.indexOf(ROLE_DEF.full) >= 0);
       } catch { return false; }
     };
 
@@ -728,112 +1114,218 @@ export class SharePointService {
     return false;
   }
 
-  /** Leserecht auf der Rollenliste — ohne das ist jede Rolle wirkungslos. */
-  public async grantReadOnRolesList(userEmail: string): Promise<boolean> {
-    const id = await this.resolveUserId(userEmail);
-    if (!id) return false;
-    return this.grantVerified(this.list(LIST.roles), id, ROLE_DEF.read, 'grantReadOnRolesList');
+  private sollFuer(key: RechteListe): RechteSoll {
+    return RECHTE_SOLL.filter(x => x.key === key)[0];
   }
 
-  /** Vollzugriff auf der Rollenliste — nur fuer Admins. */
-  public async grantFullControlOnRolesList(userEmail: string): Promise<boolean> {
-    const id = await this.resolveUserId(userEmail);
-    if (!id) return false;
-    return this.grantVerified(this.list(LIST.roles), id, ROLE_DEF.full, 'grantFullControlOnRolesList');
+  /** Der Code für „diese Stufe auf dieser Liste konnte nicht gesetzt werden". */
+  private codeFuer(key: RechteListe, stufe: number): RechteCode {
+    const name = stufe === ROLE_DEF.full ? 'full' : stufe === ROLE_DEF.edit ? 'edit' : stufe === ROLE_DEF.contribute ? 'contribute' : 'read';
+    return `${key}:${name}` as RechteCode;
   }
 
-  /** Use Case Organizer duerfen Use Cases pflegen: Edit auf der Use-Case-Liste. */
-  public async grantOrganizerPermissions(userEmail: string): Promise<string[]> {
-    const fehlend: string[] = [];
-    const id = await this.resolveUserId(userEmail);
-    if (!id) return ['Person nicht aufloesbar'];
-    // v1.3: Eine Liste, die noch von der Site erbt, nimmt keine eigene
-    // Zuweisung an — der POST scheitert, oder das Nachlesen findet nichts. DEX
-    // ruft dasselbe vor jeder Vergabe (`ensureListHasUniquePermissions`). Das
-    // Ergebnis zählt hier nicht: Ob es geklappt hat, sagt `grantVerified`.
-    await this.ensureListeEigeneRechte(LIST.useCases);
-    await this.ensureListeEigeneRechte(LIST.log);
-    if (!(await this.grantVerified(this.list(LIST.useCases), id, ROLE_DEF.edit, 'grantOrganizer/useCases'))) {
-      fehlend.push('Use-Case-Liste (Bearbeiten)');
-    }
-    if (!(await this.grantVerified(this.list(LIST.log), id, ROLE_DEF.contribute, 'grantOrganizer/log'))) {
-      fehlend.push('Protokoll (Beitragen)');
+  /** Rechte auf den angegebenen Listen für eine schon aufgelöste Person — je Recht mit Nachlesen. */
+  private async grantListRights(id: number, rolle: UserRole, keys: RechteListe[]): Promise<RechteCode[]> {
+    const fehlend: RechteCode[] = [];
+    for (let i = 0; i < RECHTE_SOLL.length; i++) {
+      const s = RECHTE_SOLL[i];
+      if (keys.indexOf(s.key) < 0) continue;
+      // Die Rollenliste hat ihre eigenen Rechte seit dem Anlegen (Owners, sonst
+      // niemand); die anderen zwei erben noch — sie brauchen erst eigene.
+      if (s.key !== 'roles') await this.ensureListeEigeneRechte(s.liste);
+      const need = rolle === 'Admin' ? s.admin : s.organizer;
+      if (!(await this.grantVerified(this.list(s.liste), id, need, `grant/${s.key}`))) fehlend.push(this.codeFuer(s.key, need));
     }
     return fehlend;
   }
 
   /**
-   * Eine direkte Zuweisung entfernen und NACHLESEN.
-   *
-   * Der DELETE-Status traegt nicht: SharePoint antwortet ohne vorhandene
-   * Zuweisung mit 404 ODER 500. Erfolg heisst deshalb „der Principal steht
-   * danach nicht mehr dran", nicht „der Aufruf war 200".
+   * Die vollständige Vergabe zur Rolle: Rollenliste, Use-Case-Liste, Protokoll —
+   * je Recht nachgelesen. Rückgabe: was NICHT gesetzt werden konnte (Codes).
+   * `User` bekommt nichts.
    */
-  private async revokeVerified(base: string, userEmail: string, label: string): Promise<boolean> {
+  public async grantRoleRights(userEmail: string, rolle: UserRole): Promise<RechteCode[]> {
+    if (rolle === 'User') return [];
     const id = await this.resolveUserId(userEmail);
-    if (!id) return false;
-    try {
-      await this._post(`${base}/roleassignments/removeroleassignment(principalid=${id}, roledefid=${ROLE_DEF.full})`, {}).catch(() => undefined);
-      await this._delete(`${base}/roleassignments/getbyprincipalid(${id})`).catch(() => undefined);
-      const chk = await this._sp.get(
-        `${base}/roleassignments/getbyprincipalid(${id})/roledefinitionbindings?$select=Id`,
-        SPHttpClient.configurations.v1,
-        { headers: { 'Accept': 'application/json;odata=nometadata' } },
-      );
-      if (!chk.ok) {
-        // v1.3: Nur 404 und 500 heißen „keine Zuweisung mehr da" — SharePoint
-        // antwortet so, wenn der Principal nicht (mehr) in der Liste steht. Ein
-        // 403, 429 oder 503 heißt: NICHT gelesen. Bis v1.2 stand hier
-        // bedingungslos `true`, ein Lesefehler galt damit als gelungener Entzug
-        // (dieselbe Verwechslung wie „leer" und „nicht lesbar").
-        if (chk.status === 404 || chk.status === 500) return true;
-        console.warn(`[AIUC] ${label}: Entzug für ${userEmail} nicht prüfbar (HTTP ${chk.status}) — gilt als NICHT entzogen.`);
-        return false;
-      }
-      const d = await chk.json();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const ids: number[] = ((d.value || d.d?.results || []) as any[]).map(b => Number(b.Id));
-      if (ids.length === 0) return true;
-      console.warn(`[AIUC] ${label}: ${userEmail} hat auf ${base} weiterhin Rechte (${ids.join(', ')}).`);
-      return false;
-    } catch {
-      return false;
+    if (!id) return ['konto'];
+    return this.grantListRights(id, rolle, ['roles', 'useCases', 'log']);
+  }
+
+  /** Leseversuch der Zuweisungen mit EINER Wiederholung nach kurzer Pause — außer bei 401/403/404, die nichts ändert. */
+  private async leseZuweisungenGewiss(listName: string): Promise<ListenZuweisungen | null> {
+    const z = await this.leseZuweisungen(listName);
+    if (z) return z;
+    const f = this.lastRightsReadFehler;
+    if (f && f.code === 'http' && (f.status === 401 || f.status === 403 || f.status === 404)) return null;
+    await new Promise<void>(res => setTimeout(res, 1500));
+    return this.leseZuweisungen(listName);
+  }
+
+  /** Die Konten, auf die `em` (klein, getrimmt) in dieser Liste zeigt: das aufgelöste Konto plus jedes, das dort unter dieser Adresse steht. */
+  private kontenAufListe(z: ListenZuweisungen, em: string, id: number | null): number[] {
+    const out: number[] = [];
+    if (id) out.push(id);
+    z.adressenZuId.forEach((adressen, pid) => {
+      if (adressen.indexOf(em) >= 0 && out.indexOf(pid) < 0) out.push(pid);
+    });
+    return out;
+  }
+
+  /** Stufen ohne „Limited Access" — das hängt SharePoint von selbst an und ist kein Recht auf der Liste. */
+  private echteStufen(ids: number[] | undefined): number[] {
+    return (ids || []).filter(x => x !== LIMITED_ACCESS);
+  }
+
+  /**
+   * Eine direkte Zuweisung auf EINER Liste ganz entfernen und NACHLESEN.
+   *
+   * Erfolg heißt „nachgelesen steht das Konto nicht mehr auf der Liste" — nicht
+   * „der Aufruf war 200". Früher las ein `getbyprincipalid/roledefinitionbindings`
+   * nach, und ein 404 ODER 500 galt als „Zuweisung weg" (Fund 16): 500 ist auch
+   * das, was SharePoint bei einer echten Störung liefert, ein DELETE, der nicht
+   * durchging, plus ein 500 beim Kontrolllesen ergab „Entzug bestätigt". Jetzt
+   * belegt die GELESENE Zuweisungsliste der Liste das Fehlen (bei einem
+   * Lesefehler einmal nach kurzer Pause erneut, dann `lesefehler`).
+   *
+   * Eine Liste, die noch von der Site erbt, trägt nichts, was die App vergeben
+   * hätte — dort gibt es nichts zu entziehen.
+   */
+  private async entzieheListe(key: RechteListe, email: string, id: number | null): Promise<EntzugsCode> {
+    const s = this.sollFuer(key);
+    const base = this.list(s.liste);
+    const em = (email || '').trim().toLowerCase();
+    const z = await this.leseZuweisungenGewiss(s.liste);
+    if (!z) return 'lesefehler';
+    if (!z.eigene) return 'ok';
+    const konten = this.kontenAufListe(z, em, id);
+    // Nichts unter dieser Adresse und nicht aufgelöst: Ist das Auflösen nur
+    // an einer Drosselung gescheitert, ist es NICHT belegt (Alias-Konten
+    // fielen sonst durch); war das Konto nur unbekannt (ausgeschieden), gibt
+    // es nichts zu entziehen — sonst ließe sich die Zeile nie mehr entfernen.
+    if (konten.length === 0) return id === null && this.resolveUnklar() ? 'konto' : 'ok';
+    const meine = this.meineId();
+    if (meine && konten.indexOf(meine) >= 0) return 'selbst';
+    // Nur löschen, was dort wirklich steht: Ein DELETE auf eine nicht vorhandene
+    // Zuweisung beantwortet SharePoint mit 404/500 — eine rote Zeile in der
+    // Konsole für nichts (und bei jeder Person ohne Rechte dreimal).
+    const vorhanden = konten.filter(k => z.nachId.has(k));
+    if (vorhanden.length === 0) return 'ok';
+
+    for (let i = 0; i < vorhanden.length; i++) {
+      await this._delete(`${base}/roleassignments/getbyprincipalid(${vorhanden[i]})`).catch(() => undefined);
     }
+    const danach = await this.leseZuweisungenGewiss(s.liste);
+    if (!danach) return 'lesefehler';
+    const rest = vorhanden.filter(k => this.echteStufen(danach.nachId.get(k)).length > 0);
+    if (rest.length === 0) return 'ok';
+    console.warn(`[AIUC] revoke/${key}: ${email} hat auf ${base} weiterhin Rechte (Konto ${rest.join(', ')}).`);
+    return 'offen';
+  }
+
+  /**
+   * Auf einer Liste nur die ÜBERZÄHLIGEN Stufen entziehen (Review-Fund 9).
+   *
+   * `behalten` = die Stufe, die bleiben muss (Organizer: `s.organizer`), oder
+   * `null` = nichts soll bleiben. Reihenfolge, damit ein Fehler Richtung WENIGER
+   * Zugriff scheitert und nie zu „nichts mehr": erst die benötigte Stufe
+   * sicherstellen (STRIKT als eigene Stufe — Full Control zählt hier nicht),
+   * dann mit `removeroleassignment(roledefid = überzählige Stufe)` genau die
+   * überzähligen entfernen, dann nachlesen. Früher wurde die GANZE Zuweisung
+   * gelöscht und Lesen danach neu vergeben; scheiterte die Rückvergabe, stand
+   * dort „nicht entzogen", obwohl der Entzug gelungen war und die Person auf
+   * der Rollenliste gar nichts mehr hatte.
+   */
+  private async reduziereListe(key: RechteListe, email: string, id: number | null, behalten: number | null): Promise<'ok' | 'lesenFehlt' | 'lesefehler' | 'offen' | 'selbst'> {
+    const s = this.sollFuer(key);
+    const base = this.list(s.liste);
+    const em = (email || '').trim().toLowerCase();
+    const z = await this.leseZuweisungenGewiss(s.liste);
+    if (!z) return 'lesefehler';
+    if (!z.eigene) return 'ok';
+    const konten = this.kontenAufListe(z, em, id);
+    const meine = this.meineId();
+    if (meine && konten.indexOf(meine) >= 0) return 'selbst';
+    const ueber = (x: number): boolean =>
+      x !== LIMITED_ACCESS && (behalten === null || STUFEN.indexOf(x) > STUFEN.indexOf(behalten));
+
+    let ergebnis: 'ok' | 'lesenFehlt' | 'lesefehler' | 'offen' = 'ok';
+    for (let i = 0; i < konten.length; i++) {
+      const k = konten[i];
+      const stufen = z.nachId.get(k) || [];
+      const ueberzaehlig = stufen.filter(ueber);
+      if (ueberzaehlig.length === 0) continue;
+      if (behalten !== null && stufen.indexOf(behalten) < 0) {
+        if (!(await this.grantVerified(base, k, behalten, `reduziere/${key}`, true))) { ergebnis = 'offen'; continue; }
+      }
+      for (let j = 0; j < ueberzaehlig.length; j++) {
+        await this._post(`${base}/roleassignments/removeroleassignment(principalid=${k}, roledefid=${ueberzaehlig[j]})`, {}).catch(() => undefined);
+      }
+      const danach = await this.leseZuweisungenGewiss(s.liste);
+      if (!danach) { ergebnis = 'lesefehler'; continue; }
+      const jetzt = danach.nachId.get(k) || [];
+      if (jetzt.filter(ueber).length > 0) { ergebnis = 'offen'; continue; }
+      if (behalten !== null && jetzt.indexOf(behalten) < 0 && ergebnis === 'ok') ergebnis = 'lesenFehlt';
+    }
+    return ergebnis;
+  }
+
+  /** Das schlimmere von zwei Entzugs-Ergebnissen (`ok` < `konto` < `lesefehler` < `offen`). */
+  private schlimmer(a: EntzugsCode, b: EntzugsCode): EntzugsCode {
+    const rang = ['ok', 'konto', 'lesefehler', 'offen'];
+    return rang.indexOf(b) > rang.indexOf(a) ? b : a;
   }
 
   /**
    * Alle direkten Rechte einer Person entziehen.
    *
-   * Selbstschutz: Die angemeldete Person entzieht sich nicht selbst — ein
-   * Admin, der die Rollenverwaltung an sich ausprobiert, kaeme sonst nicht
-   * mehr an die Liste (DEX v30.67).
+   * Selbstschutz über das AUFGELÖSTE Konto (Fund 4): Die angemeldete Person
+   * entzieht sich nicht selbst — auch nicht über einen Alias in der Rollenliste
+   * (DEX v30.67: sonst kaeme ein Admin, der die Rollenverwaltung an sich
+   * ausprobiert, nicht mehr an die Liste). Das Ergebnis ist `selbst`, NICHT
+   * `ok`: Bis v1.3 antwortete der Selbstschutz mit `true` („erledigt"), obwohl
+   * nichts entzogen wurde.
    */
-  public async revokeAllAccess(userEmail: string): Promise<boolean> {
+  public async revokeAllAccess(userEmail: string): Promise<EntzugsCode> {
     if (isCurrentUser(this.context, userEmail)) {
       console.warn(`[AIUC] Rechte von ${userEmail} werden NICHT entzogen — das ist die angemeldete Person (Selbstschutz).`);
-      return true;
+      return 'selbst';
     }
-    const a = await this.revokeVerified(this.list(LIST.roles), userEmail, 'revoke/roles');
-    const b = await this.revokeVerified(this.list(LIST.useCases), userEmail, 'revoke/useCases');
-    const c = await this.revokeVerified(this.list(LIST.log), userEmail, 'revoke/log');
-    return a && b && c;
+    const id = await this.resolveUserId(userEmail);
+    if (id && id === this.meineId()) {
+      console.warn(`[AIUC] Rechte von ${userEmail} werden NICHT entzogen — die Adresse löst zum eigenen Konto auf (Selbstschutz).`);
+      return 'selbst';
+    }
+    let ergebnis: EntzugsCode = 'ok';
+    for (let i = 0; i < RECHTE_SOLL.length; i++) {
+      const r = await this.entzieheListe(RECHTE_SOLL[i].key, userEmail, id);
+      if (r === 'selbst') return 'selbst';
+      ergebnis = this.schlimmer(ergebnis, r);
+    }
+    return ergebnis;
   }
 
   /**
-   * v1.3: Nur die direkte Zuweisung auf der ROLLENLISTE entziehen.
-   *
-   * Der Fall: Herabstufung Admin → Organizer. `addroleassignment` ist ADDITIV —
-   * Read auf der Rollenliste käme NEBEN das bestehende Full Control, und der
-   * frühere Admin könnte die Liste weiter bearbeiten und sich selbst wieder
-   * hochstufen (DEX v30.67). Deshalb erst dieser Entzug, dann Read vergeben.
-   * Selbstschutz wie bei `revokeAllAccess`.
+   * v1.3 (Fund 2/9): Rechte auf das Maß einer niedrigeren Rolle zurückführen,
+   * BEVOR die Zeile geändert wird — Admin → Organizer: auf allen drei Listen
+   * die Organizer-Stufe eigenständig sicherstellen und alles darüber entziehen;
+   * nach User: alles entziehen. Ist das Ergebnis nicht `ok`, bleibt die Zeile
+   * unverändert („nichts wurde geändert"): im Zweifel scheitert es Richtung
+   * WENIGER Zugriff, nie Richtung Rechte ohne Zeile.
    */
-  public async revokeRolesListAccess(userEmail: string): Promise<boolean> {
-    if (isCurrentUser(this.context, userEmail)) {
-      console.warn(`[AIUC] Rollenliste: Rechte von ${userEmail} werden NICHT entzogen — das ist die angemeldete Person (Selbstschutz).`);
-      return true;
+  public async reduziereRechte(userEmail: string, rolle: 'Organizer' | 'User'): Promise<EntzugsCode> {
+    if (rolle === 'User') return this.revokeAllAccess(userEmail);
+    if (isCurrentUser(this.context, userEmail)) return 'selbst';
+    const id = await this.resolveUserId(userEmail);
+    if (!id) return 'konto';
+    if (id === this.meineId()) return 'selbst';
+    let ergebnis: EntzugsCode = 'ok';
+    for (let i = 0; i < RECHTE_SOLL.length; i++) {
+      const s = RECHTE_SOLL[i];
+      const r = await this.reduziereListe(s.key, userEmail, id, s.organizer);
+      if (r === 'selbst') return 'selbst';
+      ergebnis = this.schlimmer(ergebnis, r === 'lesenFehlt' || r === 'offen' ? 'offen' : r);
     }
-    return this.revokeVerified(this.list(LIST.roles), userEmail, 'revoke/roles');
+    return ergebnis;
   }
 
   // ===================================================================
@@ -842,8 +1334,22 @@ export class SharePointService {
 
   /** HTTP-Status der letzten Personensuche (0 = Ausnahme oder nie gesucht). */
   public lastPersonSearchStatus = 0;
-  /** Warum das letzte Rechte-Lesen scheiterte — Klartext für die Meldung in der App. */
-  public lastRightsReadError = '';
+  /**
+   * Warum das letzte Rechte-Lesen scheiterte — als CODE (Liste, Art, Status),
+   * nicht als Satz: Die Oberfläche formuliert zweisprachig mit `t()` (Fund 19).
+   */
+  public lastRightsReadFehler: LeseFehler | null = null;
+  /**
+   * Zähler der Personensuche (Fund 20). Jede neue Suche überholt die davor; deren
+   * Antworten werden verworfen und dürfen `lastPersonSearchStatus` nicht mehr
+   * überschreiben.
+   */
+  private _sucheNr = 0;
+
+  /** Laufende Suchen für überholt erklären — z. B. beim Verlassen der Seite. */
+  public sucheAbbrechen(): void {
+    this._sucheNr++;
+  }
 
   /**
    * Personensuche über den People-Picker von SharePoint — derselbe Weg wie
@@ -862,6 +1368,7 @@ export class SharePointService {
    * Schreibweisen der Eingabe PARALLEL, Treffer über die Adresse entdoppelt.
    */
   public async searchUsers(query: string, includeInternational = false): Promise<PersonenSuche | null> {
+    const nr = ++this._sucheNr;
     this.lastPersonSearchStatus = 0;
     const roh = (query || '').trim();
     if (roh.length < 2) return { treffer: [], ausgeblendet: 0 };
@@ -910,7 +1417,10 @@ export class SharePointService {
 
     const antworten = await Promise.all(varianten.map(async (variante): Promise<{ ok: boolean; status: number; eintraege: PickerEintrag[] }> => {
       try {
-        const r = await this._post(
+        // Nicht wiederholend (Fund 20): Das ist ein LESEN, das nur als POST
+        // geschickt wird. Über `_post` hätte jede überholte Suche ihre bis zu
+        // zwei Wiederholungen mit Retry-After (bis 45 s) zu Ende gewartet.
+        const r = await this._postEinmal(
           `${this.siteUrl}/_api/SP.UI.ApplicationPages.ClientPeoplePickerWebServiceInterface.clientPeoplePickerSearchUser`,
           {
             'queryParams': {
@@ -935,6 +1445,10 @@ export class SharePointService {
       }
     }));
 
+    // Überholt: Eine neuere Suche läuft. Diese Antworten gehören niemandem mehr
+    // und dürfen den Status der neueren nicht überschreiben.
+    if (nr !== this._sucheNr) return { treffer: [], ausgeblendet: 0 };
+
     const gescheitert = antworten.filter(a => !a.ok);
     if (gescheitert.length === antworten.length) {
       this.lastPersonSearchStatus = gescheitert[0].status;
@@ -945,10 +1459,7 @@ export class SharePointService {
 
     const istDeloitte = (mail: string): boolean => {
       const at = mail.lastIndexOf('@');
-      // „deloitte" direkt am Anfang der Domain oder eines Labels: deckt
-      // deloitte.com, deloitte.at, deloitteCE.com und Subdomains ab, aber keine
-      // fremden Domains, die nur den Namen enthalten.
-      return at >= 0 && /(^|\.)deloitte[a-z0-9-]*\./.test(mail.slice(at + 1));
+      return at >= 0 && istDeloitteDomain(mail.slice(at + 1));
     };
 
     const gesehen: string[] = [];
@@ -1010,6 +1521,13 @@ export class SharePointService {
    * eigene Rechte OHNE die Kopie haben (Owners, sonst niemand);
    * `ensureRolesListPermissions` macht das.
    *
+   * **Nebenwirkung, die man kennen muss:** Was danach am WEB vergeben wird — eine
+   * neue AD-Gruppe, „Everyone except external users", eine neu geteilte Site —,
+   * erreicht diese Liste NICHT mehr. Neue Leser müssen dann auf der Liste selbst
+   * eingetragen werden. Das ist gewollt (eine Liste nimmt sonst keine Zuweisung
+   * an einzelne Personen an); die Rechte-Matrix (Kategorie „SharePoint") und die
+   * README sagen es ebenfalls.
+   *
    * true = die Liste hat danach eigene Rechte.
    */
   private async ensureListeEigeneRechte(listName: string): Promise<boolean> {
@@ -1033,58 +1551,101 @@ export class SharePointService {
   /**
    * Alle Zuweisungen EINER Liste lesen — dem `nextLink` folgend.
    *
-   * `null` = nicht lesbar (Grund in `lastRightsReadError`). Auch eine
+   * `null` = nicht lesbar (Grund in `lastRightsReadFehler`). Auch eine
    * abgeschnittene Antwort (mehr als 20 Seiten) ist `null`: Ein gekappter
    * Lauf darf nie „steht nicht mehr drin" bedeuten.
+   *
+   * Personen (PrincipalType 1) landen in `nachAdresse`/`nachId`; SharePoint-
+   * Gruppen (PrincipalType 8) in `gruppen` — der Audit zählt ihre Stufen als
+   * Deckung („über Gruppe gedeckt"), statt „Rechte fehlen" zu melden.
    */
   private async leseZuweisungen(listName: string): Promise<ListenZuweisungen | null> {
     const base = this.list(listName);
     const kopf = { headers: { 'Accept': 'application/json;odata=nometadata' } };
+    const liste: RechteListe | 'rollen' = RECHTE_SOLL.filter(x => x.liste === listName)[0]?.key ?? 'rollen';
+    this.lastRightsReadFehler = null;
     try {
       const flag = await this._sp.get(`${base}?$select=HasUniqueRoleAssignments`, SPHttpClient.configurations.v1, kopf);
-      if (!flag.ok) { this.lastRightsReadError = `${listName}: HTTP ${flag.status}`; return null; }
+      if (!flag.ok) { this.lastRightsReadFehler = { code: 'http', liste, status: flag.status }; return null; }
       const fd = await flag.json();
       const out: ListenZuweisungen = {
         eigene: !!(fd.HasUniqueRoleAssignments ?? fd.d?.HasUniqueRoleAssignments),
         nachAdresse: new Map<string, number[]>(),
         nachId: new Map<number, number[]>(),
         adresseZuId: new Map<number, string>(),
+        adressenZuId: new Map<number, string[]>(),
+        gruppen: [],
       };
 
       let url: string | null = `${base}/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Email,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id&$top=5000`;
       let seiten = 0;
       while (url && seiten < 20) {
         seiten++;
-        const r = await this._sp.get(url, SPHttpClient.configurations.v1, kopf);
-        if (!r.ok) { this.lastRightsReadError = `${listName}: HTTP ${r.status}`; return null; }
+        const r: SPHttpClientResponse = await this._sp.get(url, SPHttpClient.configurations.v1, kopf);
+        if (!r.ok) { this.lastRightsReadFehler = { code: 'http', liste, status: r.status }; return null; }
         const d = await r.json();
         const zeilen = (d.value || d.d?.results || []) as SpZuweisung[];
         zeilen.forEach(z => {
           const m = z.Member || {};
-          // Gruppen tragen keine Person — nur ausschließen, wenn SharePoint es
-          // ausdrücklich sagt (PrincipalType 8 = SharePoint-Gruppe). Fehlt das
-          // Feld, zählt der Eintrag: sonst sähe jede Person „ohne Recht" aus.
-          if (typeof m.PrincipalType === 'number' && m.PrincipalType !== 1) return;
           const bindings = Array.isArray(z.RoleDefinitionBindings) ? z.RoleDefinitionBindings : (z.RoleDefinitionBindings?.results || []);
           const ids = bindings.map(b => Number(b.Id));
+          const pid = Number(z.PrincipalId || 0);
+          // SharePoint-Gruppe (Owners, Members …): trägt keine Person, deckt aber
+          // Rechte ihrer Mitglieder ab.
+          if (m.PrincipalType === 8) {
+            if (pid > 0) out.gruppen.push({ id: pid, stufen: ids });
+            return;
+          }
+          // Andere Nicht-Personen (Sicherheitsgruppen) nur ausschließen, wenn
+          // SharePoint es ausdrücklich sagt. Fehlt das Feld, zählt der Eintrag:
+          // sonst sähe jede Person „ohne Recht" aus.
+          if (typeof m.PrincipalType === 'number' && m.PrincipalType !== 1) return;
           const adressen: string[] = [];
           if (m.Email) adressen.push(String(m.Email).toLowerCase().trim());
           const lm = String(m.LoginName || '').toLowerCase().match(/[^|]+@[^|\s]+$/);
-          if (lm) adressen.push(lm[0].trim());
+          if (lm && adressen.indexOf(lm[0].trim()) < 0) adressen.push(lm[0].trim());
           adressen.forEach(a => out.nachAdresse.set(a, vereint(out.nachAdresse.get(a), ids)));
-          const pid = Number(z.PrincipalId || 0);
           if (pid > 0) {
             out.nachId.set(pid, vereint(out.nachId.get(pid), ids));
+            out.adressenZuId.set(pid, vereint2(out.adressenZuId.get(pid), adressen));
             if (adressen[0] && !out.adresseZuId.has(pid)) out.adresseZuId.set(pid, adressen[0]);
           }
         });
         url = d['odata.nextLink'] || d['@odata.nextLink'] || (d.d && d.d.__next) || null;
       }
-      if (url) { this.lastRightsReadError = `${listName}: mehr als ${seiten} Seiten Zuweisungen`; return null; }
+      if (url) { this.lastRightsReadFehler = { code: 'zu-gross', liste, status: 0 }; return null; }
       return out;
     } catch (e) {
-      this.lastRightsReadError = `${listName}: ${e instanceof Error ? e.message : 'Lesen gescheitert'}`;
+      this.lastRightsReadFehler = { code: 'ausnahme', liste, status: 0 };
       console.warn(`[AIUC] Zuweisungen von ${listName} nicht lesbar:`, e);
+      return null;
+    }
+  }
+
+  /** Die Mitglieder einer SharePoint-Gruppe der Site (Id und Adressen) — `null` = nicht lesbar. */
+  private async leseGruppenMitglieder(gruppenId: number): Promise<Array<{ id: number; adressen: string[] }> | null> {
+    try {
+      let url: string | null = `${this.siteUrl}/_api/web/sitegroups/getbyid(${gruppenId})/users?$select=Id,Email,LoginName,PrincipalType&$top=5000`;
+      const out: Array<{ id: number; adressen: string[] }> = [];
+      let seiten = 0;
+      while (url && seiten < 5) {
+        seiten++;
+        const r: SPHttpClientResponse = await this._sp.get(url, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
+        if (!r.ok) return null;
+        const d = await r.json();
+        ((d.value || d.d?.results || []) as Array<{ Id?: number; Email?: string; LoginName?: string; PrincipalType?: number }>).forEach(u => {
+          if (typeof u.PrincipalType === 'number' && u.PrincipalType !== 1) return;
+          const adressen: string[] = [];
+          if (u.Email) adressen.push(String(u.Email).toLowerCase().trim());
+          const lm = String(u.LoginName || '').toLowerCase().match(/[^|]+@[^|\s]+$/);
+          if (lm && adressen.indexOf(lm[0].trim()) < 0) adressen.push(lm[0].trim());
+          out.push({ id: Number(u.Id || 0), adressen });
+        });
+        url = d['odata.nextLink'] || d['@odata.nextLink'] || null;
+      }
+      // Eine gekappte Mitgliederliste sagt nicht „nicht Mitglied".
+      return url ? null : out;
+    } catch {
       return null;
     }
   }
@@ -1097,30 +1658,37 @@ export class SharePointService {
    *
    * Gelesen werden die Zuweisungen der drei Listen EINMAL (drei Aufrufe, egal
    * bei wie vielen Personen); aufgelöst (`ensureuser`) wird nur, wenn nach der
-   * Adresse etwas fehlt. So kostet der Lauf bei 130 Zeilen ein paar Aufrufe
-   * statt Hunderter — die Drosselung ist das Risiko dieser Seite.
+   * Adresse etwas fehlt — oder wenn auf den Listen Konten stehen, die zu keiner
+   * Zeile passen (dann kann ein Alias darunter stecken). So kostet der Lauf bei
+   * 130 Zeilen ein paar Aufrufe statt Hunderter — die Drosselung ist das Risiko
+   * dieser Seite.
    *
-   * Drei Befunde, getrennt gemeldet:
+   * Vier Befunde, getrennt gemeldet:
    *  - `luecken`: Ein Recht fehlt, das die Rolle braucht.
+   *  - `ueberGruppe`: Das Recht steht nicht direkt da, sondern über eine
+   *    SharePoint-Gruppe (Owners/Members): gedeckt, keine Lücke (Fund 14).
    *  - `aliase`: Die Rechte sind da, aber unter einer anderen Schreibweise der
    *    Adresse (SMTP gegen UPN/Alias) — kein Fehler der Rechte, aber die Zeile
    *    in der Rollenliste stimmt nicht mit dem Konto überein. DEX v31.67: Ohne
    *    diese Trennung stand eine Person bei JEDEM Lauf als „Lücke" da und
    *    wurde jedes Mal „nachgesetzt".
    *  - `ueberschuss`: Mehr, als die Rolle vorsieht — ein Organizer mit mehr
-   *    als Lesen auf der Rollenliste (früherer Admin), oder eine Person mit
-   *    Rolle User, die noch direkte Rechte trägt. Nur auf Listen, die eigene
-   *    Berechtigungen haben: Auf einer vererbenden Liste stammen die Einträge
-   *    von der Site und gehören nicht der App.
+   *    als der Organizer-Stufe (Rollenliste: mehr als Lesen; Use Cases: mehr als
+   *    Bearbeiten; Protokoll: mehr als Beitragen — meist der Rest einer früheren
+   *    Admin-Rolle), oder eine Person mit Rolle User, die noch direkte Rechte
+   *    trägt. Nur auf Listen, die eigene Berechtigungen haben: Auf einer
+   *    vererbenden Liste stammen die Einträge von der Site und gehören nicht der
+   *    App. Auch hier wird über das AUFGELÖSTE Konto gegen Alias-Zuweisungen
+   *    geprüft, nicht nur über die Adresse (Fund 14).
    *
-   * `null` = die Zuweisungen waren nicht lesbar; `lastRightsReadError` sagt,
+   * `null` = die Zuweisungen waren nicht lesbar; `lastRightsReadFehler` sagt,
    * welche Liste und warum. Das ist KEIN „alles in Ordnung".
    */
   public async auditRoleRights(
     zeilen: Array<{ email: string; name: string; rolle: UserRole }>,
     onProgress?: (done: number, total: number) => void,
   ): Promise<RechteBericht | null> {
-    this.lastRightsReadError = '';
+    this.lastRightsReadFehler = null;
     const zuw: Record<string, ListenZuweisungen> = {};
     for (let i = 0; i < RECHTE_SOLL.length; i++) {
       const z = await this.leseZuweisungen(RECHTE_SOLL[i].liste);
@@ -1129,33 +1697,89 @@ export class SharePointService {
     }
 
     const pause = (ms: number): Promise<void> => new Promise(res => setTimeout(res, ms));
+    const norm = (a: string): string => (a || '').toLowerCase().trim();
     // Die Adresse ist der Schlüssel, und in der Rollenliste kann sie zweimal
     // stehen; es gilt die erste Zeile (`RoleContext` nimmt ebenfalls die erste).
     const gesehen: string[] = [];
     const relevant = zeilen.filter(z => {
-      const em = (z.email || '').toLowerCase().trim();
+      const em = norm(z.email);
       if (!em || gesehen.indexOf(em) >= 0) return false;
       gesehen.push(em);
       return true;
     });
     const bericht: RechteBericht = {
-      geprueft: 0, ok: 0, okAdressen: [], luecken: [], ueberschuss: [], aliase: [],
+      geprueft: 0, ok: 0, okAdressen: [], luecken: [], ueberschuss: [], aliase: [], ueberGruppe: [], eigeneKonten: [],
       ohneAdresse: zeilen.filter(z => !(z.email || '').trim()).length,
+    };
+
+    // Konten, die auf den eigenen Listen etwas tragen, aber unter keiner Adresse
+    // einer Zeile stehen: Nur dort kann ein Alias stecken. Gibt es keine, spart
+    // sich der Lauf das Auflösen der Zeilen, die schon ohne Befund sind.
+    const zeilenAdressen = zeilen.map(z => norm(z.email)).filter(Boolean);
+    const fremde: number[] = [];
+    RECHTE_SOLL.forEach(s => {
+      const z = zuw[s.key];
+      if (!z.eigene) return;
+      z.nachId.forEach((stufen, pid) => {
+        if (this.echteStufen(stufen).length === 0 || fremde.indexOf(pid) >= 0) return;
+        const adr = z.adressenZuId.get(pid) || [];
+        // Ohne jede Adresse (App-Konten, Systemkonten) kann es kein Alias einer
+        // Person sein — und ein solches Konto würde sonst das Auflösen JEDER
+        // Zeile auslösen.
+        if (adr.length === 0 || adr.some(a => zeilenAdressen.indexOf(a) >= 0)) return;
+        fremde.push(pid);
+      });
+    });
+
+    const kontoCache: Record<string, number | null> = {};
+    const kontoVon = async (em: string, roh: string): Promise<number | null> => {
+      if (Object.prototype.hasOwnProperty.call(kontoCache, em)) return kontoCache[em];
+      const id = await this.resolveUserId(roh);
+      kontoCache[em] = id;
+      if (id && id === this.meineId() && !isCurrentUser(this.context, roh)) bericht.eigeneKonten.push(em);
+      await pause(150);
+      return id;
+    };
+    const gruppenCache: Record<number, Array<{ id: number; adressen: string[] }> | null> = {};
+    const mitglieder = async (gid: number): Promise<Array<{ id: number; adressen: string[] }> | null> => {
+      if (!Object.prototype.hasOwnProperty.call(gruppenCache, gid)) gruppenCache[gid] = await this.leseGruppenMitglieder(gid);
+      return gruppenCache[gid];
+    };
+    /** Deckt eine SharePoint-Gruppe der Liste dieses Recht — und ist die Person darin Mitglied? */
+    const ueberGruppeGedeckt = async (key: RechteListe, need: number, em: string, id: number | null): Promise<boolean> => {
+      const gruppen = zuw[key].gruppen;
+      for (let g = 0; g < gruppen.length; g++) {
+        if (!deckt(gruppen[g].stufen, need)) continue;
+        const m = await mitglieder(gruppen[g].id);
+        if (m && m.some(u => (id !== null && u.id === id) || u.adressen.indexOf(em) >= 0)) return true;
+      }
+      return false;
     };
 
     for (let i = 0; i < relevant.length; i++) {
       const z = relevant[i];
-      const em = z.email.toLowerCase().trim();
+      const em = norm(z.email);
       bericht.geprueft++;
-      const stufen = (key: RechteListe, id: number | null): number[] =>
-        vereint(zuw[key].nachAdresse.get(em), id ? zuw[key].nachId.get(id) : undefined);
+      let id: number | null = null;
+      let versucht = false;
+      const aufloesen = async (): Promise<number | null> => {
+        if (!versucht) { versucht = true; id = await kontoVon(em, z.email); }
+        return id;
+      };
+      const stufen = (key: RechteListe, konto: number | null): number[] =>
+        vereint(zuw[key].nachAdresse.get(em), konto ? zuw[key].nachId.get(konto) : undefined);
       let auffaellig = false;
 
       if (z.rolle === 'User') {
         // Wer nur „User" ist, braucht nichts — und trägt auch nichts mehr.
-        const uebrig = RECHTE_SOLL
-          .filter(s => zuw[s.key].eigene && stufen(s.key, null).filter(id => id !== LIMITED_ACCESS).length > 0)
+        const uebrigMit = (konto: number | null): RechteListe[] => RECHTE_SOLL
+          .filter(s => zuw[s.key].eigene && this.echteStufen(stufen(s.key, konto)).length > 0)
           .map(s => s.key);
+        let uebrig = uebrigMit(null);
+        if (uebrig.length === 0 && fremde.length > 0) {
+          const k = await aufloesen();
+          if (k) uebrig = uebrigMit(k);
+        }
         if (uebrig.length > 0) {
           bericht.ueberschuss.push({ email: z.email, name: z.name, rolle: z.rolle, listen: uebrig });
           auffaellig = true;
@@ -1164,33 +1788,50 @@ export class SharePointService {
         const braucht = (s: RechteSoll): number => (z.rolle === 'Admin' ? s.admin : s.organizer);
         let fehlt = RECHTE_SOLL.filter(s => !deckt(stufen(s.key, null), braucht(s)));
         let aufloesbar = true;
-        let id: number | null = null;
         if (fehlt.length > 0) {
-          id = await this.resolveUserId(z.email);
-          if (id) {
+          const k = await aufloesen();
+          if (k) {
             const vorher = fehlt.length;
-            const konto = id;
-            const rest = RECHTE_SOLL.filter(s => !deckt(stufen(s.key, konto), braucht(s)));
+            const rest = RECHTE_SOLL.filter(s => !deckt(stufen(s.key, k), braucht(s)));
             if (rest.length < vorher) {
-              const sp = zuw.roles.adresseZuId.get(konto) || zuw.useCases.adresseZuId.get(konto) || zuw.log.adresseZuId.get(konto) || '';
+              const sp = zuw.roles.adresseZuId.get(k) || zuw.useCases.adresseZuId.get(k) || zuw.log.adresseZuId.get(k) || '';
               if (sp && sp !== em) bericht.aliase.push({ name: z.name, email: z.email, spEmail: sp });
             }
             fehlt = rest;
           } else {
             aufloesbar = false;
           }
-          await pause(150);
+        }
+        // Was direkt fehlt, kann eine Gruppe der Liste decken (Owners, Members):
+        // dann ist es keine Lücke, und „Nachsetzen" würde nur ein redundantes
+        // Direktrecht danebenlegen (Fund 14).
+        if (fehlt.length > 0) {
+          const ueber: RechteListe[] = [];
+          const bleibt: RechteSoll[] = [];
+          for (let f = 0; f < fehlt.length; f++) {
+            if (await ueberGruppeGedeckt(fehlt[f].key, braucht(fehlt[f]), em, id)) ueber.push(fehlt[f].key);
+            else bleibt.push(fehlt[f]);
+          }
+          if (ueber.length > 0) bericht.ueberGruppe.push({ email: z.email, name: z.name, rolle: z.rolle, listen: ueber });
+          fehlt = bleibt;
         }
         if (fehlt.length > 0) {
           bericht.luecken.push({ email: z.email, name: z.name, rolle: z.rolle, fehlt: fehlt.map(s => s.key), kontoAufloesbar: aufloesbar });
           auffaellig = true;
         }
-        // Ein Organizer soll die Rollenliste LESEN, nicht bearbeiten. Mehr ist
+        // Ein Organizer soll die Rollenliste LESEN, nicht bearbeiten — und auf den
+        // anderen zwei Listen nicht mehr als Beitragen (seit v1.3; früher Edit). Mehr ist
         // meist der Rest einer früheren Admin-Rolle — und damit der Weg, sich
         // selbst wieder hochzustufen.
-        if (z.rolle === 'Organizer' && zuw.roles.eigene && deckt(stufen('roles', id), ROLE_DEF.contribute)) {
-          bericht.ueberschuss.push({ email: z.email, name: z.name, rolle: z.rolle, listen: ['roles'] });
-          auffaellig = true;
+        if (z.rolle === 'Organizer') {
+          const k = fremde.length > 0 ? await aufloesen() : id;
+          const ueberListen = RECHTE_SOLL
+            .filter(s => zuw[s.key].eigene && stufen(s.key, k).some(x => STUFEN.indexOf(x) > STUFEN.indexOf(s.organizer)))
+            .map(s => s.key);
+          if (ueberListen.length > 0) {
+            bericht.ueberschuss.push({ email: z.email, name: z.name, rolle: z.rolle, listen: ueberListen });
+            auffaellig = true;
+          }
         }
       }
       if (!auffaellig) { bericht.ok++; bericht.okAdressen.push(em); }
@@ -1205,10 +1846,13 @@ export class SharePointService {
    * (`grantVerified`). Die Person wird EINMAL aufgelöst, nicht je Liste.
    *
    * Vor der Vergabe bekommt die Liste eigene Berechtigungen, falls sie noch
-   * erbt (Use-Case-Liste, Protokoll: mit Kopie; Rollenliste: ohne — sie ist
-   * ausdrücklich nur für die Owners gedacht).
+   * erbt (Use-Case-Liste, Protokoll: mit Kopie — Nebenwirkung siehe
+   * `ensureListeEigeneRechte`; Rollenliste: ohne — sie ist ausdrücklich nur
+   * für die Owners gedacht).
    *
-   * Nur additiv. Was zu VIEL da ist, fasst dieser Schritt nicht an.
+   * Nur additiv. Was zu VIEL da ist, fasst dieser Schritt nicht an. Ob die
+   * Rolle noch stimmt, für die nachgesetzt wird, prüft der Aufrufer
+   * (`RoleContext.repairRoleRights`) — hier steht sie im Auftrag.
    */
   public async repairRoleRights(
     luecken: RechteLuecke[],
@@ -1252,37 +1896,68 @@ export class SharePointService {
 
   /**
    * „Überzählige Rechte entziehen": Nimmt einer Person auf den genannten Listen
-   * die direkte Zuweisung — und vergibt danach zurück, was ihre Rolle
-   * vorsieht (ein Organizer behält Lesen auf der Rollenliste).
+   * die überzähligen STUFEN — und lässt, was ihre Rolle vorsieht, durchgehend
+   * bestehen (ein Organizer behält Lesen auf der Rollenliste, Bearbeiten auf
+   * den Use Cases, Beitragen im Protokoll). Das benötigte Recht wird ZUERST
+   * sichergestellt, dann werden nur die überzähligen Stufen entfernt und
+   * nachgelesen (`reduziereListe`).
    *
-   * Rückgabe: die Listen, bei denen es NICHT geklappt hat. Leer = alles weg.
-   * Selbstschutz: für die angemeldete Person wird nichts entzogen (und sie
-   * steht dann als nicht erledigt in der Rückgabe, statt Erfolg zu behaupten).
+   * Drei getrennte Zustände je Liste (Fund 9), damit die Meldung stimmt:
+   *  - `entzogen`   — überzählige Rechte weg, das Vorgesehene steht noch.
+   *  - `lesenFehlt` — überzählige Rechte weg, aber das Vorgesehene fehlt jetzt
+   *    (nachgelesen): Der Entzug ist NICHT der Fehler, der Rest muss nachgesetzt werden.
+   *  - `offen`      — der Entzug ist nicht belegt (Rechte noch da, nicht lesbar,
+   *    Konto nicht auflösbar): nichts als erledigt behaupten.
+   *
+   * Selbstschutz über das aufgelöste Konto: für die angemeldete Person wird
+   * nichts entzogen (`selbst`, alle Listen `offen`).
    */
-  public async entzieheUeberschuss(email: string, rolle: UserRole, listen: RechteListe[]): Promise<RechteListe[]> {
+  public async entzieheUeberschuss(email: string, rolle: UserRole, listen: RechteListe[]): Promise<UeberschussErgebnis> {
+    const ergebnis: UeberschussErgebnis = { entzogen: [], lesenFehlt: [], offen: [], selbst: false, lesefehler: false };
     if (isCurrentUser(this.context, email)) {
       console.warn(`[AIUC] Überschüssige Rechte von ${email} werden NICHT entzogen — das ist die angemeldete Person (Selbstschutz).`);
-      return listen;
+      return { ...ergebnis, offen: listen.slice(), selbst: true };
     }
-    const fehler: RechteListe[] = [];
+    const id = await this.resolveUserId(email);
+    if (id && id === this.meineId()) {
+      console.warn(`[AIUC] Überschüssige Rechte von ${email} werden NICHT entzogen — die Adresse löst zum eigenen Konto auf (Selbstschutz).`);
+      return { ...ergebnis, offen: listen.slice(), selbst: true };
+    }
     for (let i = 0; i < listen.length; i++) {
-      const s = RECHTE_SOLL.filter(x => x.key === listen[i])[0];
+      const s = this.sollFuer(listen[i]);
       if (!s) continue;
-      if (!(await this.revokeVerified(this.list(s.liste), email, `ueberschuss/${s.key}`))) { fehler.push(s.key); continue; }
-      if (rolle === 'Organizer' && s.key === 'roles' && !(await this.grantReadOnRolesList(email))) fehler.push(s.key);
+      // Ein Admin trägt nie „Überschuss"; ein Organizer behält seine Stufe, ein
+      // User nichts.
+      const behalten = rolle === 'User' ? null : (rolle === 'Admin' ? s.admin : s.organizer);
+      const r = await this.reduziereListe(s.key, email, id, behalten);
+      if (r === 'ok') ergebnis.entzogen.push(s.key);
+      else if (r === 'lesenFehlt') ergebnis.lesenFehlt.push(s.key);
+      else if (r === 'selbst') return { ...ergebnis, offen: listen.slice(), entzogen: [], lesenFehlt: [], selbst: true };
+      else {
+        ergebnis.offen.push(s.key);
+        if (r === 'lesefehler') ergebnis.lesefehler = true;
+      }
     }
-    return fehler;
+    return ergebnis;
   }
 
   // ===================================================================
   // Use Cases
   // ===================================================================
 
-  public async ensureUseCaseList(): Promise<{ isNewlyCreated: boolean }> {
+  public ensureUseCaseList(): Promise<{ isNewlyCreated: boolean; status: ListenStatus }> {
+    return this.einmalig('useCases', () => this.ensureUseCaseListNeu());
+  }
+
+  private async ensureUseCaseListNeu(): Promise<{ isNewlyCreated: boolean; status: ListenStatus }> {
     const name = LIST.useCases;
-    const existed = await this.listExists(name);
-    if (!existed) {
-      await this.createList(name, 'Die Agent-Demos der AI Use Case Platform');
+    const status = await this.listStatus(name);
+    // Nur bei 404 anlegen; bei „unbekannt" (403, 429, 5xx) nichts schreiben
+    // und nichts nachziehen — ein Lesefehler ist keine fehlende Liste (Fund 11).
+    if (status === 'unbekannt') return { isNewlyCreated: false, status };
+    const existed = status === 'ja';
+    if (!existed && !(await this.createList(name, 'Die Agent-Demos der AI Use Case Platform'))) {
+      return { isNewlyCreated: false, status };
     }
 
     // Auch auf einer bestehenden Liste: fehlende Spalten nachziehen. Das ist
@@ -1319,18 +1994,23 @@ export class SharePointService {
       console.warn(`[AIUC] Diese Spalten fehlen auf ${name}: ${fehlend.join(', ')}`);
     }
 
-    return { isNewlyCreated: !existed };
+    return { isNewlyCreated: !existed, status };
   }
 
-  public async ensureLogList(): Promise<void> {
+  public ensureLogList(): Promise<ListenStatus> {
+    return this.einmalig('log', () => this.ensureLogListNeu());
+  }
+
+  private async ensureLogListNeu(): Promise<ListenStatus> {
     const name = LIST.log;
-    if (!(await this.listExists(name))) {
-      await this.createList(name, 'Aenderungsprotokoll der AI Use Case Platform');
-    }
+    const status = await this.listStatus(name);
+    if (status === 'unbekannt') return status;
+    if (status === 'nein' && !(await this.createList(name, 'Änderungsprotokoll der AI Use Case Platform'))) return status;
     await this.feldZahl(name, 'UseCaseId');
     await this.feldText(name, 'Aktion');
     await this.feldNote(name, 'Detail');
     await this.feldText(name, 'Wer');
+    return status;
   }
 
   private mapUseCase(row: SpUseCaseRow): UseCase {
@@ -1391,27 +2071,51 @@ export class SharePointService {
     this.lastUseCasesReadStatus = 0;
     this.lastReadError = '';
     try {
-      const r = await this._sp.get(
-        `${this.list(LIST.useCases)}/items?$top=500`,
-        SPHttpClient.configurations.v1,
-        { headers: { 'Accept': 'application/json;odata=nometadata' } },
-      );
-      this.lastUseCasesReadStatus = r.status;
-      if (!r.ok) {
-        this.lastReadError = await this.fehlertext(r);
-        console.warn(`[AIUC] Use Cases lesen: HTTP ${r.status} — ${this.lastReadError}`);
-        return null;
+      // Mit Paging, wie `getRoles`: `$top=500` allein lieferte ab Zeile 501 eine stille
+      // Teilliste mit Status ok. Ist die Liste größer als der Lesepfad (5 000 Zeilen),
+      // gilt das Ergebnis als NICHT lesbar — kein stiller Teil-Erfolg.
+      let url: string | null = `${this.list(LIST.useCases)}/items?$top=500`;
+      const alle: SpUseCaseRow[] = [];
+      let seiten = 0;
+      while (url) {
+        seiten++;
+        const r: SPHttpClientResponse = await this._sp.get(
+          url,
+          SPHttpClient.configurations.v1,
+          { headers: { 'Accept': 'application/json;odata=nometadata' } },
+        );
+        this.lastUseCasesReadStatus = r.status;
+        if (!r.ok) {
+          this.lastReadError = await this.fehlertext(r);
+          console.warn(`[AIUC] Use Cases lesen: HTTP ${r.status} — ${this.lastReadError}`);
+          return null;
+        }
+        const d = await r.json();
+        ((d.value || []) as SpUseCaseRow[]).forEach(z => alle.push(z));
+        url = d['odata.nextLink'] || d['@odata.nextLink'] || null;
+        if (url && (alle.length >= 5000 || seiten >= 10)) {
+          this.lastUseCasesReadStatus = 0;
+          this.lastReadError = `Mehr als ${alle.length} Use Cases — der Lesepfad ist gekappt.`;
+          console.warn(`[AIUC] ${this.lastReadError}`);
+          return null;
+        }
       }
-      const d = await r.json();
-      const rows = ((d.value || []) as SpUseCaseRow[]).map(row => this.mapUseCase(row));
+      const rows = alle.map(row => this.mapUseCase(row));
       rows.sort((a, b) => (a.reihenfolge - b.reihenfolge) || a.titel.localeCompare(b.titel, 'de'));
       return rows;
     } catch (e) {
+      // Status 0: Ein Fehler nach einer angenommenen Seite (200) soll nicht als „HTTP 200" neben
+      // der Fehlermeldung stehen.
+      this.lastUseCasesReadStatus = 0;
       this.lastReadError = String(e);
       return null;
     }
   }
 
+  /**
+   * Ein neues Feld hier heißt: auch in `SCHREIBBAR` in `utils/aenderungen.ts` eintragen — sonst
+   * schreibt `saveUseCase` es beim Ändern nie (dort wird nur Geändertes aus dieser Liste gesendet).
+   */
   private toRow(uc: Partial<UseCase>): Record<string, unknown> {
     // Kein `__metadata` mehr: Den Typ setzen `_postItem`/`_mergeItem`, und
     // zwar den, den die Liste selbst nennt (s. `entityType`).
@@ -1427,12 +2131,16 @@ export class SharePointService {
     if (uc.machbarkeit !== undefined) body.Machbarkeit = uc.machbarkeit === 'unbewertet' ? null : uc.machbarkeit;
     if (uc.demoTauglichkeit !== undefined) body.DemoTauglichkeit = uc.demoTauglichkeit === 'unbewertet' ? null : uc.demoTauglichkeit;
     if (uc.aufrufArt !== undefined) body.AufrufArt = uc.aufrufArt;
+    // Je Link nur, was mitkommt: `nurGeaendertes` schickt beim Ändern nur die geänderten Schlüssel.
+    // Alle fünf ungefragt zu schreiben löschte den Link, den eine andere Person inzwischen nachgetragen
+    // hatte (Gegenprüfung 29.09.2026).
     if (uc.ressourcen) {
-      body.LinkSourceCode = uc.ressourcen.sourceCode || '';
-      body.LinkDeployment = uc.ressourcen.deployment || '';
-      body.LinkGuide = uc.ressourcen.deploymentGuide || '';
-      body.LinkWiki = uc.ressourcen.wiki || '';
-      body.LinkVideo = uc.ressourcen.video || '';
+      const r = uc.ressourcen;
+      if (r.sourceCode !== undefined) body.LinkSourceCode = r.sourceCode || '';
+      if (r.deployment !== undefined) body.LinkDeployment = r.deployment || '';
+      if (r.deploymentGuide !== undefined) body.LinkGuide = r.deploymentGuide || '';
+      if (r.wiki !== undefined) body.LinkWiki = r.wiki || '';
+      if (r.video !== undefined) body.LinkVideo = r.video || '';
     }
     if (uc.bildUrl !== undefined) body.BildUrl = uc.bildUrl;
     if (uc.reihenfolge !== undefined) body.Reihenfolge = uc.reihenfolge;
@@ -1489,7 +2197,10 @@ export class SharePointService {
   public async deleteUseCase(id: number): Promise<boolean> {
     try {
       const r = await this._post(`${this.list(LIST.useCases)}/items(${id})/recycle`, {});
-      return r.ok;
+      // 404: Die Zeile ist schon weg (eine andere Person war schneller). Das Ziel ist
+      // erreicht — als Fehler gemeldet, blieb die Kachel stehen und das Protokoll
+      // bekam eine falsche „Löschen fehlgeschlagen"-Zeile.
+      return r.ok || r.status === 404;
     } catch (e) {
       console.error('[AIUC] deleteUseCase:', e);
       return false;
@@ -1597,7 +2308,7 @@ export class SharePointService {
         // Nacheinander — mehrere gleichzeitige POSTs gegen dieselbe Zeile sind
         // das Muster, das SharePoint drosselt.
         // eslint-disable-next-line no-await-in-loop
-        const rr = await this._post(`${zeile}/AttachmentFiles/getByFileName('${encodeURIComponent(fn)}')/recycleObject`, {});
+        const rr = await this._post(`${zeile}/AttachmentFiles/getByFileName('${encodeURIComponent(fn.replace(/'/g, "''"))}')/recycleObject`, {});
         if (!rr.ok) alleWeg = false;
       }
       return alleWeg;
@@ -1692,21 +2403,34 @@ export class SharePointService {
     }
   }
 
-  /** Den Merker setzen, damit die Erstbefuellung genau einmal passiert. */
-  public async merkeErstbefuellung(anzahl: number): Promise<void> {
-    await this.log(0, SEED_MARKER, `${anzahl} Start-Use-Cases angelegt`);
+  /** Den Merker setzen, damit die Erstbefuellung genau einmal passiert. `false` = nicht gespeichert. */
+  public async merkeErstbefuellung(anzahl: number): Promise<boolean> {
+    return this.log(0, SEED_MARKER, `${anzahl} Start-Use-Cases angelegt`);
   }
 
-  /** Protokollzeile schreiben. Best-effort — ein fehlendes Protokoll darf keine Aktion verhindern. */
-  public async log(useCaseId: number, aktion: string, detail: string): Promise<void> {
+  /**
+   * Protokollzeile schreiben.
+   *
+   * Ein fehlendes Protokoll darf keine Aktion verhindern — deshalb wirft das nie.
+   * Aber die Rückgabe sagt die Wahrheit: `true` nur, wenn SharePoint die Zeile
+   * angenommen hat. Bis v1.3 wertete die Funktion den Status nicht aus; bei 400
+   * (Spalte fehlt), 403 oder 429 galt der Eintrag als geschrieben, und das
+   * Löschen lief ohne Protokollzeile weiter, obwohl die Reihenfolge „prüfbare
+   * Nebenbuchhaltung zuerst" genau das verhindern soll (Review 29.09.2026).
+   */
+  public async log(useCaseId: number, aktion: string, detail: string): Promise<boolean> {
     try {
-      await this._postItem(LIST.log, {
+      const r = await this._postItem(LIST.log, {
         'Title': aktion,
         'UseCaseId': useCaseId,
         'Aktion': aktion,
         'Detail': detail,
         'Wer': this.context.pageContext.user.email,
       });
-    } catch { /* Protokoll ist Nebenbuchhaltung */ }
+      if (!r.ok) console.warn(`[AIUC] Protokoll schreiben (${aktion}): HTTP ${r.status}`);
+      return r.ok;
+    } catch {
+      return false;
+    }
   }
 }
