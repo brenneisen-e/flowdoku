@@ -40,7 +40,7 @@ import QuizPlayer from './QuizPlayer';
 import MyEventSubEvents from './MyEventSubEvents';
 import MyEventUpload from './MyEventUpload';
 import MyEventDocField from './MyEventDocField';
-import { FieldAnswerTag, MyEventEntry, formatDate, formatDateRange, getStatusBadgeClass, getStatusLabel } from './myEventsHelpers';
+import { FieldAnswerField, MyEventEntry, formatDate, formatDateRange, getStatusBadgeClass, getStatusLabel } from './myEventsHelpers';
 
 export interface MyEventCardProps {
   /** Der Eintrag, den die Karte zeigt — frueher das destrukturierte Argument
@@ -195,6 +195,16 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
             // nie als „nichts" gerendert. Der Satz bleibt genau dort, wo diese
             // Zeile wirklich die einzige Quelle ist.
             const answersKnown = !sessionsOnly && !hiddenRow && !event.subEventsOnlyMode;
+            // v32.44: Fragen, die (noch) keine Antwort haben — typischerweise vom
+            // Organizer nachträglich ergänzt (Nutzer-Ansage 30.09.2026). Nur wo
+            // diese Zeile die Antworten wirklich trägt (answersKnown), sonst
+            // behaupteten wir „offen" für etwas, das auf einer anderen Zeile steht.
+            // Datei-Fragen und Häkchen ohne Pflicht zählen nicht: Ein nicht
+            // gesetztes Häkchen IST eine Antwort, Dateien liegen nicht im CustomData.
+            const offeneFelder = answersKnown
+              ? (event.eventSpecificFields || []).filter((f: EventSpecificField) =>
+                f.label && f.type !== 'document' && (f.type !== 'checkbox' || f.required) && !customData[f.id])
+              : [];
             // v24.12: einzelne Organizer sind ausblendbar — die Bedingung ist
             // ein Datenschutz-Schalter und bleibt exakt so, sie wandert nur mit
             // ihrem Block in die gemeinsame Ansprechpartner-Sektion.
@@ -537,13 +547,17 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                   // Nacht"), es später nicht mehr nachtragen.
                   // v31.8: Die Sektion rendert nur, wenn sie etwas zu zeigen hat
                   // — die beiden Bedingungen darunter sind unverändert.
-                  (displayData.length > 0 || (!hiddenRow && hasEditableFields)) && (
+                  (displayData.length > 0 || offeneFelder.length > 0 || (!hiddenRow && hasEditableFields)) && (
                     <div className="dex-ui-section">
                       <div className="dex-ui-section-title">{isDe ? 'Deine Angaben' : 'Your details'}</div>
-                      {displayData.length > 0 && (
-                        <div className="dex-ui-inline">
+                      {(displayData.length > 0 || offeneFelder.length > 0) && (
+                        // v32.44: wie im Anmeldeformular — Frage über gesperrtem Feld, zweispaltig.
+                        <div className="dex-ui-grid-2" style={{ gap: 14 }}>
                           {displayData.map(({ label, value, type }) => (
-                            <FieldAnswerTag key={label} label={label} value={value} type={type} />
+                            <FieldAnswerField key={label} label={label} value={value} type={type} />
+                          ))}
+                          {offeneFelder.map((f: EventSpecificField) => (
+                            <FieldAnswerField key={'offen-' + f.id} label={fieldLabelMap[f.id] || f.label} value="" offen pflicht={!!f.required} />
                           ))}
                         </div>
                       )}
@@ -551,7 +565,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           wirklich trägt (`answersKnown`, s.o.) — sonst bliebe
                           hier „nichts angegeben" stehen, während die Person auf
                           den Sub-Event-Zeilen längst geantwortet hat. */}
-                      {displayData.length === 0 && answersKnown && (
+                      {displayData.length === 0 && offeneFelder.length === 0 && answersKnown && (
                         <div className="dex-ui-muted">
                           {isDe ? 'Du hast bisher nichts angegeben.' : 'You have not entered anything yet.'}
                         </div>
@@ -562,13 +576,13 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           v18.38: zeigt jetzt „Angaben ergänzen", wenn noch
                           nichts ausgefüllt wurde — sonst „Angaben bearbeiten". */}
                       {!hiddenRow && hasEditableFields && (
-                        <div style={{ marginTop: 8 }}>
+                        <div style={{ marginTop: 12 }}>
                           <button
                             type="button"
                             className="btn btn-outline dex-ui-btn-sm"
                             onClick={() => { setEditData(customData); setEditingId(event.id); }}
                           >
-                            <Pencil size={14} /> {displayData.length > 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
+                            <Pencil size={14} /> {displayData.length > 0 && offeneFelder.length === 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
                           </button>
                           {/* v31.9.3: „Gruppe wechseln" stand bis hierher unten
                               in der Aktionszeile neben „Abmelden" — zwei sehr

@@ -54,6 +54,53 @@ export function FieldAnswerTag(props: { label: string; value: string; type?: str
   );
 }
 
+/**
+ * v32.44: Eine Antwort so, wie sie im Anmeldeformular stand — Frage darüber,
+ * die Antwort in einem gesperrten Feld (Nutzer-Ansage 30.09.2026: „so gestalten
+ * wie beim Anmeldeformular … das ist aber gesperrt, ändern über einen Knopf").
+ * Grau statt grün: grün heißt im Formular „ausgefüllt und bearbeitbar", hier
+ * ist es eine Anzeige. Ändern geht über „Angaben bearbeiten" darunter.
+ */
+export function FieldAnswerField(props: { label: string; value: string; type?: string; offen?: boolean; pflicht?: boolean }): React.ReactElement {
+  const { label, value, type, offen, pflicht } = props;
+  const person = (type === 'user' || type === 'roommate') ? parsePersonAnswer(value) : null;
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--dex-gray-800)', marginBottom: 6, lineHeight: 1.35, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {label}
+        {/* v32.44: Frage, die der Organizer nach der Anmeldung ergänzt hat und
+            die noch leer ist — sichtbar statt verschwiegen. */}
+        {offen && <span className="dex-ui-pill dex-ui-pill--orange dex-ui-pill--sm">{pflicht ? 'Noch offen · Pflicht' : 'Noch offen'}</span>}
+      </div>
+      <div
+        aria-readonly="true"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, minHeight: 44, boxSizing: 'border-box',
+          padding: '10px 14px', borderRadius: 12, border: '1.5px solid var(--dex-gray-200, #e5e5e5)',
+          background: 'var(--dex-gray-50, #fafafa)', color: 'var(--dex-gray-800)', fontSize: '0.92rem',
+          lineHeight: 1.4, overflowWrap: 'anywhere', cursor: 'default',
+        }}
+      >
+        {person ? (
+          <>
+            <img
+              className="dex-ui-avatar dex-ui-avatar--xs"
+              src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(person.email)}&size=L`}
+              alt=""
+              onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+            />
+            <span>{person.name}</span>
+          </>
+        ) : offen ? <span style={{ color: 'var(--dex-gray-400)' }}>—</span> : <span>{value}</span>}
+        {/* Schloss als Zeichen „nur Anzeige" — Lucide „lock", einfarbig. */}
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--dex-gray-400)' }}>
+          <rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 export interface MyEventEntry {
   event: DeloitteEvent;
   registration: SPRegistration;
