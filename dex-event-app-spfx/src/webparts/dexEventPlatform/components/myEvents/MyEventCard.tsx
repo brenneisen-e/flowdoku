@@ -20,8 +20,6 @@ import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
 import OrganizerList from '../OrganizerList';
 import { CachedImg } from '../CachedImage';
-import { UserFieldPicker } from '../UserFieldPicker';
-import { isEventVisibleForUser } from '../EventListPage';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime } from '../../types';
 import { parseAgendaCheckIns, formatMarkTime } from '../../utils/agendaCheckIns';
 import { agendaGroups, sortAgenda, groupDateLabel } from '../../utils/agendaGroups';
@@ -37,6 +35,7 @@ import { DEX_ORB_PNG } from '../../data/brandLogos';
 import { istDexEinfuehrung } from '../../utils/dexIntro';
 import { TeamsJoinButton } from '../TeamsJoinButton';
 import OwnCalendarTeamsLink from './OwnCalendarTeamsLink';
+import MyEventEditForm from './MyEventEditForm';
 import { fieldVisibleByShowIf } from '../admin/modals/FieldSelectInput';
 import { eventTeamsLink, locationWithoutTeamsUrl } from '../../utils/teamsLink';
 import DocumentsViewer from './DocumentsViewer';
@@ -658,77 +657,21 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                     </div>
                   )
                 ) : (
-                  <div className="dex-ui-section">
-                    <div className="dex-ui-section-title">{isDe ? 'Angaben bearbeiten' : 'Edit your details'}</div>
-                    {/* v17.22: EN-Varianten auch im „Meine Events"-Edit-Formular
-                        berücksichtigen — vorher rein DE, obwohl der Teilnehmer
-                        sich auf der Anmeldeseite die EN-Labels angesehen hatte. */}
-                    {(() => {
-                      const useEnEdit = locale === 'en' && !!event.bilingualFields;
-                      const eLabel = (f: EventSpecificField): string =>
-                        (useEnEdit && f.labelEn && f.labelEn.trim()) ? f.labelEn : f.label;
-                      const eOpt = (f: EventSpecificField, opt: string, idx: number): string =>
-                        (useEnEdit && f.optionsEn && f.optionsEn[idx] && f.optionsEn[idx].trim()) ? f.optionsEn[idx] : opt;
-                      return event.eventSpecificFields.map((field: EventSpecificField) => (
-                        <div className="form-group" key={field.id} style={{ marginBottom: 10 }}>
-                          <label className="form-label" style={{ fontSize: '0.82rem', marginBottom: 2 }}>
-                            {field.required && <span className="required">*</span>}
-                            {eLabel(field)}
-                          </label>
-                          {field.type === 'select' ? (
-                            <select className="form-select" value={editData[field.id] || ''} onChange={e => setEditData({ ...editData, [field.id]: e.target.value })}>
-                              <option value="">—</option>
-                              {field.options && field.options.map((opt, optIdx) => <option key={opt} value={opt}>{eOpt(field, opt, optIdx)}</option>)}
-                            </select>
-                          ) : (field.type === 'user' || field.type === 'roommate') ? (
-                            /* v18.61: People-Picker-Felder beim Bearbeiten wieder als
-                               echter People-Picker mit Profilfoto (vorher Rohtext). */
-                            <UserFieldPicker
-                              value={editData[field.id] || ''}
-                              onChange={v => setEditData({ ...editData, [field.id]: v })}
-                              // v29.40: Nachträglich ergänzte Angaben dürfen die
-                              // Verteiler-Begrenzung des Feldes nicht umgehen —
-                              // sonst wäre der Umweg über „Angaben ergänzen"
-                              // genau das Schlupfloch, das die Option schließt.
-                              searchUsers={field.audienceOnly
-                                ? (async (q: string, intl?: boolean) => {
-                                  const res = await searchUsers(q, intl);
-                                  return res.filter(u => isEventVisibleForUser(event, u.email, u.location || '', [], u.jobTitle || ''));
-                                })
-                                : searchUsers}
-                              searchUserByEmail={searchUser}
-                              placeholder={locale === 'de' ? 'Name oder E-Mail eingeben…' : 'Type a name or email…'}
-                              errorStyle={{}}
-                            />
-                          ) : field.type === 'checkbox' ? (
-                            /* v31.8: Ja/Nein mit Erklärung → `dex-ui-toggle-row`
-                               (Leitfaden 2b). Gleiches Feld, gleicher Setter —
-                               nur die rohe Checkbox ohne Hover ist weg. */
-                            <label className={cx('dex-ui-toggle-row', editData[field.id] === 'true' && 'is-active')}>
-                              <input
-                                type="checkbox"
-                                checked={editData[field.id] === 'true'}
-                                onChange={e => setEditData({ ...editData, [field.id]: e.target.checked ? 'true' : 'false' })}
-                              />
-                              <span className="dex-ui-toggle-row-body">
-                                <span className="dex-ui-toggle-row-title">
-                                  {(useEnEdit && field.confirmLabelEn && field.confirmLabelEn.trim() ? field.confirmLabelEn : field.confirmLabel) || eLabel(field)}
-                                </span>
-                              </span>
-                            </label>
-                          ) : (
-                            <input className="form-input" value={editData[field.id] || ''} onChange={e => setEditData({ ...editData, [field.id]: e.target.value })} placeholder={eLabel(field)} type={field.type === 'number' ? 'number' : 'text'} />
-                          )}
-                        </div>
-                      ));
-                    })()}
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button className="btn btn-primary" style={{ fontSize: '0.82rem' }} disabled={isSaving} onClick={async () => { setIsSaving(true); await updateMyRegistration(event.id, editData); await loadMyRegistrations(); setEditingId(null); setIsSaving(false); }}>
-                        {isSaving ? t('myevents.saving') : t('myevents.save')}
-                      </button>
-                      <button className="btn btn-secondary" style={{ fontSize: '0.82rem' }} onClick={() => setEditingId(null)}>{t('general.cancel')}</button>
-                    </div>
-                  </div>
+                  // v32.53: dieselben Bausteine wie das Anmeldeformular (MyEventEditForm).
+                  <MyEventEditForm
+                    event={event}
+                    registration={registration}
+                    editData={editData}
+                    setEditData={setEditData}
+                    locale={locale}
+                    isSaving={isSaving}
+                    onSave={async () => { setIsSaving(true); await updateMyRegistration(event.id, editData); await loadMyRegistrations(); setEditingId(null); setIsSaving(false); }}
+                    onCancel={() => setEditingId(null)}
+                    saveLabel={isSaving ? t('myevents.saving') : t('myevents.save')}
+                    cancelLabel={t('general.cancel')}
+                    searchUsers={searchUsers}
+                    searchUser={searchUser}
+                  />
                 )}
 
                 {/* ============================================================
