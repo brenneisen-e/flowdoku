@@ -1385,7 +1385,19 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         // App öffnen (der mobile Browser lädt die Seite teils nicht zuverlässig,
         // v.a. Android). Nicht für externe Empfänger/Einladungen (nutzen DEX nicht)
         // und nur bei der eigentlichen Anmeldebestätigung ('Angemeldet').
+        // v32.50: Nur EIN Hinweis je Anmeldebestätigung (Nutzer-Ansage 30.09.2026:
+        // „es soll immer nur ein Hinweis versendet werden und nicht zwei"). Gab es
+        // schon Rundmails, gewinnt der Hinweis darauf — er betrifft genau diese
+        // Anmeldung; der Handy-Tipp ist allgemein und kommt sonst.
+        // v29.11: Die Einladung zählt nicht mit. Sie ist der Weg, über den die
+        // meisten überhaupt hier gelandet sind — auf sie zu verweisen sagt
+        // nichts. Der Hinweis erscheint erst, wenn es darüber hinaus eine
+        // Rundmail gab (Ankündigung, Update, Massenmail).
+        let priorComms = false;
         if (status === 'Angemeldet' && !isExternalInvite && !isExternalRecipient) {
+          try { priorComms = await eventService.hasEventComms(eventId, ['Einladung']); } catch { priorComms = false; }
+        }
+        if (status === 'Angemeldet' && !isExternalInvite && !isExternalRecipient && !priorComms) {
           const isDeMail = (lang || 'EN').toUpperCase() === 'DE';
           const mobileAppTip = `<div style="margin:0 0 16px;padding:12px 16px;background:#f1f7e8;border:1px solid #86bc25;border-radius:8px;font-size:13px;line-height:1.55;color:#3d5a1a;">`
             + (isDeMail
@@ -1410,12 +1422,6 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         // Pfad Nachrücker) in ihrer Anmeldebestätigung den Hinweis, dass sie die
         // bisherige Kommunikation in der App unter „Meine Events" nachlesen können.
         if (status === 'Angemeldet' && !isExternalInvite && !isExternalRecipient) {
-          let priorComms = false;
-          // v29.11: Die Einladung zählt nicht mit. Sie ist der Weg, über den die
-          // meisten überhaupt hier gelandet sind — auf sie zu verweisen sagt
-          // nichts. Der Hinweis erscheint erst, wenn es darüber hinaus eine
-          // Rundmail gab (Ankündigung, Update, Massenmail).
-          try { priorComms = await eventService.hasEventComms(eventId, ['Einladung']); } catch { priorComms = false; }
           if (priorComms) {
             const isDeComm = (lang || 'EN').toUpperCase() === 'DE';
             // v31.9.3: Deep-Link direkt auf die Nachrichten dieses Events.

@@ -11,6 +11,7 @@ import { EventService } from '../../services/EventService';
 import { buildHashDeepLink } from '../../utils/deepLink';
 import { wrapTemplate, anredeVorname, coOrganizerAddedEmail, organizerOnboardingEmail } from '../../services/EmailTemplates';
 import { isDeloitteInternalEmail } from '../../utils/deloitteDomain';
+import { eventHeaderImageOpts } from '../../utils/mailHeaderImage';
 import { DEX_TEAM_RECIPIENTS } from '../../utils/supportContact';
 
 export interface OrganizerRoleDeps {
@@ -141,6 +142,14 @@ export function makeOrganizerRoleActions(deps: OrganizerRoleDeps) {
       const p = (currentUserName || '').split(',').map(s => s.trim());
       return p.length === 2 ? `${p[1]} ${p[0]}` : (currentUserName || '');
     })();
+    // v32.50: Kopfbild wie in allen Event-Mails (v30.87-Regel) — die Zeile
+    // frisch lesen, der Aufrufer reicht nur Id und Titel durch. Scheitert das
+    // Lesen, bleibt es beim bisherigen Standard.
+    let imgOpts: ReturnType<typeof eventHeaderImageOpts> | undefined;
+    try {
+      const ev = eventId ? await eventService.getEvent(Number(eventId)) : null;
+      if (ev) imgOpts = eventHeaderImageOpts(ev.EmailTemplateOverrides, ev.EmailImageBase64);
+    } catch { imgOpts = undefined; }
     const seen = new Set<string>();
     for (const person of added) {
       const email = (person.email || '').trim();
@@ -151,7 +160,7 @@ export function makeOrganizerRoleActions(deps: OrganizerRoleDeps) {
       try {
         // v32.3: Anrede mit Vorname (Namen stehen oft als „Nachname, Vorname").
         const outlookInvite = !disableOutlook && isDeloitteInternalEmail(email);
-        const { subject, body } = coOrganizerAddedEmail(anredeVorname(name) || name, eventTitle, actorDisplay, isDe, appUrl, outlookInvite);
+        const { subject, body } = coOrganizerAddedEmail(anredeVorname(name) || name, eventTitle, actorDisplay, isDe, appUrl, outlookInvite, imgOpts);
         await eventService.queueEmail(subject, email, name, body, 'CoOrganizerAdded', eventTitle, eventId || '0');
       } catch { /* Mail best-effort */ }
       // Outlook-Kalendereinladung — nur Deloitte-Adressen (v27.11: beliebige

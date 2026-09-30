@@ -128,6 +128,8 @@ export function splitReleaseNote(text: string): ReleaseNoteParts {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '32.50.0', date: '2026-09-30', bereich: 'E-Mails', type: 'Bugfix', text: 'Die Anmeldebestätigung trägt nur noch EINEN Hinweis am Ende: Gab es zum Event schon Rundmails, den Hinweis „Bereits versendete Infos“ mit Link zu den Nachrichten – sonst den Tipp zur Nutzung auf dem Handy. Bisher kamen beide Kästen untereinander.' },
+  { version: '32.50.0', date: '2026-09-30', bereich: 'E-Mails', type: 'Bugfix', text: 'Die Mail „Du bist jetzt Co-Organizer“ zeigt das Event-Bild jetzt in derselben Größe wie alle anderen Event-Mails (volle Breite bzw. die im Event gewählte Größe). Bisher stand es dort klein.' },
   { version: '32.49.0', date: '2026-09-30', bereich: 'Event-Erstellung', type: 'Bugfix', text: 'Die Leiste „Pflicht“/„Optional“ im Assistenten springt nicht mehr: Das Wort bleibt mittig, auch wenn der Abschnitt beantwortet ist – der Haken erscheint direkt darüber.' },
   { version: '32.48.0', date: '2026-09-30', bereich: 'Allgemein', type: 'Bugfix', text: 'Startseite: DEX heißt jetzt „Self-Service-App für das Teilnehmermanagement von Deloitte Events“ statt „für die Organisation“, und im Info-Fenster steht „von der Anmeldung bis zum Check-in“ statt „von der Ausschreibung“ – Events werden in DEX nicht ausgeschrieben.' },
   { version: '32.47.0', date: '2026-09-30', bereich: 'Anmeldung', type: 'Bugfix', text: 'Unter „Meine Events“ stehen deine Angaben jetzt genau wie im Anmeldeformular: in derselben Reihenfolge wie die Fragen, und die Felder zweier Fragen nebeneinander beginnen auf derselben Höhe – auch wenn eine davon eine Beschreibung hat.' },

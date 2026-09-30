@@ -999,6 +999,9 @@ export function coOrganizerAddedEmail(
   appUrl?: string,
   // v32.3: Outlook-Satz nur, wenn wirklich eine Einladung rausgeht.
   outlookInvite = true,
+  // v32.50: Kopfbild-Maße des Events (eventHeaderImageOpts) — ohne sie fiel
+  // die Mail auf die alten 180 px zurück (Nutzer-Befund 30.09.2026).
+  imgOpts?: { imageWidth?: number; imagePaddingV?: number; imagePaddingH?: number },
 ): { subject: string; body: string } {
   const link = appUrl || APP_URL;
   if (isDe) {
@@ -1012,7 +1015,8 @@ export function coOrganizerAddedEmail(
         <p>So macht ihr das Event startklar:</p>
         ${STARTKLAR_SCHRITTE_DE}
         ${outlookInvite ? '<p>Außerdem bekommst du eine <strong>Outlook-Kalendereinladung</strong> zum Event.</p>' : ''}
-        <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+        <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`,
+        undefined, imgOpts
       ),
     };
   }
@@ -1026,7 +1030,8 @@ export function coOrganizerAddedEmail(
       <p>Next steps:</p>
       ${STARTKLAR_SCHRITTE_EN}
       ${outlookInvite ? '<p>You will also receive an <strong>Outlook calendar invitation</strong> for the event.</p>' : ''}
-      <p style="margin-top:24px;"><strong>Best regards</strong><br><br><strong>Your Event Team</strong></p>`
+      <p style="margin-top:24px;"><strong>Best regards</strong><br><br><strong>Your Event Team</strong></p>`,
+      undefined, imgOpts
     ),
   };
 }
