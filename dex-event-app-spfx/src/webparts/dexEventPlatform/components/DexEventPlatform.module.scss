@@ -887,6 +887,8 @@
       .my-event-card__thumb { width: 90px !important; height: 70px !important; }
       .my-event-card__kreis { width: 100px; height: 100px; margin-top: -70px; }
       .my-event-card--kreis { margin-top: 50px; }
+      /* v32.45: QR-Code, E-Mails, Abmelden passen auf dem Handy nicht zu dritt in eine Zeile. */
+      .my-event-card__aktionen { grid-template-columns: 1fr 1fr !important; }
 
       /* Event Creation */
       .creation-layout { grid-template-columns: 1fr; }

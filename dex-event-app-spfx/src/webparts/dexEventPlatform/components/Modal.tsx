@@ -73,6 +73,8 @@ function ensureModalStyles(): void {
 }
 .dex-modal-overlay .btn-primary { background: #86bc25 !important; color: #ffffff !important; }
 .dex-modal-overlay .btn-primary:hover { background: #6b9a1e !important; color: #ffffff !important; }
+.dex-modal-overlay .btn-primary.dex-dialog-confirm--danger { background: #da291c !important; }
+.dex-modal-overlay .btn-primary.dex-dialog-confirm--danger:hover { background: #b3211a !important; }
 .dex-modal-overlay .btn-secondary { background: #e8e8e8 !important; color: #333333 !important; }
 .dex-modal-overlay .btn-secondary:hover { background: #d1d1d1 !important; color: #333333 !important; }
 .dex-modal-overlay .btn-danger { background: #666666 !important; color: #ffffff !important; }

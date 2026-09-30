@@ -55,9 +55,12 @@ function ladeJoinUrl(icalUid: string): Promise<string> {
 export interface OwnCalendarTeamsLinkProps {
   calendarLink?: string;
   isDe: boolean;
+  /** Nur wenn sicher ein Link existiert (DEX hat die Besprechung erzeugt),
+   *  steht bei leerem Ergebnis der Hinweis — sonst gar nichts. */
+  hinweisWennLeer?: boolean;
 }
 
-export function OwnCalendarTeamsLink({ calendarLink, isDe }: OwnCalendarTeamsLinkProps): React.ReactElement | null {
+export function OwnCalendarTeamsLink({ calendarLink, isDe, hinweisWennLeer = true }: OwnCalendarTeamsLinkProps): React.ReactElement | null {
   const uid = (calendarLink || '').trim();
   const [url, setUrl] = React.useState<string | null>(null);
   React.useEffect(() => {
@@ -69,6 +72,7 @@ export function OwnCalendarTeamsLink({ calendarLink, isDe }: OwnCalendarTeamsLin
 
   if (url === null) return null;
   if (url) return <TeamsJoinButton url={url} isDe={isDe} variant="link" />;
+  if (!hinweisWennLeer) return null;
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
       <Video size={14} /> {isDe ? 'Teams-Link steht im Outlook-Termin' : 'Teams link is in the Outlook invite'}

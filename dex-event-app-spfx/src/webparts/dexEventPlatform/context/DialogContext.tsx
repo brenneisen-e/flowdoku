@@ -174,7 +174,7 @@ export function DialogProvider(props: { children: React.ReactNode }): React.Reac
           )}
           <button
             type="button"
-            className="btn btn-primary"
+            className={isConfirm && confirmOpts.danger ? 'btn btn-primary dex-dialog-confirm--danger' : 'btn btn-primary'}
             onClick={() => closeCurrent(true, isPrompt ? promptValue : undefined)}
             autoFocus={!isPrompt}
             style={{

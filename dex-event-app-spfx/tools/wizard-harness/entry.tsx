@@ -69,7 +69,7 @@ const day = sample.day;
 /* ------------------------------------------------------- Wizard-Beispiel --- */
 
 const parent: any = {
-  id: '1', eventNumber: 4711, title: 'DTP Basics Training October 2026', type: 'Other', status: 'Active',
+  id: '1', eventNumber: 4711, subsiteUrl: 'https://example.invalid/sites/dex/harness', title: 'DTP Basics Training October 2026', type: 'Other', status: 'Active',
   organizers: ['Brenneisen, Eike'], organizerEmails: [me.email],
   coOrganizerNames: ['Rettinger, Carolin'], coOrganizerEmails: ['carolin.rettinger@example.com'],
   qrScannerNames: [], qrScannerEmails: [], contactName: 'Eike Brenneisen', contactEmail: me.email,
