@@ -3,6 +3,7 @@
  * Gruppe aus dem Komponenten-Scope liest, kommt als `ctx` herein, was sie
  * nach aussen liefert, geht als Objekt zurueck.
  */
+import { mailLogoFrisch } from '../../../utils/mailHeaderImageFrisch';
 import * as React from 'react';
 import { ConsolidatedRow } from '../../admin/adminTypes';
 import { activeParentRegOf } from './parentRegs';
@@ -642,7 +643,7 @@ export function createKlammerActions(ctx: CreateKlammerActionsCtx): CreateKlamme
                 };
                 let emailData: { subject: string; body: string };
                 const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);
-                const spTpl = applyEventTemplateOverride(spTplRaw, child.emailTemplateOverrides, 'Nachruecken');
+                const spTpl = applyEventTemplateOverride(spTplRaw, child.emailTemplateOverrides, 'Nachruecken', await mailLogoFrisch(child));
                 if (spTpl) emailData = buildEmailFromTemplate(spTpl, promoteVars);
                 else emailData = promotionEmail(promotedFirstName, child.title);
                 await eventServiceRef.queueEmail(

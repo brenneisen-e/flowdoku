@@ -12,41 +12,7 @@
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
 import type { EventService, ReseedSummary } from '../EventService';
 import { dlog } from '../../utils/debugLog';
-import {
-  OUTLOOK_DECLINE_BODY_EN,
-  OUTLOOK_DECLINE_BODY_DE,
-  OUTLOOK_DECLINE_BODY_ONBEHALF_EN,
-  OUTLOOK_DECLINE_BODY_ONBEHALF_DE,
-  OUTLOOK_FORWARD_BODY_EN,
-  OUTLOOK_FORWARD_BODY_DE,
-  OUTLOOK_DECLINE_DIGEST_BODY_EN,
-  OUTLOOK_DECLINE_DIGEST_BODY_DE,
-  NACHRUECKEN_BODY_EN,
-  NACHRUECKEN_BODY_DE,
-  ORG_NACHRUECKER_BODY_EN,
-  ORG_NACHRUECKER_BODY_DE,
-  CANCEL_BANNER_HTML,
-  ABMELDUNG_AUTO_BODY_EN,
-  ABMELDUNG_AUTO_BODY_DE,
-  TEAM_MEMBER_JOINED_BODY_EN,
-  TEAM_MEMBER_JOINED_BODY_DE,
-  TEAM_JOIN_REQUEST_BODY_EN,
-  TEAM_JOIN_REQUEST_BODY_DE,
-  TEAM_JOIN_REJECTED_BODY_EN,
-  TEAM_JOIN_REJECTED_BODY_DE,
-  TEAM_LEAD_TRANSFERRED_BODY_EN,
-  TEAM_LEAD_TRANSFERRED_BODY_DE,
-  TEAM_MEMBER_CANCELLED_BODY_EN,
-  TEAM_MEMBER_CANCELLED_BODY_DE,
-  ROOMMATE_REQUEST_BODY_EN,
-  ROOMMATE_REQUEST_BODY_DE,
-  GROUP_SWITCH_CONFIRMED_BODY_EN,
-  GROUP_SWITCH_CONFIRMED_BODY_DE,
-  GROUP_SWITCH_WAITLIST_BODY_EN,
-  GROUP_SWITCH_WAITLIST_BODY_DE,
-  OVERBOOK_APOLOGY_BODY_EN,
-  OVERBOOK_APOLOGY_BODY_DE,
-} from '../mailBodies';
+import { STANDARD_VORLAGEN } from './standardVorlagen';
 
 // ==================== DEX_EmailTemplates Liste ====================
 
@@ -103,111 +69,8 @@ export async function ensureEmailTemplatesList(svc: EventService): Promise<void>
   }
 
   // Default-Templates: DE + EN für jeden Typ
-  const defaults = [
-    // ===== ENGLISCH =====
-    { TemplateType: 'Anmeldung', Language: 'EN', Subject: 'Registration confirmation: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Registration successful',
-      BodyHtml: '<p>Dear {{Name}},</p><p>you have successfully registered for the event <strong>{{EventTitle}}</strong>.</p><p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="{{AppUrl}}">DEX App</a> (\u201EMy Events\u201C).</p><p>For organizational questions about the event, please contact {{OrganizerHtml}}.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-    { TemplateType: 'Warteliste', Language: 'EN', Subject: 'Waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Waitlist confirmation',
-      BodyHtml: '<p>Dear {{Name}},</p><p>you have been placed on the <strong>waitlist</strong> for the event <strong>{{EventTitle}}</strong>.</p><p>Your current position: <strong>#{{WaitlistPosition}}</strong></p><p>We will notify you as soon as a spot becomes available. You can always check your current position in the <a href="{{AppUrl}}">DEX App</a> under \u201EMy Events\u201C.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-    // v31.5: Die Abmelde-Bestätigung geht an JEDE abgemeldete Zeile — auch an
-    // Wartelistler, die nie einen Outlook-Termin bekommen haben (der
-    // Anmelde-Pfad queut ihn erst ab Status „Angemeldet"). Aus der Zusage
-    // „wird entfernt" ist deshalb ein „falls du einen hattest" geworden.
-    // ACHTUNG: Der Text steht in DIESER Datei zweimal (Seed für neue Tenants
-    // und Reparatur-Block `upgradeStandardEmailTemplates`, den „Standard-
-    // Templates neu einspielen" ruft) — beide müssen gleich lauten, sonst holt
-    // der Reseed den alten Text zurück.
-    { TemplateType: 'Abmeldung', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
-      BodyHtml: '<p>Dear {{Name}},</p>' + CANCEL_BANNER_HTML + '<p>your registration for the event above has been <strong>cancelled</strong>. If you had an Outlook invitation for it, it will be removed from your calendar shortly.</p><p>If you change your mind, you can register again via the <a href="{{AppUrl}}">DEX App</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-    { TemplateType: 'Nachruecken', Language: 'EN', Subject: 'Registration confirmed: {{EventTitle}} (moved up from the waiting list)', HeadingColor: '#86bc25', Heading: 'You’ve got a spot!',
-      BodyHtml: NACHRUECKEN_BODY_EN },
-    { TemplateType: 'EventErstellt', Language: 'EN', Subject: '[Deloitte Eventmanager] - New event created: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event Created',
-      BodyHtml: '<p>Dear {{Name}},</p><p>your event <strong>{{EventTitle}}</strong> has been successfully created.</p><p>You can manage participants in the <a href="{{AppUrl}}">DEX App</a>.</p><p>Regards,<br>Team DEX App</p>' },
-    { TemplateType: 'OutlookDeclineReminder', Language: 'EN', Subject: 'Action Required: Do you also want to cancel your registration? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'You declined the Outlook invite',
-      BodyHtml: OUTLOOK_DECLINE_BODY_EN },
-    { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'EN', Subject: 'Action Required: Cancel registration for {{EventTitle}}?', HeadingColor: '#ed8b00', Heading: 'Outlook invite declined on behalf',
-      BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_EN },
-    // ===== DEUTSCH =====
-    { TemplateType: 'Anmeldung', Language: 'DE', Subject: 'Anmeldebestätigung: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Anmeldung erfolgreich',
-      BodyHtml: '<p>Hallo {{Name}},</p><p>du hast dich erfolgreich für das Event <strong>{{EventTitle}}</strong> angemeldet.</p><p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="{{AppUrl}}">DEX App</a> (\u201EMeine Events\u201C) ab.</p><p>Zu organisatorischen Fragen zum Event wende dich bitte an {{OrganizerHtml}}.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-    { TemplateType: 'Warteliste', Language: 'DE', Subject: 'Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Warteliste-Bestätigung',
-      BodyHtml: '<p>Hallo {{Name}},</p><p>du stehst auf der <strong>Warteliste</strong> für das Event <strong>{{EventTitle}}</strong>.</p><p>Deine aktuelle Position: <strong>#{{WaitlistPosition}}</strong></p><p>Wir benachrichtigen dich, sobald ein Platz frei wird. Deinen aktuellen Warteliste-Platz kannst du jederzeit in der <a href="{{AppUrl}}">DEX App</a> unter \u201EMeine Events\u201C sehen.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-    { TemplateType: 'Abmeldung', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
-      BodyHtml: '<p>Hallo {{Name}},</p>' + CANCEL_BANNER_HTML + '<p>deine Anmeldung für das oben genannte Event wurde <strong>storniert</strong>. Falls du dafür einen Outlook-Termin hattest, wird er in Kürze aus deinem Kalender entfernt.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">DEX App</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-    { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Anmeldebestätigung: {{EventTitle}} (von Warteliste nachgerückt)', HeadingColor: '#86bc25', Heading: 'Du hast einen Platz!',
-      BodyHtml: NACHRUECKEN_BODY_DE },
-    // v19.25: pre-wrapped Abmelde-Bestätigung für die Flow-getriebene
-    // Auto-Abmeldung (DEX_OutlookDeclineHandler), eigener Type damit die
-    // App-eigene `Abmeldung` (unwrapped) unberührt bleibt.
-    { TemplateType: 'AbmeldungAuto', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
-      BodyHtml: ABMELDUNG_AUTO_BODY_EN },
-    { TemplateType: 'AbmeldungAuto', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
-      BodyHtml: ABMELDUNG_AUTO_BODY_DE },
-    // v18.63: Organizer-Benachrichtigung bei Abmeldung mit Nachrücker (vom DEX_IDReorder-Flow gequeued).
-    { TemplateType: 'OrgNachruecker', Language: 'EN', Subject: 'Cancellation with waitlist move-up: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Cancellation — waitlist move-up',
-      BodyHtml: ORG_NACHRUECKER_BODY_EN },
-    { TemplateType: 'OrgNachruecker', Language: 'DE', Subject: 'Abmeldung mit Nachrücker: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Abmeldung — Nachrücker',
-      BodyHtml: ORG_NACHRUECKER_BODY_DE },
-    { TemplateType: 'EventErstellt', Language: 'DE', Subject: '[Deloitte Eventmanager] - Neues Event erstellt: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event erstellt',
-      BodyHtml: '<p>Hallo {{Name}},</p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">DEX App</a> verwalten.</p><p>Viele Grüße,<br>Team DEX App</p>' },
-    { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
-      BodyHtml: OUTLOOK_DECLINE_BODY_DE },
-    // v30.67: Der EN-Eintrag OutlookDeclineReminder_OnBehalfOf stand hier ein
-    // zweites Mal (Copy-Paste aus dem EN-Block oben) — auf einem frischen
-    // Tenant entstanden zwei identische Zeilen, und `$top=1` entschied, welche
-    // der Vorlagen-Editor bearbeitet. Entfernt; die Seeding-Schleife unten
-    // dedupliziert zusätzlich über TemplateType+Language.
-    { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'DE', Subject: 'Action Required: Anmeldung für {{EventTitle}} stornieren?', HeadingColor: '#ed8b00', Heading: 'Outlook-Termin in deinem Namen abgelehnt',
-      BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_DE },
-    // Meeting-Forward-Notification: FYI an Organizer wenn weitergeleitete Person nicht registriert ist
-    { TemplateType: 'OutlookForwardNotification', Language: 'EN', Subject: 'FYI: Meeting was forwarded — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Meeting was forwarded',
-      BodyHtml: OUTLOOK_FORWARD_BODY_EN },
-    { TemplateType: 'OutlookForwardNotification', Language: 'DE', Subject: 'FYI: Termin wurde weitergeleitet — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Termin wurde weitergeleitet',
-      BodyHtml: OUTLOOK_FORWARD_BODY_DE },
-    // v9.38: OutlookDeclineDigest — geht an Organizer nach jedem Decline mit Liste aller noch-angemeldeten Decliner.
-    { TemplateType: 'OutlookDeclineDigest', Language: 'EN', Subject: 'FYI: {{DeclineCount}} attendees declined Outlook — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: attendees declined the Outlook invite',
-      BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_EN },
-    { TemplateType: 'OutlookDeclineDigest', Language: 'DE', Subject: 'FYI: {{DeclineCount}} Teilnehmer haben Outlook abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
-      BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_DE },
-    // v12.13: Team-bezogene Templates (vorher inline in EventContext.tsx).
-    { TemplateType: 'TeamMemberJoined', Language: 'EN', Subject: 'New team member — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team update',
-      BodyHtml: TEAM_MEMBER_JOINED_BODY_EN },
-    { TemplateType: 'TeamMemberJoined', Language: 'DE', Subject: 'Neues Team-Mitglied — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Update',
-      BodyHtml: TEAM_MEMBER_JOINED_BODY_DE },
-    { TemplateType: 'TeamJoinRequest', Language: 'EN', Subject: 'Team join request — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team join request',
-      BodyHtml: TEAM_JOIN_REQUEST_BODY_EN },
-    { TemplateType: 'TeamJoinRequest', Language: 'DE', Subject: 'Team-Beitritts-Anfrage — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Beitritts-Anfrage',
-      BodyHtml: TEAM_JOIN_REQUEST_BODY_DE },
-    { TemplateType: 'TeamJoinRejected', Language: 'EN', Subject: 'Team join request declined — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team join request declined',
-      BodyHtml: TEAM_JOIN_REJECTED_BODY_EN },
-    { TemplateType: 'TeamJoinRejected', Language: 'DE', Subject: 'Team-Beitritts-Anfrage abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Beitritts-Anfrage abgelehnt',
-      BodyHtml: TEAM_JOIN_REJECTED_BODY_DE },
-    { TemplateType: 'TeamLeadTransferred', Language: 'EN', Subject: 'Team lead change — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team lead change',
-      BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_EN },
-    { TemplateType: 'TeamLeadTransferred', Language: 'DE', Subject: 'Team-Lead-Wechsel — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Lead-Wechsel',
-      BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_DE },
-    { TemplateType: 'TeamMemberCancelled', Language: 'EN', Subject: 'Team update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team update',
-      BodyHtml: TEAM_MEMBER_CANCELLED_BODY_EN },
-    { TemplateType: 'TeamMemberCancelled', Language: 'DE', Subject: 'Team-Update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Update',
-      BodyHtml: TEAM_MEMBER_CANCELLED_BODY_DE },
-    // v13.0: Restliche bisher-inline-Mails (Zimmerpartner, Gruppen-Wechsel, Überbuchung).
-    { TemplateType: 'RoommateRequest', Language: 'EN', Subject: '{{RegistrantName}} selected you as roommate — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Roommate request',
-      BodyHtml: ROOMMATE_REQUEST_BODY_EN },
-    { TemplateType: 'RoommateRequest', Language: 'DE', Subject: '{{RegistrantName}} hat dich als Zimmerpartner gewählt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Zimmerpartner-Anfrage',
-      BodyHtml: ROOMMATE_REQUEST_BODY_DE },
-    { TemplateType: 'GroupSwitchConfirmed', Language: 'EN', Subject: 'Group switch confirmed — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Group switch',
-      BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_EN },
-    { TemplateType: 'GroupSwitchConfirmed', Language: 'DE', Subject: 'Gruppen-Wechsel bestätigt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Gruppen-Wechsel',
-      BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_DE },
-    { TemplateType: 'GroupSwitchWaitlist', Language: 'EN', Subject: 'Group switch — on waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Group switch — on waitlist',
-      BodyHtml: GROUP_SWITCH_WAITLIST_BODY_EN },
-    { TemplateType: 'GroupSwitchWaitlist', Language: 'DE', Subject: 'Gruppen-Wechsel — auf Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Gruppen-Wechsel — auf Warteliste',
-      BodyHtml: GROUP_SWITCH_WAITLIST_BODY_DE },
-    { TemplateType: 'OverbookingApology', Language: 'EN', Subject: 'Important: correction of your registration — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Registration corrected',
-      BodyHtml: OVERBOOK_APOLOGY_BODY_EN },
-    { TemplateType: 'OverbookingApology', Language: 'DE', Subject: 'Wichtig: Korrektur deiner Anmeldung — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Anmeldung korrigiert',
-      BodyHtml: OVERBOOK_APOLOGY_BODY_DE },
-  ];
+  // v32.52: eine Quelle für Erst-Befüllung, Nachrüsten und Neu-Einspielen (standardVorlagen.ts).
+  const defaults = STANDARD_VORLAGEN;
 
   let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
   try {
@@ -265,25 +128,8 @@ export async function ensureEmailTemplatesList(svc: EventService): Promise<void>
  * bestehende zu überschreiben.
  */
 async function ensureMissingEmailTemplates(svc: EventService, listName: string): Promise<void> {
-  const newTemplates = [
-    { TemplateType: 'OutlookDeclineReminder', Language: 'EN', Subject: 'Action Required: Do you also want to cancel your registration? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'You declined the Outlook invite',
-      BodyHtml: OUTLOOK_DECLINE_BODY_EN },
-    { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
-      BodyHtml: OUTLOOK_DECLINE_BODY_DE },
-    { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'EN', Subject: 'Action Required: Cancel registration for {{EventTitle}}?', HeadingColor: '#ed8b00', Heading: 'Outlook invite declined on behalf',
-      BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_EN },
-    { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'DE', Subject: 'Action Required: Anmeldung für {{EventTitle}} stornieren?', HeadingColor: '#ed8b00', Heading: 'Outlook-Termin in deinem Namen abgelehnt',
-      BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_DE },
-    { TemplateType: 'OutlookForwardNotification', Language: 'EN', Subject: 'FYI: Meeting was forwarded — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Meeting was forwarded',
-      BodyHtml: OUTLOOK_FORWARD_BODY_EN },
-    { TemplateType: 'OutlookForwardNotification', Language: 'DE', Subject: 'FYI: Termin wurde weitergeleitet — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Termin wurde weitergeleitet',
-      BodyHtml: OUTLOOK_FORWARD_BODY_DE },
-    // v9.38: OutlookDeclineDigest — wird bei bestehenden Tenants nachgerüstet.
-    { TemplateType: 'OutlookDeclineDigest', Language: 'EN', Subject: 'FYI: {{DeclineCount}} attendees declined Outlook — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: attendees declined the Outlook invite',
-      BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_EN },
-    { TemplateType: 'OutlookDeclineDigest', Language: 'DE', Subject: 'FYI: {{DeclineCount}} Teilnehmer haben Outlook abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
-      BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_DE },
-  ];
+  // v32.52: Alle Standard-Vorlagen — fehlende werden angelegt, vorhandene nie angefasst.
+  const newTemplates = STANDARD_VORLAGEN;
 
   let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
   try {
@@ -348,106 +194,7 @@ async function upgradeStandardEmailTemplates(svc: EventService, listName: string
   const summary: ReseedSummary = { created: 0, updated: 0, skipped: 0, failed: 0, errors: [] };
   const APP_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
   void APP_URL; // Reserviert für spätere Templates die {{AppUrl}} hardcoden
-  const standards = [
-    // ========== EN ==========
-    { TemplateType: 'Anmeldung', Language: 'EN', Subject: 'Registration confirmation: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Registration successful',
-      BodyHtml: '<p>Dear {{Name}},</p><p>you have successfully registered for the event <strong>{{EventTitle}}</strong>.</p><p>If you are unable to attend, please cancel your registration as soon as possible via the <a href="{{AppUrl}}">DEX App</a> (\u201EMy Events\u201C).</p><p>For organizational questions about the event, please contact {{OrganizerHtml}}.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-    { TemplateType: 'Warteliste', Language: 'EN', Subject: 'Waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Waitlist confirmation',
-      BodyHtml: '<p>Dear {{Name}},</p><p>you have been placed on the <strong>waitlist</strong> for the event <strong>{{EventTitle}}</strong>.</p><p>Your current position: <strong>#{{WaitlistPosition}}</strong></p><p>We will notify you as soon as a spot becomes available. You can always check your current position in the <a href="{{AppUrl}}">DEX App</a> under \u201EMy Events\u201C.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-    // v31.5: Die Abmelde-Bestätigung geht an JEDE abgemeldete Zeile — auch an
-    // Wartelistler, die nie einen Outlook-Termin bekommen haben (der
-    // Anmelde-Pfad queut ihn erst ab Status „Angemeldet"). Aus der Zusage
-    // „wird entfernt" ist deshalb ein „falls du einen hattest" geworden.
-    // ACHTUNG: Der Text steht in DIESER Datei zweimal (Seed für neue Tenants
-    // und Reparatur-Block `upgradeStandardEmailTemplates`, den „Standard-
-    // Templates neu einspielen" ruft) — beide müssen gleich lauten, sonst holt
-    // der Reseed den alten Text zurück.
-    { TemplateType: 'Abmeldung', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
-      BodyHtml: '<p>Dear {{Name}},</p>' + CANCEL_BANNER_HTML + '<p>your registration for the event above has been <strong>cancelled</strong>. If you had an Outlook invitation for it, it will be removed from your calendar shortly.</p><p>If you change your mind, you can register again via the <a href="{{AppUrl}}">DEX App</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
-    { TemplateType: 'Nachruecken', Language: 'EN', Subject: 'Registration confirmed: {{EventTitle}} (moved up from the waiting list)', HeadingColor: '#86bc25', Heading: 'You’ve got a spot!',
-      BodyHtml: NACHRUECKEN_BODY_EN },
-    { TemplateType: 'EventErstellt', Language: 'EN', Subject: '[Deloitte Eventmanager] - New event created: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event Created',
-      BodyHtml: '<p>Dear {{Name}},</p><p>your event <strong>{{EventTitle}}</strong> has been successfully created.</p><p>You can manage participants in the <a href="{{AppUrl}}">DEX App</a>.</p><p>Regards,<br>Team DEX App</p>' },
-    { TemplateType: 'OutlookDeclineReminder', Language: 'EN', Subject: 'Action Required: Do you also want to cancel your registration? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'You declined the Outlook invite',
-      BodyHtml: OUTLOOK_DECLINE_BODY_EN },
-    // ========== DE ==========
-    { TemplateType: 'Anmeldung', Language: 'DE', Subject: 'Anmeldebestätigung: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Anmeldung erfolgreich',
-      BodyHtml: '<p>Hallo {{Name}},</p><p>du hast dich erfolgreich für das Event <strong>{{EventTitle}}</strong> angemeldet.</p><p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="{{AppUrl}}">DEX App</a> (\u201EMeine Events\u201C) ab.</p><p>Zu organisatorischen Fragen zum Event wende dich bitte an {{OrganizerHtml}}.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-    { TemplateType: 'Warteliste', Language: 'DE', Subject: 'Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Warteliste-Bestätigung',
-      BodyHtml: '<p>Hallo {{Name}},</p><p>du stehst auf der <strong>Warteliste</strong> für das Event <strong>{{EventTitle}}</strong>.</p><p>Deine aktuelle Position: <strong>#{{WaitlistPosition}}</strong></p><p>Wir benachrichtigen dich, sobald ein Platz frei wird. Deinen aktuellen Warteliste-Platz kannst du jederzeit in der <a href="{{AppUrl}}">DEX App</a> unter \u201EMeine Events\u201C sehen.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-    { TemplateType: 'Abmeldung', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
-      BodyHtml: '<p>Hallo {{Name}},</p>' + CANCEL_BANNER_HTML + '<p>deine Anmeldung für das oben genannte Event wurde <strong>storniert</strong>. Falls du dafür einen Outlook-Termin hattest, wird er in Kürze aus deinem Kalender entfernt.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">DEX App</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
-    { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Anmeldebestätigung: {{EventTitle}} (von Warteliste nachgerückt)', HeadingColor: '#86bc25', Heading: 'Du hast einen Platz!',
-      BodyHtml: NACHRUECKEN_BODY_DE },
-    // v19.25: pre-wrapped Abmelde-Bestätigung für die Flow-getriebene
-    // Auto-Abmeldung (DEX_OutlookDeclineHandler), eigener Type damit die
-    // App-eigene `Abmeldung` (unwrapped) unberührt bleibt.
-    { TemplateType: 'AbmeldungAuto', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
-      BodyHtml: ABMELDUNG_AUTO_BODY_EN },
-    { TemplateType: 'AbmeldungAuto', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
-      BodyHtml: ABMELDUNG_AUTO_BODY_DE },
-    // v18.63: Organizer-Benachrichtigung bei Abmeldung mit Nachrücker (vom DEX_IDReorder-Flow gequeued).
-    { TemplateType: 'OrgNachruecker', Language: 'EN', Subject: 'Cancellation with waitlist move-up: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Cancellation — waitlist move-up',
-      BodyHtml: ORG_NACHRUECKER_BODY_EN },
-    { TemplateType: 'OrgNachruecker', Language: 'DE', Subject: 'Abmeldung mit Nachrücker: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Abmeldung — Nachrücker',
-      BodyHtml: ORG_NACHRUECKER_BODY_DE },
-    { TemplateType: 'EventErstellt', Language: 'DE', Subject: '[Deloitte Eventmanager] - Neues Event erstellt: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event erstellt',
-      BodyHtml: '<p>Hallo {{Name}},</p><p>dein Event <strong>{{EventTitle}}</strong> wurde erfolgreich erstellt.</p><p>Du kannst die Teilnehmer in der <a href="{{AppUrl}}">DEX App</a> verwalten.</p><p>Viele Grüße,<br>Team DEX App</p>' },
-    { TemplateType: 'OutlookDeclineReminder', Language: 'DE', Subject: 'Action Required: Möchtest du dich auch offiziell abmelden? {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Du hast den Outlook-Termin abgelehnt',
-      BodyHtml: OUTLOOK_DECLINE_BODY_DE },
-    { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'EN', Subject: 'Action Required: Cancel registration for {{EventTitle}}?', HeadingColor: '#ed8b00', Heading: 'Outlook invite declined on behalf',
-      BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_EN },
-    { TemplateType: 'OutlookDeclineReminder_OnBehalfOf', Language: 'DE', Subject: 'Action Required: Anmeldung für {{EventTitle}} stornieren?', HeadingColor: '#ed8b00', Heading: 'Outlook-Termin in deinem Namen abgelehnt',
-      BodyHtml: OUTLOOK_DECLINE_BODY_ONBEHALF_DE },
-    { TemplateType: 'OutlookForwardNotification', Language: 'EN', Subject: 'FYI: Meeting was forwarded — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Meeting was forwarded',
-      BodyHtml: OUTLOOK_FORWARD_BODY_EN },
-    { TemplateType: 'OutlookForwardNotification', Language: 'DE', Subject: 'FYI: Termin wurde weitergeleitet — {{EventTitle}}', HeadingColor: '#0d6efd', Heading: 'Termin wurde weitergeleitet',
-      BodyHtml: OUTLOOK_FORWARD_BODY_DE },
-    // v9.38: OutlookDeclineDigest
-    { TemplateType: 'OutlookDeclineDigest', Language: 'EN', Subject: 'FYI: {{DeclineCount}} attendees declined Outlook — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: attendees declined the Outlook invite',
-      BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_EN },
-    { TemplateType: 'OutlookDeclineDigest', Language: 'DE', Subject: 'FYI: {{DeclineCount}} Teilnehmer haben Outlook abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
-      BodyHtml: OUTLOOK_DECLINE_DIGEST_BODY_DE },
-    // v12.13: Team-Templates auch im Re-Seed-Pfad, sonst greift der Admin-
-    // Reseed-Button die Texte nicht.
-    { TemplateType: 'TeamMemberJoined', Language: 'EN', Subject: 'New team member — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team update',
-      BodyHtml: TEAM_MEMBER_JOINED_BODY_EN },
-    { TemplateType: 'TeamMemberJoined', Language: 'DE', Subject: 'Neues Team-Mitglied — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Update',
-      BodyHtml: TEAM_MEMBER_JOINED_BODY_DE },
-    { TemplateType: 'TeamJoinRequest', Language: 'EN', Subject: 'Team join request — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team join request',
-      BodyHtml: TEAM_JOIN_REQUEST_BODY_EN },
-    { TemplateType: 'TeamJoinRequest', Language: 'DE', Subject: 'Team-Beitritts-Anfrage — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Beitritts-Anfrage',
-      BodyHtml: TEAM_JOIN_REQUEST_BODY_DE },
-    { TemplateType: 'TeamJoinRejected', Language: 'EN', Subject: 'Team join request declined — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team join request declined',
-      BodyHtml: TEAM_JOIN_REJECTED_BODY_EN },
-    { TemplateType: 'TeamJoinRejected', Language: 'DE', Subject: 'Team-Beitritts-Anfrage abgelehnt — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Beitritts-Anfrage abgelehnt',
-      BodyHtml: TEAM_JOIN_REJECTED_BODY_DE },
-    { TemplateType: 'TeamLeadTransferred', Language: 'EN', Subject: 'Team lead change — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team lead change',
-      BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_EN },
-    { TemplateType: 'TeamLeadTransferred', Language: 'DE', Subject: 'Team-Lead-Wechsel — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Team-Lead-Wechsel',
-      BodyHtml: TEAM_LEAD_TRANSFERRED_BODY_DE },
-    { TemplateType: 'TeamMemberCancelled', Language: 'EN', Subject: 'Team update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team update',
-      BodyHtml: TEAM_MEMBER_CANCELLED_BODY_EN },
-    { TemplateType: 'TeamMemberCancelled', Language: 'DE', Subject: 'Team-Update — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Team-Update',
-      BodyHtml: TEAM_MEMBER_CANCELLED_BODY_DE },
-    // v13.0: Zimmerpartner, Gruppen-Wechsel, Überbuchung (vorher inline).
-    { TemplateType: 'RoommateRequest', Language: 'EN', Subject: '{{RegistrantName}} selected you as roommate — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Roommate request',
-      BodyHtml: ROOMMATE_REQUEST_BODY_EN },
-    { TemplateType: 'RoommateRequest', Language: 'DE', Subject: '{{RegistrantName}} hat dich als Zimmerpartner gewählt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Zimmerpartner-Anfrage',
-      BodyHtml: ROOMMATE_REQUEST_BODY_DE },
-    { TemplateType: 'GroupSwitchConfirmed', Language: 'EN', Subject: 'Group switch confirmed — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Group switch',
-      BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_EN },
-    { TemplateType: 'GroupSwitchConfirmed', Language: 'DE', Subject: 'Gruppen-Wechsel bestätigt — {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Gruppen-Wechsel',
-      BodyHtml: GROUP_SWITCH_CONFIRMED_BODY_DE },
-    { TemplateType: 'GroupSwitchWaitlist', Language: 'EN', Subject: 'Group switch — on waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Group switch — on waitlist',
-      BodyHtml: GROUP_SWITCH_WAITLIST_BODY_EN },
-    { TemplateType: 'GroupSwitchWaitlist', Language: 'DE', Subject: 'Gruppen-Wechsel — auf Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Gruppen-Wechsel — auf Warteliste',
-      BodyHtml: GROUP_SWITCH_WAITLIST_BODY_DE },
-    { TemplateType: 'OverbookingApology', Language: 'EN', Subject: 'Important: correction of your registration — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Registration corrected',
-      BodyHtml: OVERBOOK_APOLOGY_BODY_EN },
-    { TemplateType: 'OverbookingApology', Language: 'DE', Subject: 'Wichtig: Korrektur deiner Anmeldung — {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Anmeldung korrigiert',
-      BodyHtml: OVERBOOK_APOLOGY_BODY_DE },
-  ];
+  const standards = STANDARD_VORLAGEN;
 
   let listItemType = 'SP.Data.DEX_x005f_EmailTemplatesListItem';
   try {

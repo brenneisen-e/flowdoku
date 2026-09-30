@@ -7,7 +7,7 @@
  * beziehen sie ihre Umgebung aus dem `deps`-Objekt.
  */
 
-import { eventHeaderImageOpts } from '../../utils/mailHeaderImage';
+import { eventHeaderImageOptsFrisch } from '../../utils/mailHeaderImageFrisch';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../../types';
 import { EventService } from '../../services/EventService';
@@ -307,7 +307,7 @@ export function makeArchiveActions(deps: ArchiveDeps) {
           ${linkLine}
           ${feedbackBlock}
           <p style="margin:0 0 12px;">Vielen Dank!</p>`;
-        const body = wrapTemplate('#86bc25', 'Teilnehmerliste wird bald gelöscht', ev.title, inner, undefined, eventHeaderImageOpts(ev.emailTemplateOverrides, ev.mailImageBase64));
+        const body = wrapTemplate('#86bc25', 'Teilnehmerliste wird bald gelöscht', ev.title, inner, undefined, await eventHeaderImageOptsFrisch(ev));
         try {
           await eventService.queueEmail(
             `Teilnehmerliste zu „${ev.title}" wird in ~1 Woche gelöscht`,

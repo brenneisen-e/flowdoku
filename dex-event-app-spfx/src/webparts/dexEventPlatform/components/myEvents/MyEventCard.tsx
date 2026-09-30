@@ -37,6 +37,7 @@ import { DEX_ORB_PNG } from '../../data/brandLogos';
 import { istDexEinfuehrung } from '../../utils/dexIntro';
 import { TeamsJoinButton } from '../TeamsJoinButton';
 import OwnCalendarTeamsLink from './OwnCalendarTeamsLink';
+import { fieldVisibleByShowIf } from '../admin/modals/FieldSelectInput';
 import { eventTeamsLink, locationWithoutTeamsUrl } from '../../utils/teamsLink';
 import DocumentsViewer from './DocumentsViewer';
 import QuizPlayer from './QuizPlayer';
@@ -212,10 +213,35 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
             // behaupteten wir „offen" für etwas, das auf einer anderen Zeile steht.
             // Datei-Fragen und Häkchen ohne Pflicht zählen nicht: Ein nicht
             // gesetztes Häkchen IST eine Antwort, Dateien liegen nicht im CustomData.
+            // v32.52: Nur Fragen, die das Anmeldeformular dieser Person auch
+            // GEZEIGT hätte — dieselbe showIf-Regel wie dort (fieldVisibleByShowIf)
+            // plus die Gruppen-Regel. Bis v32.51 stand z. B. „Zimmerpartner —
+            // Noch offen" bei jemandem, der „Einzelzimmer" gewählt hatte
+            // (Nutzer-Befund 30.09.2026).
+            const gruppe = (registration.StarterType || registration.PreferredStarterType || '').trim();
+            const gruppeErlaubt = (f: EventSpecificField): boolean => {
+              const g = f.onlyForGroup;
+              if (!g || g === 'all') return true;
+              return g === 'A' ? gruppe === 'Durchstarter' : gruppe === 'Funstarter';
+            };
             const offeneFelder = answersKnown
               ? (event.eventSpecificFields || []).filter((f: EventSpecificField) =>
-                f.label && f.type !== 'document' && (f.type !== 'checkbox' || f.required) && !customData[f.id])
+                f.label && f.type !== 'document' && (f.type !== 'checkbox' || f.required) && !customData[f.id]
+                && fieldVisibleByShowIf(f, id => customData[id] || '') && gruppeErlaubt(f))
               : [];
+            // v32.52: „Noch offen" nur, wo wirklich etwas fehlt: Pflichtfragen und
+            // Fragen, die der Organizer NACH dieser Anmeldung ergänzt hat. Eine
+            // optionale Frage, die bei der Anmeldung leer blieb (Allergien,
+            // „Sonst noch etwas?"), ist beantwortet — mit „nichts". Das Alter einer
+            // Frage steht in ihrer Id (cf_<Zeitstempel>…, vom Assistenten vergeben);
+            // ohne Zeitstempel gilt sie als alt.
+            const angemeldetAm = Date.parse(registration.RegistrationDate || registration.Created || '') || 0;
+            const nachAnmeldungErgaenzt = (f: EventSpecificField): boolean => {
+              const m = /(\d{13})/.exec(f.id || '');
+              return !!m && angemeldetAm > 0 && Number(m[1]) > angemeldetAm;
+            };
+            const markiertOffen = (f: EventSpecificField): boolean => !!f.required || nachAnmeldungErgaenzt(f);
+            const echtOffen = offeneFelder.filter(markiertOffen);
             // v24.12: einzelne Organizer sind ausblendbar — die Bedingung ist
             // ein Datenschutz-Schalter und bleibt exakt so, sie wandert nur mit
             // ihrem Block in die gemeinsame Ansprechpartner-Sektion.
@@ -548,7 +574,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                         <div className="dex-ui-grid-2 dex-answer-grid">
                           {[
                             ...displayData.map(d => ({ key: d.key, el: <FieldAnswerField key={d.key} label={d.label} value={d.value} type={d.type} help={d.help} /> })),
-                            ...offeneFelder.map((f: EventSpecificField) => ({ key: f.id, el: <FieldAnswerField key={'offen-' + f.id} label={fieldLabelMap[f.id] || f.label} help={fieldHelpMap[f.id]} value="" offen pflicht={!!f.required} /> })),
+                            ...offeneFelder.map((f: EventSpecificField) => ({ key: f.id, el: <FieldAnswerField key={'offen-' + f.id} label={fieldLabelMap[f.id] || f.label} help={fieldHelpMap[f.id]} value="" offen={markiertOffen(f)} pflicht={!!f.required} /> })),
                           ].sort((a, b) => {
                             const ia = feldReihenfolge.indexOf(a.key); const ib = feldReihenfolge.indexOf(b.key);
                             return (ia < 0 ? 9999 : ia) - (ib < 0 ? 9999 : ib);
@@ -576,7 +602,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                             className="btn btn-outline dex-ui-btn-sm"
                             onClick={() => { setEditData(customData); setEditingId(event.id); }}
                           >
-                            <Pencil size={14} /> {displayData.length > 0 && offeneFelder.length === 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
+                            <Pencil size={14} /> {displayData.length > 0 && echtOffen.length === 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
                           </button>
                           {/* v31.9.3: „Gruppe wechseln" stand bis hierher unten
                               in der Aktionszeile neben „Abmelden" — zwei sehr

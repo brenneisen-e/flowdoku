@@ -267,6 +267,11 @@ input.dex-ui-checkbox:not([hidden]):disabled { opacity: 0.55; cursor: not-allowe
 }
 .dex-ui-section--pflicht::before { background: rgba(134,188,37,0.18); color: #3f6a12; }
 .dex-ui-section--optional::before { background: ${G100}; color: ${G500}; }
+/* v32.49: Das Wort bleibt in BEIDEN Zuständen mittig — bis v32.48 rutschte
+   es beim ersten Zeichen nach oben (Nutzer-Befund 30.09.2026: das Pflicht
+   sollte nicht springen). Der Haken sitzt deshalb relativ zur Mitte direkt
+   über dem Wort: rund 60 px Wortlänge (PFLICHT/OPTIONAL/REQUIRED bei 0.58rem
+   und 0.14em Sperrung), die Hälfte plus Abstand. */
 /* v32.45: Beantwortet — die Fläche verschwindet, es bleibt das Wort mit Haken:
    Pflicht dunkelgrün, Optional grau (Nutzer-Ansage 30.09.2026). Pflicht-Abschnitte
    setzen data-erledigt selbst (genau die Pflichtprüfung); optionale gelten auch
@@ -274,14 +279,14 @@ input.dex-ui-checkbox:not([hidden]):disabled { opacity: 0.55; cursor: not-allowe
 .dex-ui-section--pflicht[data-erledigt]::before,
 .dex-ui-section--optional[data-erledigt]::before,
 .dex-ui-section--optional:has(.dex-filled)::before {
-  background: transparent; top: 22px; justify-content: flex-end;
+  background: transparent;
 }
 /* Der Haken steht als eigenes, NICHT gekipptes Zeichen direkt über dem Wort —
    im gekippten Text lag er quer und las sich wie ein Pfeil. */
 .dex-ui-section--pflicht[data-erledigt]::after,
 .dex-ui-section--optional[data-erledigt]::after,
 .dex-ui-section--optional:has(.dex-filled)::after {
-  content: '✓'; position: absolute; left: -26px; top: 2px; width: 16px; text-align: center;
+  content: '✓'; position: absolute; left: -26px; top: calc(50% - 46px); width: 16px; text-align: center;
   font-size: 0.8rem; font-weight: 700; line-height: 16px; pointer-events: none;
 }
 .dex-ui-section--pflicht[data-erledigt]::before,

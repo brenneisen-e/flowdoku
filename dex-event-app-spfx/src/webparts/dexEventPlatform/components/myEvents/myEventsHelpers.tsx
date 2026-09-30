@@ -105,7 +105,7 @@ export function FieldAnswerField(props: { label: string; value: string; type?: s
             />
             <span>{person.name}</span>
           </>
-        ) : offen ? <span style={{ color: 'var(--dex-gray-400)' }}>—</span> : <span>{value}</span>}
+        ) : (offen || !value) ? <span style={{ color: 'var(--dex-gray-400)' }}>—</span> : <span>{value}</span>}
         {/* Schloss als Zeichen „nur Anzeige" — Lucide „lock", einfarbig. */}
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--dex-gray-400)' }}>
           <rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />

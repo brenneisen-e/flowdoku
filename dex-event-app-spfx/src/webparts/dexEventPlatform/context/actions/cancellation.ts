@@ -7,7 +7,7 @@
  * beziehen sie ihre Umgebung aus dem `deps`-Objekt.
  */
 
-import { eventHeaderImageOpts } from '../../utils/mailHeaderImage';
+import { mailLogoFrisch, eventHeaderImageOptsFrisch } from '../../utils/mailHeaderImageFrisch';
 import { DeloitteEvent } from '../../types';
 import { EventService, SPRegistration } from '../../services/EventService';
 import { wrapTemplate, buildEmailFromTemplate, cancellationEmail } from '../../services/EmailTemplates';
@@ -136,7 +136,7 @@ export function makeCancellationActions(deps: CancellationDeps) {
             const cancelVars = { Name: currentUserFirstName, EventTitle: event.title, AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural) };
             let emailData: { subject: string; body: string };
             const spTplRaw = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
-            const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung');
+            const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung', await mailLogoFrisch(event));
             if (spTpl) {
               emailData = buildEmailFromTemplate(spTpl, cancelVars);
             } else {
@@ -344,7 +344,7 @@ export function makeCancellationActions(deps: CancellationDeps) {
           };
           let emailData: { subject: string; body: string };
           const spTplRaw = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
-          const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung');
+          const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung', await mailLogoFrisch(event));
           if (spTpl) {
             emailData = buildEmailFromTemplate(spTpl, cancelVars);
           } else {
@@ -506,7 +506,7 @@ export function makeCancellationActions(deps: CancellationDeps) {
           };
           let emailData: { subject: string; body: string };
           const spTplRaw = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
-          const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung');
+          const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung', await mailLogoFrisch(event));
           if (spTpl) emailData = buildEmailFromTemplate(spTpl, cancelVars);
           else emailData = cancellationEmail(cancelledFirst, event.title);
           // v28.28: Organizer-Mitlese-Kopie als CC statt BCC (s.o.).
@@ -713,7 +713,7 @@ export function makeCancellationActions(deps: CancellationDeps) {
           : `<p>Hello ${mFirst},</p><p>${cancelledFullName} cancelled their registration from team ${teamNameStr} (${remaining.length}/${teamSizeCfg}).</p>${isNewLead ? newLeadBlockHtml : ''}`;
         mail = {
           subject: isDe ? `Team-Update — ${event.title}` : `Team update — ${event.title}`,
-          body: wrapTemplate('#ed8b00', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
+          body: wrapTemplate('#ed8b00', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner, undefined, await eventHeaderImageOptsFrisch(event)),
         };
       }
       try {

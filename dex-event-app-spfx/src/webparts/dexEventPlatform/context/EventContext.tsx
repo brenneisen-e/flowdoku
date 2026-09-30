@@ -8,7 +8,7 @@
  * - Eike, Maerz 2026
  */
 
-import { eventHeaderImageOpts } from '../utils/mailHeaderImage';
+import { mailLogoFrisch, eventHeaderImageOptsFrisch } from '../utils/mailHeaderImageFrisch';
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
@@ -20,7 +20,7 @@ import { buildProgramHtml } from '../utils/programPlaceholder';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
 import { isExternalEmail } from '../utils/deloitteDomain';
-import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, waitlistEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent, APP_URL } from '../services/EmailTemplates';
+import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, waitlistEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent, APP_URL, eckdatenHtml, wartelistenPlatzText } from '../services/EmailTemplates';
 import { buildUnsentEmlDraft } from '../utils/emlDraft';
 import { readPendingShadowParents, removePendingShadowParent, addPendingShadowParent } from '../utils/shadowHeal';
 import { readPendingReorders } from '../utils/reorderHeal';
@@ -1223,7 +1223,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       const posText = waitlistPosition > 0 ? String(waitlistPosition) : '';
       // {{Name}} in E-Mail-Anreden: nur Vorname (firstNameToUse ist bei Self-Reg
       // aus dem displayName gesplittet, bei "Für andere registrieren" explizit gesetzt).
-      const vars = { Name: firstNameToUse, EventTitle: event.title, Organizer: formatOrganizerList(event.organizers, lang), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: posText, Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural) };
+      const vars = { Name: firstNameToUse, EventTitle: event.title, Organizer: formatOrganizerList(event.organizers, lang), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: wartelistenPlatzText(posText, lang), Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural), Eckdaten: eckdatenHtml(event, lang) };
       // v26.47: Externe Dritte (kein Deloitte-Postfach), die stellvertretend
       // angemeldet wurden — der Mail-Flow kann externe Adressen NICHT erreichen.
       // Deshalb: (1) Registrierung als „Datenschutzrückmeldung offen" markieren
@@ -1265,7 +1265,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       // Zeile; der Anmelder holt sie per Deeplink-Button in der App und leitet sie
       // aus dem eigenen Postfach weiter (die App/der Flow sendet NIE an Externe).
       const spTemplateRaw = isExternalInvite ? null : await eventService.getEmailTemplate(templateType, lang).catch(() => null);
-      const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType);
+      const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType, await mailLogoFrisch(event));
       if (isExternalInvite) {
         const orgCenterUrl = buildHashDeepLink(`${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, { action: 'admin', event: eventId });
         const registrantFirst = (currentUserName || '').split(' ')[0] || currentUserName;
@@ -1385,7 +1385,19 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         // App öffnen (der mobile Browser lädt die Seite teils nicht zuverlässig,
         // v.a. Android). Nicht für externe Empfänger/Einladungen (nutzen DEX nicht)
         // und nur bei der eigentlichen Anmeldebestätigung ('Angemeldet').
+        // v32.50: Nur EIN Hinweis je Anmeldebestätigung (Nutzer-Ansage 30.09.2026:
+        // „es soll immer nur ein Hinweis versendet werden und nicht zwei"). Gab es
+        // schon Rundmails, gewinnt der Hinweis darauf — er betrifft genau diese
+        // Anmeldung; der Handy-Tipp ist allgemein und kommt sonst.
+        // v29.11: Die Einladung zählt nicht mit. Sie ist der Weg, über den die
+        // meisten überhaupt hier gelandet sind — auf sie zu verweisen sagt
+        // nichts. Der Hinweis erscheint erst, wenn es darüber hinaus eine
+        // Rundmail gab (Ankündigung, Update, Massenmail).
+        let priorComms = false;
         if (status === 'Angemeldet' && !isExternalInvite && !isExternalRecipient) {
+          try { priorComms = await eventService.hasEventComms(eventId, ['Einladung']); } catch { priorComms = false; }
+        }
+        if (status === 'Angemeldet' && !isExternalInvite && !isExternalRecipient && !priorComms) {
           const isDeMail = (lang || 'EN').toUpperCase() === 'DE';
           const mobileAppTip = `<div style="margin:0 0 16px;padding:12px 16px;background:#f1f7e8;border:1px solid #86bc25;border-radius:8px;font-size:13px;line-height:1.55;color:#3d5a1a;">`
             + (isDeMail
@@ -1410,12 +1422,6 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         // Pfad Nachrücker) in ihrer Anmeldebestätigung den Hinweis, dass sie die
         // bisherige Kommunikation in der App unter „Meine Events" nachlesen können.
         if (status === 'Angemeldet' && !isExternalInvite && !isExternalRecipient) {
-          let priorComms = false;
-          // v29.11: Die Einladung zählt nicht mit. Sie ist der Weg, über den die
-          // meisten überhaupt hier gelandet sind — auf sie zu verweisen sagt
-          // nichts. Der Hinweis erscheint erst, wenn es darüber hinaus eine
-          // Rundmail gab (Ankündigung, Update, Massenmail).
-          try { priorComms = await eventService.hasEventComms(eventId, ['Einladung']); } catch { priorComms = false; }
           if (priorComms) {
             const isDeComm = (lang || 'EN').toUpperCase() === 'DE';
             // v31.9.3: Deep-Link direkt auf die Nachrichten dieses Events.
@@ -1630,7 +1636,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               : `<p>Hello ${partnerFirstName || partnerName},</p><p><strong>${registrantFullName}</strong> has selected you as their <strong>roommate</strong> for the event <strong>${event.title}</strong>.</p>`;
             mail = {
               subject: isDe ? `Zimmerpartner-Anfrage: ${event.title}` : `Roommate request: ${event.title}`,
-              body: wrapTemplate('#86bc25', isDe ? 'Zimmerpartner-Anfrage' : 'Roommate request', event.title, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
+              body: wrapTemplate('#86bc25', isDe ? 'Zimmerpartner-Anfrage' : 'Roommate request', event.title, inner, undefined, await eventHeaderImageOptsFrisch(event)),
             };
           }
           eventService.queueEmail(
@@ -1964,12 +1970,13 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         EventTitle: event.title,
         Organizer: formatOrganizerList(event.organizers, lang),
         AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
-        WaitlistPosition: '',
+        WaitlistPosition: wartelistenPlatzText('', lang),
         Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural),
+        Eckdaten: eckdatenHtml(event, lang),
       };
       let emailData: { subject: string; body: string };
       const spTemplateRaw = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
-      const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType);
+      const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType, await mailLogoFrisch(event));
       if (spTemplate) {
         emailData = buildEmailFromTemplate(spTemplate, vars);
       } else {
@@ -2090,7 +2097,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           ? `<p>Hallo ${first || fullName},</p><p>du wurdest für das Event <strong>${event.title}</strong> dem Team ${teamNameStr} zugeordnet. Deine bestehende Anmeldung bleibt unverändert — du musst nichts weiter tun.</p>`
           : `<p>Hello ${first || fullName},</p><p>you have been assigned to team ${teamNameStr} for the event <strong>${event.title}</strong>. Your existing registration stays unchanged — nothing else to do.</p>`;
         const subject = isDe ? `Team-Zuordnung: ${event.title}` : `Team assignment: ${event.title}`;
-        const body = wrapTemplate('#86bc25', isDe ? 'Team-Zuordnung' : 'Team assignment', `Event ${event.title}`, inner + teamInfoHtml, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64));
+        const body = wrapTemplate('#86bc25', isDe ? 'Team-Zuordnung' : 'Team assignment', `Event ${event.title}`, inner + teamInfoHtml, undefined, await eventHeaderImageOptsFrisch(event));
         await eventService.queueEmail(subject, opts.recipientEmail, fullName, body, 'TeamMemberJoined', event.title, eventId, opts.ccEmail || undefined);
       } catch (err) { console.warn('[DEX] assignTeamlessToTeam mail failed:', err); }
     }
@@ -2141,7 +2148,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
             : `<p>Hello ${otherFirst},</p><p><strong>${newStr}</strong> joined your team ${teamNameStr}.</p>`;
           mail = {
             subject: isDe ? `Neues Team-Mitglied — ${event.title}` : `New team member — ${event.title}`,
-            body: wrapTemplate('#86bc25', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
+            body: wrapTemplate('#86bc25', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner, undefined, await eventHeaderImageOptsFrisch(event)),
           };
         }
         await eventService.queueEmail(mail.subject, other.ParticipantEmail, otherFull, mail.body, 'TeamMemberJoined', event.title, eventId).catch(() => { /* */ });
@@ -2261,12 +2268,13 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       EventTitle: event.title,
       Organizer: formatOrganizerList(event.organizers, lang),
       AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
-      WaitlistPosition: '',
+      WaitlistPosition: wartelistenPlatzText('', lang),
       Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural),
+      Eckdaten: eckdatenHtml(event, lang),
     };
     let emailData: { subject: string; body: string };
     const spTplRaw = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
-    const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, templateType);
+    const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, templateType, await mailLogoFrisch(event));
     if (spTpl) {
       emailData = buildEmailFromTemplate(spTpl, vars);
     } else {
@@ -2345,7 +2353,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
             : `<p>Hello ${otherFirst},</p><p><strong>${newMemberFullName}</strong> joined your team ${teamNameStr}.</p>`;
           mail = {
             subject: isDe ? `Neues Team-Mitglied — ${event.title}` : `New team member — ${event.title}`,
-            body: wrapTemplate('#86bc25', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
+            body: wrapTemplate('#86bc25', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner, undefined, await eventHeaderImageOptsFrisch(event)),
           };
         }
         eventService.queueEmail(
@@ -2460,7 +2468,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
             : `<p>Hello ${otherFirst},</p><p>The team lead role in your team ${teamNameStr} has been transferred to <strong>${newLeadName}</strong>.</p>${isNewLeadMember ? newLeadBlockHtml : ''}`;
           mail = {
             subject: isDe ? `Team-Lead-Wechsel — ${event.title}` : `Team lead change — ${event.title}`,
-            body: wrapTemplate('#86bc25', isDe ? 'Team-Lead-Wechsel' : 'Team lead change', `Event ${event.title}`, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
+            body: wrapTemplate('#86bc25', isDe ? 'Team-Lead-Wechsel' : 'Team lead change', `Event ${event.title}`, inner, undefined, await eventHeaderImageOptsFrisch(event)),
           };
         }
         eventService.queueEmail(
@@ -2550,7 +2558,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           : `<p>Hello ${leadFirst},</p><p><strong>${currentUserName}</strong> would like to join your team ${teamNameStr}.</p><p style="text-align:center;margin:18px 0;"><a href="${appUrl}&decision=approve" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Approve</a> <a href="${appUrl}&decision=reject" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Reject</a></p>`;
         mail = {
           subject: isDe ? `Team-Beitritts-Anfrage — ${event.title}` : `Team join request — ${event.title}`,
-          body: wrapTemplate('#86bc25', isDe ? 'Team-Beitritts-Anfrage' : 'Team join request', `Event ${event.title}`, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
+          body: wrapTemplate('#86bc25', isDe ? 'Team-Beitritts-Anfrage' : 'Team join request', `Event ${event.title}`, inner, undefined, await eventHeaderImageOptsFrisch(event)),
         };
       }
       eventService.queueEmail(
@@ -2643,7 +2651,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           : `<p>Hello ${requesterFirst},</p><p>your join request for the team at event „${event.title}" was declined by the team lead.</p>`;
         mail = {
           subject: isDe ? `Team-Beitritts-Anfrage abgelehnt — ${event.title}` : `Team join request declined — ${event.title}`,
-          body: wrapTemplate('#ed8b00', isDe ? 'Team-Beitritts-Anfrage abgelehnt' : 'Team join request declined', `Event ${event.title}`, inner, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
+          body: wrapTemplate('#ed8b00', isDe ? 'Team-Beitritts-Anfrage abgelehnt' : 'Team join request declined', `Event ${event.title}`, inner, undefined, await eventHeaderImageOptsFrisch(event)),
         };
       }
       eventService.queueEmail(
@@ -3219,7 +3227,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
               subject: isDeMail
                 ? (isWaitlist ? `Gruppen-Wechsel — auf Warteliste: ${event.title}` : `Gruppen-Wechsel bestätigt: ${event.title}`)
                 : (isWaitlist ? `Group switch — added to waitlist: ${event.title}` : `Group switch confirmed: ${event.title}`),
-              body: wrapTemplate(isWaitlist ? '#ed8b00' : '#86bc25', isDeMail ? 'Gruppen-Wechsel' : 'Group switch', event.title, innerBody, undefined, eventHeaderImageOpts(event.emailTemplateOverrides, event.mailImageBase64)),
+              body: wrapTemplate(isWaitlist ? '#ed8b00' : '#86bc25', isDeMail ? 'Gruppen-Wechsel' : 'Group switch', event.title, innerBody, undefined, await eventHeaderImageOptsFrisch(event)),
             };
           }
           await eventService.queueEmail(mail.subject, currentUserEmail, currentUserName, mail.body, templateType, event.title, eventId)

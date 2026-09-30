@@ -34,6 +34,7 @@
  * entscheidet die Reihenfolge, nicht die Gruppe (v30.67), und das rechnet nur
  * `runManualPromote` richtig. Beide Gruppen stehen namentlich im Bericht.
  */
+import { mailLogoFrisch } from '../../../utils/mailHeaderImageFrisch';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { applyEventTemplateOverride, formatOrganizerList } from '../../../context/EventContext';
 import { buildEmailFromTemplate, promotionEmail } from '../../../services/EmailTemplates';
@@ -110,7 +111,7 @@ export async function notifyPromotedFor(
       };
       let emailData: { subject: string; body: string };
       const spTplRaw = await svc.getEmailTemplate('Nachruecken', lang).catch(() => null);
-      const spTpl = applyEventTemplateOverride(spTplRaw, ev.emailTemplateOverrides, 'Nachruecken');
+      const spTpl = applyEventTemplateOverride(spTplRaw, ev.emailTemplateOverrides, 'Nachruecken', await mailLogoFrisch(ev));
       if (spTpl) {
         emailData = buildEmailFromTemplate(spTpl, promoteVars);
       } else {

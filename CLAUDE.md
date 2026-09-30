@@ -477,6 +477,14 @@ der Vollbild-Kopf seit v29.29 Standard ist. Regel: gespeichertes
 Orb-Schutz. Wer eine neue Mail zu einem Event baut, übergibt
 `eventHeaderImageOpts(ev.emailTemplateOverrides, ev.mailImageBase64)` als
 sechstes Argument — sonst ist es die nächste „bei dieser Mail fehlt es".
+**Seit v32.51: `await eventHeaderImageOptsFrisch(ev)` statt der synchronen
+Variante** (`utils/mailHeaderImageFrisch`). Seit v32.0.6/v32.0.10 fehlt das
+Mail-Logo im State, bis der Hintergrund-Nachlauf es bringt — die synchrone
+Funktion hielt jedes Event bis dahin für eines ohne Bild und lieferte 180 px
+(Anmeldebestätigung, Abmeldung, Nachrücken, Verspätete Abmeldung).
+`applyEventTemplateOverride` bekommt das Logo als viertes Argument
+(`await mailLogoFrisch(ev)`). Der Merker `_logosAusgelagert` sagt NICHT, ob
+ein Bild existiert — er wird bei jedem Kommunikations-Write gesetzt.
 
 **Berechtigungen gelten je Subsite — und jedes Sub-Event hat eine eigene.**
 `ensureOrganizerPermissions` lief bis v30.36 nur über `editEvent.subsiteUrl`.
@@ -556,6 +564,21 @@ zwei Uploads, von denen einer leer blieb. Seit v29.13 fällt der Hero-Slot der
 Anmeldeseite auf das Mail-Logo zurück (`heroImgUrl`, `usesMailImage`); die
 Cover-Hintergründe bleiben bewusst am Event-Bild, weil ein Logo im Beschnitt
 zerfällt.
+
+**Die Standard-Mail-Vorlagen stehen seit v32.52 an EINER Stelle:
+`services/events/standardVorlagen.ts`** (Texte in `services/mailBodies.ts`).
+Bis v32.51 standen Betreff, Überschrift und Text in `emailTemplatesList.ts`
+dreimal (Erst-Befüllung, Nachrüsten, „Standard-Vorlagen neu einspielen") und
+waren schon auseinandergelaufen. Zwei Regeln: (1) Eine Textänderung kommt erst
+nach „Standard-Vorlagen neu einspielen" (Admin Hub) live an — das überschreibt
+ALLE Anpassungen an den Standard-Vorlagen im Tenant. (2) Sieben Vorlagen
+verschickt ein FLOW (Nachruecken, OrgNachruecker, AbmeldungAuto,
+OutlookDeclineReminder[_OnBehalfOf], OutlookForwardNotification,
+OutlookDeclineDigest); er ersetzt nur die Platzhalter, die er kennt
+(`docs/flow-jsons.md`). Ein neuer Platzhalter dort käme roh beim Empfänger an —
+in diesen Vorlagen nie einen hinzufügen. Für die App-Vorlagen gibt es
+HTML-Blöcke, die leer bleiben dürfen (`RAW_HTML_KEYS` in
+`buildEmailFromTemplate`, z. B. `{{Eckdaten}}`).
 
 **Eine gemappte Spalte ist noch keine gelesene Spalte (v32.46).**
 `eventMapping` setzte `outlookIsOnlineMeeting` seit v30.26 aus
