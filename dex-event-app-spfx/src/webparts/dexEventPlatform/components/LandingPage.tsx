@@ -929,8 +929,8 @@ export default function LandingPage(): React.ReactElement {
                   </button>
                 );
                 return isDe
-                  ? <>Willkommen bei <strong>DEX</strong>. Unsere neue {link} für die Organisation von <span style={{ whiteSpace: 'nowrap' }}>Deloitte Events</span>. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
-                  : <>Welcome to <strong>DEX</strong>. Our new {link} for organising <span style={{ whiteSpace: 'nowrap' }}>Deloitte events</span>. From registration to check-in. Everything in one place.</>;
+                  ? <>Willkommen bei <strong>DEX</strong>. Unsere neue {link} für das Teilnehmermanagement von <span style={{ whiteSpace: 'nowrap' }}>Deloitte Events</span>. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
+                  : <>Welcome to <strong>DEX</strong>. Our new {link} for participant management of <span style={{ whiteSpace: 'nowrap' }}>Deloitte events</span>. From registration to check-in. Everything in one place.</>;
               })()}
             </p>
           </div>
