@@ -189,9 +189,9 @@ export const evQr: any = base({
   waitlistEnabled: true, waitlistCount: 1,
   imageUrl: IMG_OFFSITE,
   eventSpecificFields: [
-    { id: 'hotel', label: 'Brauchst du eine Übernachtung?', type: 'select', required: true, options: ['Ja, bitte', 'Nein, danke'] },
+    { id: 'hotel', label: 'Brauchst du eine Übernachtung?', type: 'select', required: true, options: ['Ja, bitte', 'Nein, danke'], helpText: 'Die Zimmer sind im Hotel an der Speicherstadt reserviert – eine Nacht, Frühstück inklusive.', helpTextStyle: 'inline' },
     // v32.44: nachträglich ergänzte Frage ohne Antwort — zeigt „Noch offen“ in Meine Events.
-    { id: 'anreise_neu', label: 'Wie reist du an?', type: 'select', required: true, options: ['Bahn', 'Auto', 'Flug'] },
+    { id: 'anreise_neu', label: 'Wie reist du an?', type: 'select', required: true, options: ['Bahn', 'Auto', 'Flug'], helpText: 'Für die Reisekostenplanung.' },
     { id: 'wunsch_neu', label: 'Hast du einen Wunsch fürs Abendprogramm?', type: 'text', required: false },
   ],
 });

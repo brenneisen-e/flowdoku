@@ -128,6 +128,7 @@ export function splitReleaseNote(text: string): ReleaseNoteParts {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '32.47.0', date: '2026-09-30', bereich: 'Anmeldung', type: 'Bugfix', text: 'Unter „Meine Events“ stehen deine Angaben jetzt genau wie im Anmeldeformular: in derselben Reihenfolge wie die Fragen, und die Felder zweier Fragen nebeneinander beginnen auf derselben Höhe – auch wenn eine davon eine Beschreibung hat.' },
   { version: '32.46.0', date: '2026-09-30', bereich: 'Teams', type: 'Bugfix', text: 'Von DEX erzeugte Teams-Besprechungen wurden beim Laden nicht erkannt. Deshalb fehlte unter „Meine Events“ der Teilnahme-Link, und der Assistent öffnete solche Events mit „kein Online-Meeting“ – beim Speichern wurde die Einstellung dann zurückgesetzt. Beides ist behoben. Der Link wird jetzt auch gesucht, wenn nur der Ort Teams nennt.' },
   { version: '32.46.0', date: '2026-09-30', bereich: 'Event-Erstellung', type: 'Feature', text: 'Wer bei einem bestehenden Event eine Frage entfernt, die schon beantwortet wurde, bekommt jetzt einen Warn-Dialog mit der Zahl der Antworten. Die Antworten wären danach aus Teilnehmerliste, Export und Mails verschwunden.' },
   { version: '32.46.0', date: '2026-09-30', bereich: 'Event-Erstellung', type: 'Feature', text: 'Neue Fragen bei einem Event mit Anmeldungen: Der Fragen-Schritt weist darauf hin, dass die Bisherigen sie noch nicht beantwortet haben, und empfiehlt eine Mail mit der Bitte, die Angaben unter „Meine Events“ nachzutragen.' },

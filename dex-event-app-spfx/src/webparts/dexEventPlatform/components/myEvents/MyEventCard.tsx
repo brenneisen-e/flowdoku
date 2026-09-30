@@ -133,6 +133,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
             // v32.45: Beschreibung je Feld (wie im Anmeldeformular) — ohne sie
             // stand in „Deine Angaben" nur die nackte Frage (Nutzer-Befund 30.09.2026).
             const fieldHelpMap: Record<string, { text: string; inline: boolean }> = {};
+            const feldReihenfolge: string[] = (event.eventSpecificFields || []).map((f: EventSpecificField) => f.id);
             for (const field of event.eventSpecificFields) {
               fieldTypeMap[field.id] = field.type;
               const help = (useEnDisplay && field.helpTextEn && field.helpTextEn.trim()) ? field.helpTextEn : field.helpText;
@@ -177,6 +178,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                   }).join(' | ');
                 }
                 return {
+                  key,
                   label: fieldLabelMap[key] || adHocLabels[key] || key,
                   value,
                   type: fieldTypeMap[key],
@@ -541,13 +543,16 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                       <div className="dex-ui-section-title">{isDe ? 'Deine Angaben' : 'Your details'}</div>
                       {(displayData.length > 0 || offeneFelder.length > 0) && (
                         // v32.44: wie im Anmeldeformular — Frage über gesperrtem Feld, zweispaltig.
-                        <div className="dex-ui-grid-2" style={{ gap: 14 }}>
-                          {displayData.map(({ label, value, type, help }) => (
-                            <FieldAnswerField key={label} label={label} value={value} type={type} help={help} />
-                          ))}
-                          {offeneFelder.map((f: EventSpecificField) => (
-                            <FieldAnswerField key={'offen-' + f.id} label={fieldLabelMap[f.id] || f.label} help={fieldHelpMap[f.id]} value="" offen pflicht={!!f.required} />
-                          ))}
+                        // v32.46: Reihenfolge wie im Formular (Feldliste des Events),
+                        // beantwortete und offene Fragen gemischt; Unbekanntes ans Ende.
+                        <div className="dex-ui-grid-2 dex-answer-grid">
+                          {[
+                            ...displayData.map(d => ({ key: d.key, el: <FieldAnswerField key={d.key} label={d.label} value={d.value} type={d.type} help={d.help} /> })),
+                            ...offeneFelder.map((f: EventSpecificField) => ({ key: f.id, el: <FieldAnswerField key={'offen-' + f.id} label={fieldLabelMap[f.id] || f.label} help={fieldHelpMap[f.id]} value="" offen pflicht={!!f.required} /> })),
+                          ].sort((a, b) => {
+                            const ia = feldReihenfolge.indexOf(a.key); const ib = feldReihenfolge.indexOf(b.key);
+                            return (ia < 0 ? 9999 : ia) - (ib < 0 ? 9999 : ib);
+                          }).map(x => x.el)}
                         </div>
                       )}
                       {/* v31.8: Der Leer-Satz nur, wo diese Zeile die Antworten
