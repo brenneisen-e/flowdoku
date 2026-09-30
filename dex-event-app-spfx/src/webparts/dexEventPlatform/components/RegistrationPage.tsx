@@ -59,6 +59,7 @@ import { DeadlineBanner, DemoBanner, LocationBanner, SubmitOverlay } from './reg
 import { createSubmitFlow } from './registration/submitFlow';
 import { waitlistBlockerEnabled } from '../services/events/waitlistShadow';
 import type { ReactDatePickerProps } from 'react-datepicker';
+import { parseCustomDateValue, formatCustomDateValue } from '../utils/customDateValue';
 import { istDexEinfuehrung } from '../utils/dexIntro';
 
 /**
@@ -85,32 +86,9 @@ const LazyDatePicker = React.lazy(async (): Promise<{ default: React.ComponentTy
   return { default: dp.default as React.ComponentType<ReactDatePickerProps> };
 });
 
-const pad2 = (n: number): string => String(n).padStart(2, '0');
 
-/**
- * v31.9: Der gespeicherte String bleibt ZEICHENGLEICH zum bisherigen nativen
- * Feld — `YYYY-MM-DD` bzw. `YYYY-MM-DDTHH:mm`, beides in lokaler Zeit. Der Wert
- * ist die Antwort der Person: Er landet in `CustomData` und wird im Organizer
- * Center, im Excel-Export und in der Bearbeiten-Ansicht wieder gelesen. Ein
- * verschobenes Format machte Alt- und Neu-Antworten unvergleichbar (dieselbe
- * Roundtrip-Falle wie `{{Organizer}}`, v30.74). Deshalb wird hier NUR die
- * Anzeige deutsch, nie der Speicherwert.
- */
-const parseCustomDateValue = (raw: string): Date | null => {
-  const m = (raw || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
-  if (!m) return null;
-  const d = new Date(
-    parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10),
-    m[4] ? parseInt(m[4], 10) : 0, m[5] ? parseInt(m[5], 10) : 0, 0, 0,
-  );
-  return isNaN(d.getTime()) ? null : d;
-};
-
-const formatCustomDateValue = (d: Date | null, withTime: boolean): string => {
-  if (!d || isNaN(d.getTime())) return '';
-  const day = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-  return withTime ? `${day}T${pad2(d.getHours())}:${pad2(d.getMinutes())}` : day;
-};
+// v32.53: parseCustomDateValue/formatCustomDateValue liegen in utils/customDateValue
+// (auch „Meine Events → Angaben bearbeiten“ schreibt dieses Format).
 
 export default function RegistrationPage(): React.ReactElement {
   // v11.98: Beim Mount nach oben scrollen. Sonst behält der scrollende
@@ -1648,11 +1626,6 @@ export default function RegistrationPage(): React.ReactElement {
                     <input type="checkbox" checked={val === 'true'} onChange={e => setValue(f.id, e.target.checked ? 'true' : 'false')} />
                     <span className="dex-ui-toggle-row-body">
                       <span className="dex-ui-toggle-row-title">{locale === 'de' ? 'Ja' : 'Yes'}</span>
-                      <span className="dex-ui-toggle-row-desc">
-                        {val === 'true'
-                          ? (locale === 'de' ? 'Bestätigt' : 'Confirmed')
-                          : (locale === 'de' ? 'Noch nicht bestätigt' : 'Not confirmed yet')}
-                      </span>
                     </span>
                   </label>
                 ) : f.type === 'number' ? (
@@ -2627,13 +2600,9 @@ export default function RegistrationPage(): React.ReactElement {
               {(displayConfirmLabel && displayConfirmLabel.trim())
                 || (eventLocale === 'de' ? 'Ja, bestätigen' : 'Yes, confirm')}
             </span>
-            {/* Der Zustand als Text — ein Haken allein ist auf dem Handy die
-                einzige Auskunft, und die steht sonst nur in der Farbe. */}
-            <span className="dex-ui-toggle-row-desc">
-              {vals[field.id] === 'true'
-                ? (eventLocale === 'de' ? 'Bestätigt' : 'Confirmed')
-                : (eventLocale === 'de' ? 'Noch nicht bestätigt' : 'Not confirmed yet')}
-            </span>
+            {/* v32.53: Die Zustandszeile („Noch nicht bestätigt"/„Bestätigt") ist
+                weg — der Haken sagt es schon, und die Zeile machte das Feld nur
+                höher als seine Nachbarn (Nutzer-Ansage 30.09.2026). */}
           </span>
         </label>
         {field.externalLinks && field.externalLinks.length > 0 && (

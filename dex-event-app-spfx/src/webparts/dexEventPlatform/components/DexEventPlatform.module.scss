@@ -319,6 +319,14 @@
       min-width: 0;
     }
     .dex-reg-fields-grid .dex-reg-field-head { min-width: 0; }
+    /* v32.53: Feine Linie zwischen den Fragezeilen (Nutzer-Idee 30.09.2026:
+       „wie Abschnitte, besser zu lesen"). Die Linie sitzt oben an jedem Feld
+       ab der zweiten Zeile; bei zwei Spalten sind das Feld 3 ff., auf dem
+       Handy (eine Spalte) Feld 2 ff. Farbe bewusst kaum sichtbar. */
+    .dex-reg-fields-grid > .form-group,
+    .dex-answer-grid > .dex-answer-field { border-top: 1px solid #ececec; padding-top: 14px; }
+    .dex-reg-fields-grid > .form-group:nth-child(-n+2),
+    .dex-answer-grid > .dex-answer-field:nth-child(-n+2) { border-top: 0; padding-top: 0; }
     .dex-reg-fields-grid .dex-reg-field-body { min-width: 0; }
     .dex-reg-fields-grid .form-label { min-height: 0; }
     .form-input, .form-select, .form-textarea {
@@ -896,6 +904,8 @@
       .my-event-card--kreis { margin-top: 50px; }
       /* v32.45: QR-Code, E-Mails, Abmelden passen auf dem Handy nicht zu dritt in eine Zeile. */
       .my-event-card__aktionen { grid-template-columns: 1fr 1fr !important; }
+      .dex-reg-fields-grid > .form-group:nth-child(2),
+      .dex-answer-grid > .dex-answer-field:nth-child(2) { border-top: 1px solid #ececec; padding-top: 14px; }
 
       /* Event Creation */
       .creation-layout { grid-template-columns: 1fr; }
