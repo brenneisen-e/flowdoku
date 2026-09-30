@@ -45,7 +45,7 @@ const TYPE_LABELS: Record<string, string> = {
   WeeklyReport: 'Wöchentlicher Admin-Bericht',
 };
 
-const PLACEHOLDERS = ['{{Name}}', '{{Vorname}}', '{{EventTitle}}', '{{AppUrl}}', '{{OrganizerHtml}}', '{{WaitlistPosition}}', '{{Programm}}'];
+const PLACEHOLDERS = ['{{Name}}', '{{Vorname}}', '{{EventTitle}}', '{{AppUrl}}', '{{OrganizerHtml}}', '{{WaitlistPosition}}', '{{Programm}}', '{{Eckdaten}}'];
 
 export default function EmailTemplatesPage(): React.ReactElement {
   const { navigate } = useNavigation();

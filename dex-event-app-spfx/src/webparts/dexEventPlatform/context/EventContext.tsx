@@ -20,7 +20,7 @@ import { buildProgramHtml } from '../utils/programPlaceholder';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
 import { isExternalEmail } from '../utils/deloitteDomain';
-import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, waitlistEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent, APP_URL } from '../services/EmailTemplates';
+import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, waitlistEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent, APP_URL, eckdatenHtml, wartelistenPlatzText } from '../services/EmailTemplates';
 import { buildUnsentEmlDraft } from '../utils/emlDraft';
 import { readPendingShadowParents, removePendingShadowParent, addPendingShadowParent } from '../utils/shadowHeal';
 import { readPendingReorders } from '../utils/reorderHeal';
@@ -1223,7 +1223,7 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       const posText = waitlistPosition > 0 ? String(waitlistPosition) : '';
       // {{Name}} in E-Mail-Anreden: nur Vorname (firstNameToUse ist bei Self-Reg
       // aus dem displayName gesplittet, bei "Für andere registrieren" explizit gesetzt).
-      const vars = { Name: firstNameToUse, EventTitle: event.title, Organizer: formatOrganizerList(event.organizers, lang), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: posText, Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural) };
+      const vars = { Name: firstNameToUse, EventTitle: event.title, Organizer: formatOrganizerList(event.organizers, lang), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: wartelistenPlatzText(posText, lang), Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural), Eckdaten: eckdatenHtml(event, lang) };
       // v26.47: Externe Dritte (kein Deloitte-Postfach), die stellvertretend
       // angemeldet wurden — der Mail-Flow kann externe Adressen NICHT erreichen.
       // Deshalb: (1) Registrierung als „Datenschutzrückmeldung offen" markieren
@@ -1970,8 +1970,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
         EventTitle: event.title,
         Organizer: formatOrganizerList(event.organizers, lang),
         AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
-        WaitlistPosition: '',
+        WaitlistPosition: wartelistenPlatzText('', lang),
         Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural),
+        Eckdaten: eckdatenHtml(event, lang),
       };
       let emailData: { subject: string; body: string };
       const spTemplateRaw = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
@@ -2267,8 +2268,9 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
       EventTitle: event.title,
       Organizer: formatOrganizerList(event.organizers, lang),
       AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
-      WaitlistPosition: '',
+      WaitlistPosition: wartelistenPlatzText('', lang),
       Programm: buildProgramHtml(event.agenda, lang, event.agendaTermPlural),
+      Eckdaten: eckdatenHtml(event, lang),
     };
     let emailData: { subject: string; body: string };
     const spTplRaw = await eventService.getEmailTemplate(templateType, lang).catch(() => null);

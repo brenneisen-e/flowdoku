@@ -565,6 +565,21 @@ Anmeldeseite auf das Mail-Logo zurück (`heroImgUrl`, `usesMailImage`); die
 Cover-Hintergründe bleiben bewusst am Event-Bild, weil ein Logo im Beschnitt
 zerfällt.
 
+**Die Standard-Mail-Vorlagen stehen seit v32.52 an EINER Stelle:
+`services/events/standardVorlagen.ts`** (Texte in `services/mailBodies.ts`).
+Bis v32.51 standen Betreff, Überschrift und Text in `emailTemplatesList.ts`
+dreimal (Erst-Befüllung, Nachrüsten, „Standard-Vorlagen neu einspielen") und
+waren schon auseinandergelaufen. Zwei Regeln: (1) Eine Textänderung kommt erst
+nach „Standard-Vorlagen neu einspielen" (Admin Hub) live an — das überschreibt
+ALLE Anpassungen an den Standard-Vorlagen im Tenant. (2) Sieben Vorlagen
+verschickt ein FLOW (Nachruecken, OrgNachruecker, AbmeldungAuto,
+OutlookDeclineReminder[_OnBehalfOf], OutlookForwardNotification,
+OutlookDeclineDigest); er ersetzt nur die Platzhalter, die er kennt
+(`docs/flow-jsons.md`). Ein neuer Platzhalter dort käme roh beim Empfänger an —
+in diesen Vorlagen nie einen hinzufügen. Für die App-Vorlagen gibt es
+HTML-Blöcke, die leer bleiben dürfen (`RAW_HTML_KEYS` in
+`buildEmailFromTemplate`, z. B. `{{Eckdaten}}`).
+
 **Eine gemappte Spalte ist noch keine gelesene Spalte (v32.46).**
 `eventMapping` setzte `outlookIsOnlineMeeting` seit v30.26 aus
 `e.OutlookIsOnlineMeeting` — aber die Spalte stand nie in `EVENT_SELECT`

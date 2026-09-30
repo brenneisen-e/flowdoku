@@ -472,7 +472,8 @@ export function buildEmailFromTemplate(
   // Muster wie `{{OrganizerHtml}}` direkt darunter: erst escapen, was Text ist,
   // dann die HTML-Bloecke einsetzen.
   // v30.95: `Programm` (utils/programPlaceholder) ist der dritte HTML-Block.
-  const RAW_HTML_KEYS = ['NewLeadBlock', 'WaitlistPositionBlock', 'Programm'];
+  // v32.52: `Eckdaten` (eckdatenHtml, Wann/Wo) ist der vierte.
+  const RAW_HTML_KEYS = ['NewLeadBlock', 'WaitlistPositionBlock', 'Programm', 'Eckdaten'];
   const textVars: Record<string, string> = {};
   const htmlVars: Record<string, string> = {};
   for (const [k, v] of Object.entries(vars)) {
@@ -482,6 +483,9 @@ export function buildEmailFromTemplate(
   for (const [k, v] of Object.entries(htmlVars)) {
     bodyHtml = bodyHtml.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v);
   }
+  // v32.52: Ein Aufrufer, der keine Eckdaten kennt (Vorschau, Testmail), soll
+  // keinen rohen Platzhalter verschicken — der Block ist optional.
+  bodyHtml = bodyHtml.replace(/\{\{Eckdaten\}\}/g, '');
   // v22.47: {{OrganizerHtml}} — nur die NAMEN fett, die Verbinder („und"/", ")
   // bleiben normal. Wird RAW (unescaped) ersetzt, deshalb erst nach
   // replacePlaceholders (das `OrganizerHtml` mangels vars-Key stehen lässt).
@@ -595,6 +599,54 @@ export function registrationEmail(recipientName: string, eventTitle: string): { 
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
     ),
   };
+}
+
+/**
+ * v32.52: `{{Eckdaten}}` — Wann und Wo eines Events als kurze Aufzählung für
+ * Anmeldebestätigung und Warteliste. Vorher stand dort nur der Titel; wann und
+ * wo das Event ist, musste man im Outlook-Termin suchen, den Wartelistler gar
+ * nicht bekommen. Fehlt beides, bleibt der Block leer.
+ */
+export function eckdatenHtml(
+  ev: { startDate?: string; endDate?: string; allDay?: boolean; location?: string; locationAddress?: { street?: string; houseNo?: string; zip?: string; city?: string } | null },
+  lang: string,
+): string {
+  const isDe = (lang || 'EN').toUpperCase() === 'DE';
+  const locale = isDe ? 'de-DE' : 'en-GB';
+  const s = ev.startDate ? new Date(ev.startDate) : null;
+  const e = ev.endDate ? new Date(ev.endDate) : null;
+  const gueltig = (d: Date | null): d is Date => !!d && !isNaN(d.getTime());
+  const datum = (d: Date): string => d.toLocaleDateString(locale, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+  const zeit = (d: Date): string => d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  let wann = '';
+  if (gueltig(s)) {
+    const gleicherTag = gueltig(e) && datum(e) === datum(s);
+    if (ev.allDay) {
+      wann = gueltig(e) && !gleicherTag ? `${datum(s)} – ${datum(e)}` : datum(s);
+    } else if (gueltig(e) && !gleicherTag) {
+      wann = `${datum(s)}, ${zeit(s)} – ${datum(e)}, ${zeit(e)}${isDe ? ' Uhr' : ''}`;
+    } else {
+      wann = `${datum(s)}, ${zeit(s)}${gueltig(e) ? `–${zeit(e)}` : ''}${isDe ? ' Uhr' : ''}`;
+    }
+  }
+  const a = ev.locationAddress || null;
+  const adresse = a ? [[a.street, a.houseNo].filter(Boolean).join(' '), [a.zip, a.city].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
+  const ort = [(ev.location || '').trim(), adresse].filter(Boolean).join(', ');
+  const zeilen = [
+    wann ? `<li><strong>${isDe ? 'Wann' : 'When'}:</strong> ${escapeHtml(wann)}</li>` : '',
+    ort ? `<li><strong>${isDe ? 'Wo' : 'Where'}:</strong> ${escapeHtml(ort)}</li>` : '',
+  ].filter(Boolean).join('');
+  return zeilen ? `<ul style="margin:8px 0 16px;padding-left:20px;line-height:1.7;">${zeilen}</ul>` : '';
+}
+
+/**
+ * v32.52: Wartelisten-Platz für `{{WaitlistPosition}}` — ohne bekannte Position
+ * (stellvertretende Anmeldung, erneuter Versand) ein Verweis statt einer Lücke.
+ */
+export function wartelistenPlatzText(pos: number | string | undefined, lang: string): string {
+  const n = typeof pos === 'number' ? pos : parseInt(String(pos || ''), 10);
+  if (n > 0) return String(n);
+  return (lang || 'EN').toUpperCase() === 'DE' ? 'siehe „Meine Events“' : 'see „My Events“';
 }
 
 /**
