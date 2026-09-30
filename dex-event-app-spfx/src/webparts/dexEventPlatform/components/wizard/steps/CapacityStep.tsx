@@ -715,7 +715,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                   Überschrift wie die Sichtbarkeit — drei gleichrangige Fragen,
                   drei gleich aussehende Abschnitte. Der visHeader mit Badge
                   bleibt in der Karte, weil Support auf die Nummer verweist. */}
-              <div className={subEventsOnlyMode ? 'dex-ui-section dex-ui-section--optional' : 'dex-ui-section dex-ui-section--pflicht'} data-art={subEventsOnlyMode ? 'Optional' : (isDe ? 'Pflicht' : 'Required')}>
+              <div className={subEventsOnlyMode ? 'dex-ui-section dex-ui-section--optional' : 'dex-ui-section dex-ui-section--pflicht'} data-art={subEventsOnlyMode ? 'Optional' : (isDe ? 'Pflicht' : 'Required')} data-erledigt={unlimitedParticipants || useSplitCapacities || String(maxParticipants || '').trim() ? '1' : undefined}>
                 <div className="dex-ui-section-title">
                   <Users size={14} />
                   {isDe ? 'Plätze — wie viele dürfen kommen?' : 'Seats — how many may come?'}
@@ -1322,7 +1322,7 @@ export const CapacityStep: React.FC<CapacityStepProps> = (p) => {
                   none) — im Klammer-Modus liess sich der Abschnitt deshalb nicht
                   einmal aufklappen, obwohl die Klammer seit v28.20 eine EIGENE,
                   wirksame Anmeldefrist haben kann. */}
-              <div className={subEventsOnlyMode ? 'dex-ui-section dex-ui-section--optional' : 'dex-ui-section dex-ui-section--pflicht'} data-art={subEventsOnlyMode ? 'Optional' : (isDe ? 'Pflicht' : 'Required')}>
+              <div className={subEventsOnlyMode ? 'dex-ui-section dex-ui-section--optional' : 'dex-ui-section dex-ui-section--pflicht'} data-art={subEventsOnlyMode ? 'Optional' : (isDe ? 'Pflicht' : 'Required')} data-erledigt={registrationDeadline ? '1' : undefined}>
                 <div className="dex-ui-section-title">
                   <Icon iconName="Clock" style={{ fontSize: 14 }} />
                   {isDe ? 'Fristen — bis wann?' : 'Deadlines — until when?'}

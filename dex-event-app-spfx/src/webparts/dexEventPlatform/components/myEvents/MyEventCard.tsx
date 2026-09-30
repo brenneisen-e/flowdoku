@@ -32,15 +32,18 @@ import { selfCancelLocked, selfCancelLockReason } from '../../utils/cancelPolicy
 import { X, Pencil, QrCode, Mail, Info, AlertCircle, ChevronDown } from '../Icons';
 import { cx } from '../dexUi';
 import DexLogo from '../DexLogo';
+import { getCachedOrbBase64 } from '../../services/EmailTemplates';
+import { DEX_ORB_PNG } from '../../data/brandLogos';
 import { istDexEinfuehrung } from '../../utils/dexIntro';
 import { TeamsJoinButton } from '../TeamsJoinButton';
+import OwnCalendarTeamsLink from './OwnCalendarTeamsLink';
 import { eventTeamsLink, locationWithoutTeamsUrl } from '../../utils/teamsLink';
 import DocumentsViewer from './DocumentsViewer';
 import QuizPlayer from './QuizPlayer';
 import MyEventSubEvents from './MyEventSubEvents';
 import MyEventUpload from './MyEventUpload';
 import MyEventDocField from './MyEventDocField';
-import { FieldAnswerTag, MyEventEntry, formatDate, formatDateRange, getStatusBadgeClass, getStatusLabel } from './myEventsHelpers';
+import { FieldAnswerField, MyEventEntry, formatDate, formatDateRange, getStatusBadgeClass, getStatusLabel } from './myEventsHelpers';
 
 export interface MyEventCardProps {
   /** Der Eintrag, den die Karte zeigt — frueher das destrukturierte Argument
@@ -195,6 +198,16 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
             // nie als „nichts" gerendert. Der Satz bleibt genau dort, wo diese
             // Zeile wirklich die einzige Quelle ist.
             const answersKnown = !sessionsOnly && !hiddenRow && !event.subEventsOnlyMode;
+            // v32.44: Fragen, die (noch) keine Antwort haben — typischerweise vom
+            // Organizer nachträglich ergänzt (Nutzer-Ansage 30.09.2026). Nur wo
+            // diese Zeile die Antworten wirklich trägt (answersKnown), sonst
+            // behaupteten wir „offen" für etwas, das auf einer anderen Zeile steht.
+            // Datei-Fragen und Häkchen ohne Pflicht zählen nicht: Ein nicht
+            // gesetztes Häkchen IST eine Antwort, Dateien liegen nicht im CustomData.
+            const offeneFelder = answersKnown
+              ? (event.eventSpecificFields || []).filter((f: EventSpecificField) =>
+                f.label && f.type !== 'document' && (f.type !== 'checkbox' || f.required) && !customData[f.id])
+              : [];
             // v24.12: einzelne Organizer sind ausblendbar — die Bedingung ist
             // ein Datenschutz-Schalter und bleibt exakt so, sie wandert nur mit
             // ihrem Block in die gemeinsame Ansprechpartner-Sektion.
@@ -222,7 +235,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
             const zugeklappt = istVorbei && zuKlappStand[event.id] !== true;
 
             return (
-              <div key={event.id} id={`dex-myevent-${event.id}`} className="card my-event-card">
+              <div key={event.id} id={`dex-myevent-${event.id}`} className={cx('card my-event-card', !zugeklappt && 'my-event-card--kreis')}>
 
                 {/* ============================================================
                     1. KOPFZONE — Bild, Titel, Status, Wann/Wo, QR, „Angemeldet am"
@@ -232,49 +245,28 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                    ============================================================ */}
                 {/* v31.70: `flexWrap` — die Knopfspalte rechts (s.u.) rutscht auf
                     dem Handy unter Bild und Titel statt sie zu quetschen. */}
-                {/* v32.41: Einführungs-Event — die animierte Kugel als Kreis ÜBER der
-                    Karte, wie auf der Anmeldeseite (Nutzer-Befund 29.09.2026: „auf
-                    einmal oben links und nicht als Kreis oben drüber"). */}
-                {dexIntro && (
-                  <div style={{ display: 'flex', justifyContent: 'center', margin: '-4px 0 14px', ...(istVorbei ? { filter: 'grayscale(1)', opacity: 0.7 } : {}) }}>
-                    <div style={{ width: 150, height: 150, borderRadius: '50%', overflow: 'hidden', border: '6px solid #fff', boxShadow: '0 6px 20px rgba(0,0,0,0.12)', background: '#fff' }}>
-                      <DexLogo title="DEX" motion="oscillate" size={138} paused={istVorbei} pointerSpin={!istVorbei} />
-                    </div>
+                {/* v32.45: JEDES Event bekommt den Kreis oben mittig, halb über der
+                    Kartenkante — wie auf der Anmeldeseite (Nutzer-Ansage 30.09.2026:
+                    „dann haben Anmeldeformular und Meine Events ähnliches Design").
+                    Vorher: Einführungs-Event als Kreis IN der Karte, alle anderen
+                    als Vorschaubild links neben dem Titel. Reihenfolge wie dort:
+                    Event-Bild (cover), sonst Mail-Logo (contain, Logos haben Ränder
+                    und Schrift), sonst der DEX-Orb. Zugeklappte vergangene Events
+                    bleiben kompakt und ohne Kreis. */}
+                {!zugeklappt && (
+                  <div className="my-event-card__kreis" style={istVorbei ? { filter: 'grayscale(1)', opacity: 0.7 } : undefined}>
+                    {dexIntro ? (
+                      <DexLogo title="DEX" motion="oscillate" size={108} paused={istVorbei} pointerSpin={!istVorbei} />
+                    ) : event.imageUrl ? (
+                      <CachedImg src={event.imageUrl} alt={event.title} loading="lazy" decoding="async"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    ) : (
+                      <img src={event.mailImageBase64 || getCachedOrbBase64() || DEX_ORB_PNG} alt=""
+                        style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', padding: 14, boxSizing: 'border-box' }} />
+                    )}
                   </div>
                 )}
                 <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                  {!dexIntro && event.imageUrl && (
-                    <div
-                      className="my-event-card__thumb"
-                      style={{
-                        flexShrink: 0,
-                        width: 140,
-                        height: 100,
-                        borderRadius: 'var(--dex-radius, 12px)',
-                        background: 'var(--dex-gray-50, #fafafa)',
-                        border: '1px solid var(--dex-gray-200)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        overflow: 'hidden',
-                        // v32.11: vergangene Events grau (Nutzer-Ansage 29.09.2026).
-                        ...(istVorbei ? { filter: 'grayscale(1)', opacity: 0.7 } : {}),
-                      }}
-                    >
-                      <CachedImg
-                        src={event.imageUrl}
-                        alt={event.title}
-                        loading="lazy"
-                        decoding="async"
-                        style={{
-                          maxWidth: '100%',
-                          maxHeight: '100%',
-                          objectFit: 'contain',
-                          display: 'block',
-                        }}
-                      />
-                    </div>
-                  )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     {/* Titel + Status-Pille + Gruppe (alles reine Anzeige) */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -361,6 +353,11 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           Besprechung, nicht erst den Kalender suchen. */}
                       {eventTeamsLink(event) && (
                         <TeamsJoinButton url={eventTeamsLink(event)} isDe={isDe} variant="link" />
+                      )}
+                      {/* v32.45: Von DEX erzeugte Teams-Besprechung — der Link
+                          steht nur im Outlook-Termin, also dort nachsehen. */}
+                      {!eventTeamsLink(event) && event.outlookIsOnlineMeeting && !event.disableOutlook && !istVorbei && (
+                        <OwnCalendarTeamsLink calendarLink={event.calendarLink} isDe={isDe} />
                       )}
                     </div>
 
@@ -537,13 +534,17 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                   // Nacht"), es später nicht mehr nachtragen.
                   // v31.8: Die Sektion rendert nur, wenn sie etwas zu zeigen hat
                   // — die beiden Bedingungen darunter sind unverändert.
-                  (displayData.length > 0 || (!hiddenRow && hasEditableFields)) && (
+                  (displayData.length > 0 || offeneFelder.length > 0 || (!hiddenRow && hasEditableFields)) && (
                     <div className="dex-ui-section">
                       <div className="dex-ui-section-title">{isDe ? 'Deine Angaben' : 'Your details'}</div>
-                      {displayData.length > 0 && (
-                        <div className="dex-ui-inline">
+                      {(displayData.length > 0 || offeneFelder.length > 0) && (
+                        // v32.44: wie im Anmeldeformular — Frage über gesperrtem Feld, zweispaltig.
+                        <div className="dex-ui-grid-2" style={{ gap: 14 }}>
                           {displayData.map(({ label, value, type }) => (
-                            <FieldAnswerTag key={label} label={label} value={value} type={type} />
+                            <FieldAnswerField key={label} label={label} value={value} type={type} />
+                          ))}
+                          {offeneFelder.map((f: EventSpecificField) => (
+                            <FieldAnswerField key={'offen-' + f.id} label={fieldLabelMap[f.id] || f.label} value="" offen pflicht={!!f.required} />
                           ))}
                         </div>
                       )}
@@ -551,7 +552,7 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           wirklich trägt (`answersKnown`, s.o.) — sonst bliebe
                           hier „nichts angegeben" stehen, während die Person auf
                           den Sub-Event-Zeilen längst geantwortet hat. */}
-                      {displayData.length === 0 && answersKnown && (
+                      {displayData.length === 0 && offeneFelder.length === 0 && answersKnown && (
                         <div className="dex-ui-muted">
                           {isDe ? 'Du hast bisher nichts angegeben.' : 'You have not entered anything yet.'}
                         </div>
@@ -562,13 +563,13 @@ export default function MyEventCard(props: MyEventCardProps): React.ReactElement
                           v18.38: zeigt jetzt „Angaben ergänzen", wenn noch
                           nichts ausgefüllt wurde — sonst „Angaben bearbeiten". */}
                       {!hiddenRow && hasEditableFields && (
-                        <div style={{ marginTop: 8 }}>
+                        <div style={{ marginTop: 12 }}>
                           <button
                             type="button"
                             className="btn btn-outline dex-ui-btn-sm"
                             onClick={() => { setEditData(customData); setEditingId(event.id); }}
                           >
-                            <Pencil size={14} /> {displayData.length > 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
+                            <Pencil size={14} /> {displayData.length > 0 && offeneFelder.length === 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
                           </button>
                           {/* v31.9.3: „Gruppe wechseln" stand bis hierher unten
                               in der Aktionszeile neben „Abmelden" — zwei sehr

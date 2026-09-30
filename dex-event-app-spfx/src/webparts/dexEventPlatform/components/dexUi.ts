@@ -267,11 +267,40 @@ input.dex-ui-checkbox:not([hidden]):disabled { opacity: 0.55; cursor: not-allowe
 }
 .dex-ui-section--pflicht::before { background: rgba(134,188,37,0.18); color: #3f6a12; }
 .dex-ui-section--optional::before { background: ${G100}; color: ${G500}; }
+/* v32.45: Beantwortet — die Fläche verschwindet, es bleibt das Wort mit Haken:
+   Pflicht dunkelgrün, Optional grau (Nutzer-Ansage 30.09.2026). Pflicht-Abschnitte
+   setzen data-erledigt selbst (genau die Pflichtprüfung); optionale gelten auch
+   als erledigt, sobald darin ein Feld ausgefüllt ist (dex-filled). */
+.dex-ui-section--pflicht[data-erledigt]::before,
+.dex-ui-section--optional[data-erledigt]::before,
+.dex-ui-section--optional:has(.dex-filled)::before {
+  background: transparent; top: 22px; justify-content: flex-end;
+}
+/* Der Haken steht als eigenes, NICHT gekipptes Zeichen direkt über dem Wort —
+   im gekippten Text lag er quer und las sich wie ein Pfeil. */
+.dex-ui-section--pflicht[data-erledigt]::after,
+.dex-ui-section--optional[data-erledigt]::after,
+.dex-ui-section--optional:has(.dex-filled)::after {
+  content: '✓'; position: absolute; left: -26px; top: 2px; width: 16px; text-align: center;
+  font-size: 0.8rem; font-weight: 700; line-height: 16px; pointer-events: none;
+}
+.dex-ui-section--pflicht[data-erledigt]::before,
+.dex-ui-section--pflicht[data-erledigt]::after { color: #2f5a0c; }
+.dex-ui-section--optional[data-erledigt]::before,
+.dex-ui-section--optional:has(.dex-filled)::before,
+.dex-ui-section--optional[data-erledigt]::after,
+.dex-ui-section--optional:has(.dex-filled)::after { color: ${G400}; }
 @media (max-width: 768px) {
   .dex-ui-section--pflicht::before, .dex-ui-section--optional::before {
     position: static; writing-mode: horizontal-tb; transform: none; display: inline-block;
     width: auto; padding: 1px 8px; margin: 0 0 6px; border-radius: 999px;
   }
+  .dex-ui-section--pflicht[data-erledigt]::after,
+  .dex-ui-section--optional[data-erledigt]::after,
+  .dex-ui-section--optional:has(.dex-filled)::after { content: none; }
+  .dex-ui-section--pflicht[data-erledigt]::before,
+  .dex-ui-section--optional[data-erledigt]::before,
+  .dex-ui-section--optional:has(.dex-filled)::before { content: '✓ ' attr(data-art); padding-left: 0; }
 }
 .dex-ui-section:first-child { margin-top: 0; }
 .dex-ui-section-title {
