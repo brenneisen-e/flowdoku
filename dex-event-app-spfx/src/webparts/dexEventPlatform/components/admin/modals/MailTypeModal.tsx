@@ -5,10 +5,12 @@
  *
  * Die drei Wege sind die bestehenden: Einladung = Einladungs-Editor,
  * Reminder = Empfängerwahl mit vorgewählter „Erinnerung", Info = Empfänger-
- * wahl wie bisher (aktive Teilnehmer). Kein eigener Versandweg. */
+ * wahl wie bisher (aktive Teilnehmer). Kein eigener Versandweg.
+ * v32.54: vierte Kachel „Angaben nachtragen“ — Info-Weg an die Aktiven, mit
+ * eigenem Standardtext und Deep-Link (#action=angaben) nach Meine Events. */
 import * as React from 'react';
 import Modal from '../../Modal';
-import { Mail, Send, Info } from '../../Icons';
+import { Mail, Send, Info, Pencil } from '../../Icons';
 
 export interface MailTypeModalProps {
   open: boolean;
@@ -17,9 +19,11 @@ export interface MailTypeModalProps {
   onInvite: () => void;
   onReminder: () => void;
   onInfo: () => void;
+  /** v32.54: Angemeldete bitten, fehlende/neue Fragen nachzutragen. */
+  onAngaben: () => void;
 }
 
-export const MailTypeModal: React.FC<MailTypeModalProps> = ({ open, isDe, onClose, onInvite, onReminder, onInfo }) => {
+export const MailTypeModal: React.FC<MailTypeModalProps> = ({ open, isDe, onClose, onInvite, onReminder, onInfo, onAngaben }) => {
   if (!open) return null;
   const kachel = (icon: React.ReactNode, title: string, desc: string, go: () => void): React.ReactElement => (
     <button type="button" className="dex-ui-choice" style={{ width: '100%', textAlign: 'left' }}
@@ -48,6 +52,10 @@ export const MailTypeModal: React.FC<MailTypeModalProps> = ({ open, isDe, onClos
           isDe ? 'Reminder' : 'Reminder',
           isDe ? 'Erinnerung an alle, die das Event sehen, aber noch nicht geantwortet haben.' : 'A reminder to everyone who can see the event but has not responded yet.',
           onReminder)}
+        {kachel(<Pencil size={18} />,
+          isDe ? 'Angaben nachtragen' : 'Complete details',
+          isDe ? 'Bitte an alle Angemeldeten, fehlende oder neue Fragen zu beantworten — mit Link direkt zu ihrer Anmeldung unter „Meine Events“.' : 'Ask everyone registered to answer missing or new questions — with a link straight to their registration under “My Events”.',
+          onAngaben)}
         {kachel(<Info size={18} />,
           isDe ? 'Info / Sonstiges' : 'Info / other',
           isDe ? 'Nachricht an Teilnehmer — z. B. Anreise, Programm, Änderungen. Auch mit Umfrage.' : 'A message to attendees — e.g. travel, programme, changes. Polls possible too.',

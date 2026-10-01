@@ -3449,7 +3449,7 @@ export default function AdminPage(): React.ReactElement {
       {massmailMode === 'pick' && selectedEvent && <MassmailPickModal {...massmailPickModalProps} />}
       {/* v32.26: Mail-Typ zuerst — Einladung, Reminder oder Info. */}
       <MailTypeModal open={mailTypOpen && !!selectedEvent} isDe={isDe} onClose={() => setMailTypOpen(false)}
-        onInvite={openInviteModal} onReminder={() => openMassmailPicker('reminder')} onInfo={() => openMassmailPicker()} />
+        onInvite={openInviteModal} onReminder={() => openMassmailPicker('reminder')} onInfo={() => openMassmailPicker()} onAngaben={() => openMassmailPicker('active', 'angaben')} />
 
       {/* v17.10: Step 2 (nur für 'nachruecker') — Paste-Eingabe + Extraktion */}
       {massmailMode === 'paste' && selectedEvent && <MassmailPasteModal {...massmailPasteModalProps} />}

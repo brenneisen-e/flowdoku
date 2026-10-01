@@ -117,7 +117,10 @@ export function fallbackFor(page: Page, eventId: string | null): { page: Page; e
 // v32.1.4: 'fresh-event' — im Zwischendialog der Eventübersicht wurde
 // ausdrücklich „Neues Event" gewählt; der Assistent zeigt dann keine
 // Entwurfs-Kachel mehr (die Entscheidung ist gefallen).
-export type NavIntent = 'register-other' | 'auto-cancel' | 'open-comms' | 'resume-draft' | 'fresh-event' | 'open-teilnehmer' | 'open-concur' | 'open-fa' | undefined;
+// v32.54: 'open-angaben' kommt aus der Mail „Angaben nachtragen“
+// (`#action=angaben&event=<Id>`) und öffnet in „Meine Events“ das Bearbeiten
+// der Angaben bei diesem Event.
+export type NavIntent = 'register-other' | 'auto-cancel' | 'open-comms' | 'open-angaben' | 'resume-draft' | 'fresh-event' | 'open-teilnehmer' | 'open-concur' | 'open-fa' | undefined;
 
 export interface NavigateOptions {
   /** v31.59: Seite ersetzen statt anhängen — für Rechte-Umleitungen und die

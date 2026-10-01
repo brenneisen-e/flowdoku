@@ -219,7 +219,7 @@ export async function auditOrCleanupPermissions(
 /** Liest die Rollenzuweisungen eines Securables (Web oder Liste). scopeBase =
  *  voll-qualifizierte API-URL bis zum Securable (…/_api/web bzw.
  *  …/_api/web/lists/getbytitle('X')). */
-async function _readRoleAssignments(svc: EventService, scopeBase: string): Promise<Array<{ pid: number; type: number; title: string; login: string; email: string; roleIds: number[]; roleNames: string[] }>> {
+export async function _readRoleAssignments(svc: EventService, scopeBase: string): Promise<Array<{ pid: number; type: number; title: string; login: string; email: string; roleIds: number[]; roleNames: string[] }>> {
   // $top hoch setzen: ein über-freigegebenes Securable (genau der Fall, den
   // wir suchen) kann viele Einzel-Zuweisungen haben — ohne $top würde OData
   // bei 100 abschneiden und Über-Freigaben stillschweigend übersehen.
@@ -259,7 +259,7 @@ async function _readRoleAssignments(svc: EventService, scopeBase: string): Promi
 
 /** Entfernt ALLE Rollenzuweisungen eines Principals auf einem Securable
  *  (Downgrade auf „kein direktes Recht" — Leserecht über Gruppen bleibt). */
-async function _deletePrincipalAssignment(svc: EventService, scopeBase: string, principalId: number): Promise<SPHttpClientResponse> {
+export async function _deletePrincipalAssignment(svc: EventService, scopeBase: string, principalId: number): Promise<SPHttpClientResponse> {
   // v26.81: Digest des Ziel-Webs mitschicken (Cross-Web-Schreibzugriff auf
   // Subsites würde sonst mit 403 abgelehnt).
   const digest = await svc._webDigest(svc._webOf(scopeBase));

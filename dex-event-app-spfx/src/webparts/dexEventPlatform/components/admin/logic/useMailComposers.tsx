@@ -83,7 +83,7 @@ export interface UseMailComposersResult {
   inviteHeaderOpts: { imageWidth: number; imagePaddingV: number; imagePaddingH: number; };
   massmailHeaderOpts: { imageWidth: number; imagePaddingV: number; imagePaddingH: number; };
   openInviteModal: () => void;
-  openMassmailPicker: (start?: MassmailAudience) => void;
+  openMassmailPicker: (start?: MassmailAudience, art?: 'angaben') => void;
   openPendingReminder: () => Promise<void>;
   /** v31.72: Dieselbe Rechnung wie „Wer hat noch nicht geantwortet?" — für
    *  die Massenmail-Gruppe „Erinnerung". null = kein Event. `audience` leer
@@ -423,10 +423,12 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
   // Event), Picker öffnen, zurücksetzen, Testmail an die Organizer.
   // v32.33: Der Reminder hat seinen EIGENEN Entwurf — sonst überschreibt der
   // Standardtext der Erinnerung eine halb geschriebene Info-Mail (und umgekehrt).
-  const reminderArtRef = React.useRef(false);
-  const massmailDraftKey = (id: string): string => `dex_massmail_draft_${id}${reminderArtRef.current ? '_reminder' : ''}`;
+  // v32.54: dritte Art „Angaben nachtragen“ — ebenfalls mit eigenem Entwurf.
+  const mailArtRef = React.useRef<'info' | 'reminder' | 'angaben'>('info');
+  const massmailDraftKey = (id: string): string => `dex_massmail_draft_${id}${mailArtRef.current === 'info' ? '' : '_' + mailArtRef.current}`;
   const buildMassmailDefaults = (ev: DeloitteEvent): { subject: string; heading: string; body: string } => {
-    if (!reminderArtRef.current) return { subject: `${ev.title} - Info`, heading: ev.title, body: '' };
+    if (mailArtRef.current === 'info') return { subject: `${ev.title} - Info`, heading: ev.title, body: '' };
+    if (mailArtRef.current === 'angaben') return buildAngabenDefaults(ev);
     // v32.33: Standardtext für die Erinnerung (Nutzer-Ansage 29.09.2026: „nett,
     // dass es das Event gibt, noch keine Rückmeldung erfolgt ist und um
     // Rückmeldung gebeten wird"). Sprache nach der Mail-Sprache des Events.
@@ -453,6 +455,30 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
         body: `<p>Hallo,</p>\n<p>vor Kurzem haben wir dich zu <strong>${ev.title}</strong> eingeladen — bisher haben wir aber noch keine Rückmeldung von dir. Vielleicht ist die Einladung im Postfach einfach untergegangen.</p>\n<p>Wir würden uns freuen, wenn du uns kurz Bescheid gibst, ob du dabei bist.${fristDe} Das dauert nur einen Moment — und auch eine Absage hilft uns bei der Planung:</p>\n<p>${linkHtml}</p>\n<p>Bei Fragen antworte einfach auf diese Mail.</p>\n<p>${gruss}</p>`,
       };
   };
+  // v32.54: Standardtext „Angaben nachtragen“ (Nutzer-Ansage 01.10.2026:
+  // „eine Vorlage, dass alle Personen noch ein fehlendes / neues Datenfeld
+  // nachtragen sollen … mit einem Deeplink zu My Events, der automatisch zu dem
+  // Event scrollt"). Der Link öffnet dort gleich das Bearbeiten (open-angaben).
+  const buildAngabenDefaults = (ev: DeloitteEvent): { subject: string; heading: string; body: string } => {
+    const en = (ev.emailLanguage || '').toUpperCase() === 'EN';
+    const link = buildHashDeepLink(`${siteUrl}/SitePages/DEX.aspx?env=WebView`, { action: 'angaben', event: ev.id });
+    const linkHtml = `<a href="${link}" style="color:#86bc25;font-weight:600;">${en ? 'Complete my details now' : 'Jetzt Angaben ergänzen'}</a>`;
+    const orgs = (ev.organizers || []).map(x => (x || '').trim()).filter(Boolean);
+    const gruss = en
+      ? `Best regards<br />The ${ev.title} organizer team${orgs.length ? '<br />' + orgs.join('<br />') : ''}`
+      : `Viele Grüße<br />Das ${ev.title} Orga-Team${orgs.length ? '<br />' + orgs.join('<br />') : ''}`;
+    return en
+      ? {
+        subject: `Please complete your details: ${ev.title}`,
+        heading: 'We need a few more details',
+        body: `<p>Hello,</p>\n<p>thank you for registering for <strong>${ev.title}</strong>. To plan everything well, we still need a few details from you — some questions were added to the registration form after you signed up, or are still open.</p>\n<p>The link takes you straight to your registration under „My Events“; the form is already open:</p>\n<p>${linkHtml}</p>\n<p>It only takes a minute. If you have any questions, just reply to this email.</p>\n<p>${gruss}</p>`,
+      }
+      : {
+        subject: `Bitte ergänze deine Angaben: ${ev.title}`,
+        heading: 'Uns fehlen noch ein paar Angaben',
+        body: `<p>Hallo,</p>\n<p>danke für deine Anmeldung zu <strong>${ev.title}</strong>. Damit wir gut planen können, brauchen wir noch ein paar Angaben von dir — einige Fragen sind nach deiner Anmeldung zum Formular dazugekommen oder noch offen.</p>\n<p>Der Link führt dich direkt zu deiner Anmeldung unter „Meine Events“, das Formular ist schon geöffnet:</p>\n<p>${linkHtml}</p>\n<p>Das dauert nur eine Minute. Bei Fragen antworte einfach auf diese Mail.</p>\n<p>${gruss}</p>`,
+      };
+  };
   const applyMassmailDraftOrDefaults = (ev: DeloitteEvent): void => {
     massmailHydratingRef.current = true;
     let loaded: { subject?: string; heading?: string; subheading?: string; body?: string } | null = null;
@@ -471,8 +497,8 @@ export function useMailComposers(ctx: UseMailComposersCtx): UseMailComposersResu
   };
   // v32.26: optional mit Startgruppe — „Reminder“ im Mail-Typ-Dialog wählt
   // die Erinnerung vor.
-  const openMassmailPicker = (start?: MassmailAudience): void => {
-    reminderArtRef.current = start === 'reminder';
+  const openMassmailPicker = (start?: MassmailAudience, art?: 'angaben'): void => {
+    mailArtRef.current = art === 'angaben' ? 'angaben' : (start === 'reminder' ? 'reminder' : 'info');
     if (selectedEvent) applyMassmailDraftOrDefaults(selectedEvent);
     setMassmailAudience(start || 'active');
     setMassmailPasteRaw('');

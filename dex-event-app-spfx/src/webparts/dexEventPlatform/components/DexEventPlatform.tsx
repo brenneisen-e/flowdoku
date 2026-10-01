@@ -621,6 +621,15 @@ function AppContent(): React.ReactElement {
         } else {
           navigate(targetPage);
         }
+      } else if (action === 'angaben' && eventParam) {
+        // v32.54: Deep-Link aus der Mail „Angaben nachtragen“ — Meine Events,
+        // Karte dieses Events, Bearbeiten offen. SharePoint-Item-ID, Rückfall
+        // eventNumber (wie action=register).
+        didHandleDeepLink.current = true;
+        let angEvt = events.find(e => e.id === eventParam);
+        if (!angEvt) { const n = parseInt(eventParam, 10); if (!isNaN(n)) angEvt = events.find(e => e.eventNumber === n); }
+        if (angEvt) navigate('my-events', angEvt.id, 'open-angaben');
+        else navigate('my-events');
       } else if (action === 'register' && eventParam) {
         // v26.67: Deep-Link aus der „Anmeldung abschließen"-Erinnerung — direkt
         // zur Anmeldeseite mit vorgewähltem Event (SharePoint-Item-ID; Fallback
