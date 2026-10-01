@@ -103,7 +103,7 @@ ${GRUSS_DE}`
 const weiterleitungTabelle = (von: string, an: string, status: string): string =>
   `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin:20px 0;font-size:14px;">
 <tr><td style="padding:8px 12px 8px 0;color:#63666A;width:32%;vertical-align:top;">${von}</td><td style="padding:8px 0;border-bottom:1px solid #eee;"><strong>{{Forwarder}}</strong></td></tr>
-<tr><td style="padding:8px 12px 8px 0;color:#63666A;vertical-align:top;">${an}</td><td style="padding:8px 0;border-bottom:1px solid #eee;"><strong>{{Recipient}}</strong><br><span style="color:#63666A;">{{RecipientEmail}}</span></td></tr>
+<tr><td style="padding:8px 12px 8px 0;color:#63666A;vertical-align:top;">${an}</td><td style="padding:8px 0;border-bottom:1px solid #eee;"><strong>{{Recipient}}</strong><div style="color:#63666A;">{{RecipientEmail}}</div></td></tr>
 <tr><td style="padding:8px 12px 8px 0;color:#63666A;vertical-align:top;">Event</td><td style="padding:8px 0;border-bottom:1px solid #eee;">{{EventTitle}}</td></tr>
 <tr><td style="padding:8px 12px 8px 0;color:#63666A;vertical-align:top;">Status</td><td style="padding:8px 0;border-bottom:1px solid #eee;"><span style="display:inline-block;padding:2px 10px;border-radius:999px;background:#fdeeee;color:#b3261e;font-weight:700;font-size:13px;">${status}</span></td></tr>
 </table>`;
@@ -234,16 +234,16 @@ ${UL}
 ${GRUSS_DEX_DE}`
 );
 
-// v22.39: Roter Storno-Banner — Event-Titel ausgegraut und durchgestrichen,
-// identisch zum Inline-Fallback `cancellationEmail()` in EmailTemplates.ts.
-export const CANCEL_BANNER_HTML = '<div style="margin:16px 0 20px;padding:14px 18px;border:2px solid #da291c;background:rgba(218,41,28,0.06);border-radius:8px;text-align:center;"><div style="font-size:0.78rem;font-weight:700;color:#da291c;text-transform:uppercase;letter-spacing:1.5px;">Stornierung &middot; Cancellation</div><div style="margin-top:6px;font-size:1.15rem;font-weight:700;color:#888;text-decoration:line-through;">{{EventTitle}}</div></div>';
+// v32.54: Der rote Storno-Kasten (v22.39, Titel durchgestrichen) ist raus —
+// Überschrift und Titel im Mail-Kopf sagen dasselbe direkt darüber, die
+// Mail las sich doppelt (Nutzer-Befund 01.10.2026).
+
 
 // Auto-Abmeldung nach Outlook-Absage (Flow DEX_OutlookDeclineHandler).
 // Platzhalter: {{Name}}, {{EventTitle}}.
 export const ABMELDUNG_AUTO_BODY_EN = wrapTemplateForStorage(
   '#da291c', 'Cancellation confirmed', '{{EventTitle}}',
   `<p>Hello {{Name}},</p>
-${CANCEL_BANNER_HTML}
 <p>because you declined the Outlook invitation, your registration has been <strong>cancelled</strong>. Your spot is now free for someone else.</p>
 <p>Changed your mind? You can register again any time in the <a href="${APP}">DEX app</a> — as long as spots are available.</p>
 ${GRUSS_EN}`
@@ -251,7 +251,6 @@ ${GRUSS_EN}`
 export const ABMELDUNG_AUTO_BODY_DE = wrapTemplateForStorage(
   '#da291c', 'Abmeldung bestätigt', '{{EventTitle}}',
   `<p>Hallo {{Name}},</p>
-${CANCEL_BANNER_HTML}
 <p>weil du die Outlook-Einladung abgelehnt hast, ist deine Anmeldung <strong>storniert</strong>. Dein Platz ist damit für jemand anderen frei.</p>
 <p>Doch dabei? Du kannst dich jederzeit wieder in der <a href="${APP}">DEX-App</a> anmelden — solange es freie Plätze gibt.</p>
 ${GRUSS_DE}`
@@ -470,12 +469,10 @@ ${GRUSS_EN}`;
 // v31.5: Geht an JEDE abgemeldete Zeile, auch an Wartelistler ohne
 // Outlook-Termin — daher „falls du einen hattest".
 export const ABMELDUNG_BODY_DE = `<p>Hallo {{Name}},</p>
-${CANCEL_BANNER_HTML}
 <p>deine Anmeldung ist <strong>storniert</strong>. Hattest du einen Outlook-Termin dafür, verschwindet er in Kürze aus deinem Kalender.</p>
 <p>Doch dabei? Du kannst dich jederzeit wieder in der <a href="{{AppUrl}}">DEX-App</a> anmelden — solange es freie Plätze gibt.</p>
 ${GRUSS_DE}`;
 export const ABMELDUNG_BODY_EN = `<p>Hello {{Name}},</p>
-${CANCEL_BANNER_HTML}
 <p>your registration has been <strong>cancelled</strong>. If you had an Outlook invitation for it, it will disappear from your calendar shortly.</p>
 <p>Changed your mind? You can register again any time in the <a href="{{AppUrl}}">DEX app</a> — as long as spots are available.</p>
 ${GRUSS_EN}`;

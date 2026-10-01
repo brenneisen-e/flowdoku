@@ -1160,53 +1160,23 @@ export const BasicsStep: React.FC<BasicsStepProps> = (p) => {
                       onClick={() => setImageDisplayOpen(o => !o)}
                     >
                       <span className="dex-ui-disclosure-chevron"><Icon iconName="ChevronRight" style={{ fontSize: 12 }} /></span>
-                      {isDe ? 'Darstellung pro Ansicht anpassen' : 'Adjust display per view'}
+                      {isDe ? 'Größe in der Event-Liste anpassen' : 'Adjust size in the event list'}
                       <span className="dex-ui-disclosure-count">{isDe ? 'optional' : 'optional'}</span>
                     </button>
                     {imageDisplayOpen && (
                       <div className="dex-ui-disclosure-body">
                         <p className="dex-ui-help" style={{ margin: '0 0 12px' }}>
                           {isDe
-                            ? 'Zoom und Größe je Ansicht getrennt einstellen, damit das Bild überall gut sitzt. Nichts einstellen = das Bild füllt den Bereich zentriert.'
-                            : 'Set zoom and size per view so the image sits well everywhere. Leave untouched = the image fills the area centered.'}
+                            ? 'Größe des Bildes in der Event-Liste einstellen. Auf der Anmeldeseite steht es immer im Kreis oben. Nichts einstellen = das Bild füllt den Bereich zentriert.'
+                            : 'Set the image size in the event list. On the registration page it always sits in the circle at the top. Leave untouched = the image fills the area centered.'}
                         </p>
                         {([
                           { key: 'card' as const, label: isDe ? 'Event-Liste / Karte' : 'Event list / card', w: 240, h: 135 },
-                          { key: 'hero' as const, label: isDe ? 'Anmeldeseite (Bild oben)' : 'Registration page (top image)', w: 200, h: 200 },
                         ]).map(view => {
                           const v: ImgView = imageDisplay[view.key] || { zoom: 1, posY: 50 };
                           const setV = (next: ImgView): void => setImageDisplay(prev => ({ ...prev, [view.key]: next }));
-                          const isHero = view.key === 'hero';
-                          const heroH = v.height ?? 340;
-                          if (isHero) {
-                            // v23.24: Anmeldeseite-Vorschau 1:1 wie die echte
-                            // Registrierungsseite rendern — weiße Hülle volle
-                            // Breite, Bild „contain" mit der eingestellten max.
-                            // Höhe + Zoom (identische Style-Logik wie
-                            // RegistrationPage Hero). So sieht der Organizer die
-                            // tatsächliche Größe, nicht nur eine Mini-Annäherung.
-                            return (
-                              <div key={view.key} style={{ marginBottom: 16 }}>
-                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>{view.label}</div>
-                                <div style={{ width: '100%', background: '#fff', borderRadius: 'var(--dex-radius)', overflow: 'hidden', display: 'flex', justifyContent: 'center', boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)', padding: 4 }}>
-                                  <img
-                                    src={imagePreview}
-                                    alt={view.label}
-                                    style={{ display: 'block', margin: '0 auto', maxWidth: '100%', maxHeight: heroH, width: 'auto', height: 'auto', objectFit: 'contain', transform: `scale(${v.zoom})`, transformOrigin: 'center center' }}
-                                  />
-                                </div>
-                                <div style={{ marginTop: 8 }}>
-                                  <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Größe (max. Höhe)' : 'Size (max. height)'}</label>
-                                  <input type="range" min={140} max={500} step={5} value={heroH} onChange={e => setV({ ...v, height: parseInt(e.target.value, 10) })} style={{ width: '100%' }} />
-                                  <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Zoom' : 'Zoom'}</label>
-                                  <input type="range" min={0.3} max={3} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
-                                  <button type="button" className="dex-ui-textbtn dex-ui-textbtn--muted" style={{ marginTop: 4 }} onClick={() => setImageDisplay(prev => { const n = { ...prev }; delete n[view.key]; return n; })}>
-                                    {isDe ? 'Zurücksetzen' : 'Reset'}
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          }
+                          // v32.54: Die Anmeldeseite zeigt das Bild immer im Kreis oben —
+                          // Zoom/Höhe für die Anmeldeseite (v23.19) wirken dort nicht mehr.
                           return (
                             <div key={view.key} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>
                               <div style={{ width: view.w, height: view.h, flexShrink: 0, overflow: 'hidden', borderRadius: 6, background: '#fff', position: 'relative', boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)' }}>

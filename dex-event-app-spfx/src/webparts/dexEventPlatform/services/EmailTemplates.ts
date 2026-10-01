@@ -811,23 +811,7 @@ export function cancellationEmail(recipientName: string, eventTitle: string): { 
   // Der Text steht doppelt: hier als Code-Fallback und als Seed-Vorlage
   // „Abmeldung" in `events/emailTemplatesList.ts` — im Tenant gilt die Vorlage
   // aus DEX_EmailTemplates, dieser Fallback nur, wenn sie fehlt.
-  // v17.20: Visuell deutlicher Stornierungs-Banner direkt unter der Begrüßung
-  // \u2014 Event-Titel ausgegraut + durchgestrichen, damit auf den ersten Blick
-  // erkennbar ist, dass die Anmeldung storniert wurde (vorher: Stornierung
-  // ging nur über den Subject-Zusatz hervor).
-  const cancelBanner = `
-    <div style="margin: 16px 0 20px; padding: 14px 18px; border: 2px solid #da291c;
-                background: rgba(218, 41, 28, 0.06); border-radius: 8px;
-                text-align: center;">
-      <div style="font-size: 0.78rem; font-weight: 700; color: #da291c;
-                  text-transform: uppercase; letter-spacing: 1.5px;">
-        Stornierung &middot; Cancellation
-      </div>
-      <div style="margin-top: 6px; font-size: 1.15rem; font-weight: 700;
-                  color: #888; text-decoration: line-through;">
-        ${eventTitle}
-      </div>
-    </div>`;
+  // v32.54: Kein Storno-Kasten mehr (v17.20) — Kopf und Titel sagen es schon.
   return {
     subject: `Abmeldebest\u00E4tigung: ${eventTitle}`,
     body: wrapTemplate(
@@ -835,7 +819,6 @@ export function cancellationEmail(recipientName: string, eventTitle: string): { 
       'Cancellation confirmed',
       eventTitle,
       `<p>Dear ${recipientName},</p>
-      ${cancelBanner}
       <p>your registration for the event above has been <strong>cancelled</strong>. If you had an Outlook invitation for it, it will be removed from your calendar shortly.</p>
       <p>If you change your mind, you can register again via the <a href="${APP_URL}" style="color:${GREEN};font-weight:600;">DEX App</a>.</p>
       <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
