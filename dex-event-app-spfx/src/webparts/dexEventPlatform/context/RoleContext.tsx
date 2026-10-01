@@ -12,6 +12,8 @@
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SharePointService } from '../services/SharePointService';
+import { EventService } from '../services/EventService';
+import { einzelfreigabenNormalisieren } from '../services/events/einzelfreigaben';
 import { RoleAssignment, UserRole } from '../types';
 import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
 import { dlog } from '../utils/debugLog';
@@ -106,6 +108,22 @@ const GRUPPEN_CACHE = new Map<string, { t: number; p: Promise<any> }>();
 const GRUPPEN_TTL_MS = 10 * 60 * 1000;
 
 export const RoleContext = React.createContext<RoleContextType | undefined>(undefined);
+
+// v32.56: Ergebnis des Tageslaufs „Einzelfreigaben" — die Rollenverwaltung
+// zeigt daraus den letzten Stand (Speicher dieses Browsers).
+export const EINZELFREIGABEN_KEY = 'dex_einzelfreigaben_v1';
+export interface EinzelfreigabenEintrag {
+  ts: number; reduziert: number; offen: number; gemeldet: number; leseFehler: string[];
+  befunde: Array<{ ort: string; email: string; name: string; rechte: string; ergebnis: string }>;
+}
+export const einzelfreigabenEintrag = (b: { befunde: EinzelfreigabenEintrag['befunde']; leseFehler: string[] }): EinzelfreigabenEintrag => ({
+  ts: Date.now(),
+  reduziert: b.befunde.filter(x => x.ergebnis === 'reduziert').length,
+  offen: b.befunde.filter(x => x.ergebnis === 'besucher-fehlt' || x.ergebnis === 'entfernen-fehlgeschlagen' || x.ergebnis === 'gefunden').length,
+  gemeldet: b.befunde.filter(x => x.ergebnis === 'nur-gemeldet').length,
+  leseFehler: b.leseFehler,
+  befunde: b.befunde.slice(0, 60),
+});
 
 export function RoleProvider(props: { context: WebPartContext; children: React.ReactNode }): React.ReactElement {
   const [roles, setRoles] = React.useState<RoleAssignment[]>([]);
@@ -394,6 +412,40 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     void t;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRolesLoading, roles, currentUserRole]);
+
+  // v32.56: Einzelfreigaben auf die App normalisieren — einmal je 24 h beim
+  // Admin-Start, 90 s nach dem Boot (Nutzer-Ansage 01.10.2026: „ein
+  // Automatismus wie das Archivieren, der regelmäßig die Rechte nachzieht bzw.
+  // reduziert"). Wer über eine SharePoint-Zugriffsanfrage ein persönliches
+  // Recht auf DEX.aspx bekam, wird in die Besucher-Gruppe aufgenommen; danach
+  // fällt die Einzelfreigabe weg (services/events/einzelfreigaben.ts). Nur mit
+  // gelesener Rollenliste: ohne sie wäre jeder Organizer ein „Fremder"
+  // (Merksatz v31.86).
+  const einzelLaufRef = React.useRef(false);
+  React.useEffect(() => {
+    if (einzelLaufRef.current) return;
+    if (isRolesLoading || rolesReadStatus !== 'ok' || roles.length === 0) return;
+    if (!(currentUserRole === 'Admin' || currentUserRole === 'IT-Admin')) return;
+    einzelLaufRef.current = true;
+    try {
+      const raw = window.localStorage.getItem(EINZELFREIGABEN_KEY);
+      const letzter = raw ? JSON.parse(raw) as { ts?: number } : null;
+      if (letzter && letzter.ts && (Date.now() - letzter.ts) < 24 * 60 * 60 * 1000) return;
+    } catch { /* ohne Speicher: einmal je Sitzung */ }
+    window.setTimeout(() => {
+      const erlaubt = roles.filter(r => r.role !== 'User').map(r => r.userEmail);
+      einzelfreigabenNormalisieren(new EventService(props.context), true, { erlaubt, selfEmail: currentUserEmail || '' })
+        .then(b => {
+          const eintrag = einzelfreigabenEintrag(b);
+          try { window.localStorage.setItem(EINZELFREIGABEN_KEY, JSON.stringify(eintrag)); } catch { /* */ }
+          if (b.befunde.length > 0 || b.leseFehler.length > 0) {
+            console.warn(`[DEX] Einzelfreigaben: ${eintrag.reduziert} reduziert, ${eintrag.offen} offen, ${eintrag.gemeldet} nur gemeldet (Mitglieder-Gruppe), ${b.leseFehler.length} nicht lesbar.`, b.befunde);
+          }
+        })
+        .catch(() => { /* nächster Admin-Start versucht es wieder */ });
+    }, 90000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRolesLoading, rolesReadStatus, roles, currentUserRole]);
 
   async function updateRole(itemId: number, newRole: UserRole): Promise<boolean> {
     const oldRole = roles.find(r => r.id === itemId);
