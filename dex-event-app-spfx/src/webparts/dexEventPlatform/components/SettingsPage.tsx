@@ -6,7 +6,8 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useCurrentUser } from '../context/UserContext';
-import { useRoles } from '../context/RoleContext';
+import { useRoles, EINZELFREIGABEN_KEY, EinzelfreigabenEintrag, einzelfreigabenEintrag } from '../context/RoleContext';
+import { einzelfreigabenNormalisieren } from '../services/events/einzelfreigaben';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-Modals statt window.confirm.
@@ -279,6 +280,32 @@ export default function SettingsPage(): React.ReactElement {
     const ctx = (window as any).__dexSpfxContext;
     return ctx ? new EventService(ctx) : null;
   }, []);
+
+  // v32.56: Einzelfreigaben — letzter Tageslauf (RoleContext) plus Knopf für
+  // einen Lauf sofort, z. B. direkt nach dem Genehmigen einer Zugriffsanfrage.
+  const [einzel, setEinzel] = React.useState<{ running: boolean; eintrag: EinzelfreigabenEintrag | null; offen: boolean }>(() => {
+    let eintrag: EinzelfreigabenEintrag | null = null;
+    try { const raw = window.localStorage.getItem(EINZELFREIGABEN_KEY); eintrag = raw ? JSON.parse(raw) : null; } catch { /* */ }
+    return { running: false, eintrag, offen: false };
+  });
+  const runEinzelfreigaben = async (): Promise<void> => {
+    if (einzel.running || !renameSvc) return;
+    if (rolesReadStatus !== 'ok') {
+      await showAlert(isDe ? 'Die Rollenliste ist nicht gelesen — ohne sie wäre jeder Organizer ein „Fremder“. Bitte erst neu laden.' : 'The role list could not be read — without it every organizer would look like a stranger. Please reload first.');
+      return;
+    }
+    setEinzel(e => ({ ...e, running: true }));
+    try {
+      const erlaubt = roles.filter(r => r.role !== 'User').map(r => r.userEmail);
+      const b = await einzelfreigabenNormalisieren(renameSvc, true, { erlaubt, selfEmail: currentUser?.email || '' });
+      const eintrag = einzelfreigabenEintrag(b);
+      try { window.localStorage.setItem(EINZELFREIGABEN_KEY, JSON.stringify(eintrag)); } catch { /* */ }
+      setEinzel({ running: false, eintrag, offen: eintrag.befunde.length > 0 });
+    } catch {
+      setEinzel(e => ({ ...e, running: false }));
+      await showAlert(isDe ? 'Der Lauf ist abgebrochen. Bitte später erneut versuchen.' : 'The run was aborted. Please try again later.');
+    }
+  };
 
   // v32.0.10: Mail-Bilder aller Events aus EmailTemplateOverrides in ihre
   // Spalten verlagern (eventsCrud.logosAuslagernAlle) — erst Vorschau, dann
@@ -1111,6 +1138,78 @@ export default function SettingsPage(): React.ReactElement {
                   ? (isDe ? 'Läuft …' : 'Running …')
                   : (isDe ? 'Alle Events prüfen' : 'Check all events')}
               </button>
+            </div>
+
+            {/* v32.56: Einzelfreigaben auf die App — läuft täglich von selbst
+                (erster Admin-Start), der Knopf stößt einen Lauf sofort an. */}
+            <div style={{
+              padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem',
+              background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: 240, color: 'var(--dex-gray-700)', lineHeight: 1.45 }}>
+                  <strong>{isDe ? 'Einzelfreigaben auf die App (täglich automatisch)' : 'Individual access to the app (daily, automatic)'}</strong>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+                    {isDe
+                      ? 'Wer über eine SharePoint-Zugriffsanfrage ein persönliches Recht auf die App-Seite bekommen hat (z. B. „Edit“), sieht trotzdem keine Events — DEX vergibt alles über die Besucher-Gruppe. Einmal am Tag nimmt DEX solche Personen in die Besucher-Gruppe auf und entfernt danach die Einzelfreigabe. Admins und Organizer bleiben unberührt; wer ohne Rolle in der Mitglieder-Gruppe steht, wird nur gemeldet.'
+                      : 'People who got a personal right on the app page through a SharePoint access request (e.g. "Edit") still see no events — DEX grants everything through the visitors group. Once a day DEX adds such people to the visitors group and then removes the individual permission. Admins and organizers are left alone; people without a role in the members group are only reported.'}
+                  </div>
+                  {einzel.eintrag && (
+                    <div style={{ marginTop: 6, fontWeight: 600, color: einzel.eintrag.offen > 0 || einzel.eintrag.leseFehler.length > 0 ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>
+                      {isDe ? 'Letzter Lauf ' : 'Last run '}
+                      {new Date(einzel.eintrag.ts).toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      {': '}
+                      {einzel.eintrag.befunde.length === 0 && einzel.eintrag.leseFehler.length === 0
+                        ? (isDe ? 'keine Einzelfreigaben gefunden.' : 'no individual permissions found.')
+                        : (isDe
+                          ? `${einzel.eintrag.reduziert} reduziert, ${einzel.eintrag.offen} offen, ${einzel.eintrag.gemeldet} gemeldet${einzel.eintrag.leseFehler.length ? `, nicht lesbar: ${einzel.eintrag.leseFehler.join(', ')}` : ''}.`
+                          : `${einzel.eintrag.reduziert} reduced, ${einzel.eintrag.offen} open, ${einzel.eintrag.gemeldet} reported${einzel.eintrag.leseFehler.length ? `, not readable: ${einzel.eintrag.leseFehler.join(', ')}` : ''}.`)}
+                      {einzel.eintrag.befunde.length > 0 && (
+                        <button type="button" className="dex-ui-textbtn" style={{ marginLeft: 8 }} onClick={() => setEinzel(e => ({ ...e, offen: !e.offen }))}>
+                          {einzel.offen ? (isDe ? 'Liste zuklappen' : 'Hide list') : (isDe ? 'Personen zeigen' : 'Show people')}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={einzel.running || isRolesLoading}
+                  onClick={() => { void runEinzelfreigaben(); }}
+                  style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}
+                >
+                  {einzel.running ? (isDe ? 'Läuft …' : 'Running …') : (isDe ? 'Jetzt ausführen' : 'Run now')}
+                </button>
+              </div>
+              {einzel.offen && einzel.eintrag && einzel.eintrag.befunde.length > 0 && (
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 10, fontSize: '0.78rem' }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', color: 'var(--dex-gray-600)' }}>
+                      <th style={{ padding: '4px 8px 4px 0' }}>{isDe ? 'Person' : 'Person'}</th>
+                      <th style={{ padding: '4px 8px 4px 0' }}>{isDe ? 'Wo' : 'Where'}</th>
+                      <th style={{ padding: '4px 8px 4px 0' }}>{isDe ? 'Recht' : 'Right'}</th>
+                      <th style={{ padding: '4px 0' }}>{isDe ? 'Ergebnis' : 'Result'}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {einzel.eintrag.befunde.map((b, i) => (
+                      <tr key={i} style={{ borderTop: '1px solid var(--dex-gray-200)' }}>
+                        <td style={{ padding: '4px 8px 4px 0' }}>{b.name || b.email}<div style={{ color: 'var(--dex-gray-500)' }}>{b.email}</div></td>
+                        <td style={{ padding: '4px 8px 4px 0' }}>{b.ort}</td>
+                        <td style={{ padding: '4px 8px 4px 0' }}>{b.rechte}</td>
+                        <td style={{ padding: '4px 0' }}>{({
+                          'reduziert': isDe ? 'In Besucher-Gruppe, Einzelfreigabe entfernt' : 'In visitors group, individual permission removed',
+                          'besucher-fehlt': isDe ? 'Aufnahme in Besucher-Gruppe nicht bestätigt — Freigabe bleibt' : 'Not confirmed in visitors group — permission kept',
+                          'entfernen-fehlgeschlagen': isDe ? 'In Besucher-Gruppe, Entfernen fehlgeschlagen' : 'In visitors group, removal failed',
+                          'nur-gemeldet': isDe ? 'Nur gemeldet — bitte selbst prüfen' : 'Reported only — please check',
+                          'gefunden': isDe ? 'Gefunden' : 'Found',
+                        } as Record<string, string>)[b.ergebnis] || b.ergebnis}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
 
             {/* v32.0.10: Mail-Bilder auslagern — Bestand für den schnelleren Start. */}

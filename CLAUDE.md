@@ -406,6 +406,18 @@ Dialog verschwand, ein frischer Assistent stand in Schritt 1. Das Warten
 gilt seither nur vor dem ersten Einhängen (`wizardMountedRef`). Zeiten je
 Phase: `[DEX][perf][save]` (Debug-Thema „perf").
 
+**Einzelfreigaben auf die App werden täglich zurückgebaut (v32.56).**
+Eine genehmigte SharePoint-Zugriffsanfrage auf `DEX.aspx` gibt der Person ein
+PERSÖNLICHES Recht — Events sieht sie damit nicht, DEX hängt alles an die
+Besucher-Gruppe. `services/events/einzelfreigaben.ts` nimmt solche Personen
+in die Besucher-Gruppe auf (nachgelesen) und entfernt erst DANN die
+Einzelfreigabe (nachgelesen); läuft aus `RoleContext` einmal je 24 h beim
+Admin-Start, Anzeige und „Jetzt ausführen“ in der Rollenverwaltung. Bewusst
+nur Haupt-Web (Schreibrechte) und Websiteseiten samt Seiten — die übrigen
+Listen tragen Einzelrechte, die DEX selbst vergibt. Wer dort einen neuen
+Direkt-Grant baut (Haupt-Web/Websiteseiten), muss die Person in DEX_Roles
+führen, sonst baut der Tageslauf ihn am nächsten Morgen zurück.
+
 **Personen für Subsite-Rechte über `ensureuser` auflösen, nie nur über
 `siteusers/getbyemail` (v31.84).** Wer die Site-Collection nie besucht hat,
 steht nicht in der User Information List; die Suche antwortet 404, die
