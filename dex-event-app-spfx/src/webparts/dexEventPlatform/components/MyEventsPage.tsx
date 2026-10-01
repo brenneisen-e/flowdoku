@@ -1012,6 +1012,31 @@ export default function MyEventsPage(): React.ReactElement {
     openComms(ev);
   }, [navIntent, selectedEventId, isLoading, topLevelEvents]);
 
+  // v32.54: Deep-Link aus der Mail „Angaben nachtragen“ (#action=angaben&
+  // event=<Id>) — zur Karte scrollen und das Bearbeiten gleich öffnen, damit
+  // die Person nicht erst den Knopf suchen muss. Ohne Anmeldung zu diesem
+  // Event bleibt es beim Öffnen der Seite (es gibt dann nichts zu ergänzen).
+  const didAutoAngaben = React.useRef(false);
+  React.useEffect(() => {
+    if (didAutoAngaben.current) return;
+    if (navIntent !== 'open-angaben' || !selectedEventId) return;
+    if (isLoading) return;
+    didAutoAngaben.current = true;
+    clearIntent();
+    const entry = myEvents.find(e => e.event.id === selectedEventId && e.registration.Status !== 'Abgemeldet');
+    if (!entry) return;
+    let data: Record<string, string> = {};
+    try { if (entry.registration.CustomData) data = JSON.parse(entry.registration.CustomData); } catch { /* leer bearbeiten */ }
+    setEditData(data);
+    setEditingId(selectedEventId);
+    // Nach dem Rendern des Formulars scrollen — sonst springt die Karte, sobald
+    // das Formular aufgeht.
+    window.setTimeout(() => {
+      const el = document.getElementById(`dex-myevent-${selectedEventId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 250);
+  }, [navIntent, selectedEventId, isLoading, myEvents]);
+
   const activeEntries = myEvents.filter(e => e.registration.Status !== 'Abgemeldet');
   const cancelledEntries = myEvents.filter(e => e.registration.Status === 'Abgemeldet');
   // v22.22: Cluster „Kommende Events“ / „Vergangene Events“ — gleiche Karte,

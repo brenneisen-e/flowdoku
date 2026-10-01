@@ -21,6 +21,8 @@ import { AlertCircle, Calendar, Pin, Search, X } from './Icons';
 import { cx, ensureDexUiStyles } from './dexUi';
 import EventCard from './EventCard';
 import { CachedBg } from './CachedImage';
+import { DexLogo } from './DexLogo';
+import { istDexEinfuehrung } from '../utils/dexIntro';
 import { prewarmImages } from '../utils/imageCache';
 import { useIsMobile } from '../utils/useIsMobile';
 import { getCachedOrbBase64 } from '../services/EmailTemplates';
@@ -728,6 +730,16 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                     60×40-Ausschnitt ein Logo mittendurch. */}
                 {/* v32.18: ganz ohne Bild das DEX-Logo — wie auf der Anmeldeseite
                     (Nutzer-Ansage 29.09.2026). */}
+                {/* v32.54: Einführungs-Event — das DEX-Logo der Landing Page wie
+                    auf Anmeldeseite und „Meine Events“, statt des Standbilds bzw.
+                    des SharePoint-Orbs mit weißem Hintergrund (Nutzer-Befund
+                    01.10.2026). Steht still: die Zeile ist ein Link, Drehen per
+                    Maus würde mit dem Klick konkurrieren. */}
+                {istDexEinfuehrung(event) ? (
+                  <div style={{ width: 60, height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <DexLogo title="DEX" size={40} paused pointerSpin={false} />
+                  </div>
+                ) : (
                 <CachedBg
                   url={event.imageUrl || event.mailImageBase64 || getCachedOrbBase64() || DEX_ORB_PNG}
                   position={event.imageUrl ? undefined : 'center/contain no-repeat'}
@@ -735,6 +747,7 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                     width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
                   }}
                 />
+                )}
                 <div style={{ minWidth: 0 }}>
                   {/* v31.9: Die beiden Marken sind reine Anzeige — also
                       `dex-ui-pill` statt zweier vollflächig eingefärbter
