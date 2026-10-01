@@ -1081,7 +1081,12 @@ export default function RegistrationPage(): React.ReactElement {
   // sehen will, hat weiterhin die Lupe (Lightbox, v28.12).
   // Nebeneffekt: Die Bedingung haengt nicht mehr an imgAspect — der Kreis
   // steht sofort, statt erst nach der Bildvermessung das Layout zu wechseln.
-  const imgCircleNotch = !!heroImgUrl && !event?.imageBanner && !event?.imageDisplay?.hero;
+  // v32.54: Auch eine gespeicherte Hero-Darstellung (Zoom/Höhe, v23.19) schiebt
+  // das Bild nicht mehr in den Seiten-Slot rechts — Nutzer-Ansage 01.10.2026:
+  // „es soll doch immer so aussehen, also mit dem Kreis oben". Die Einstellung
+  // war oft ein Überbleibsel aus der Zeit vor dem Kreis und für den Organizer
+  // unsichtbar. Einzige Ausnahme bleibt der ausdrücklich gewählte Banner-Modus.
+  const imgCircleNotch = !!heroImgUrl && !event?.imageBanner;
   // v32.17: Beim Einführungs-Event zu DEX selbst steht statt des Bildes die
   // animierte Kugel der Landing Page (per Maus drehbar) — etwas größer, weil
   // sie dort das Bild ist und nicht der Platzhalter für ein fehlendes.

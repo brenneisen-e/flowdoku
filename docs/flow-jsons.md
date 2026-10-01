@@ -6807,8 +6807,36 @@ replace(replace(replace(replace(replace(first(outputs('Get_ForwardTemplate')?['b
 
 Die gleiche Replace-Kaskade auf dem `BodyHtml`-Feld, zusätzlich noch `{{AppUrl}}`. Expression (fx):
 ```
-replace(replace(replace(replace(replace(replace(first(outputs('Get_ForwardTemplate')?['body/value'])?['BodyHtml'], '{{EventTitle}}', outputs('Cleaned_Subject')), '{{Forwarder}}', triggerOutputs()?['body/from']), '{{Recipient}}', outputs('Recipient_DisplayName')), '{{RecipientEmail}}', coalesce(outputs('Recipient_Email'), 'nicht aufgelöst')), '{{OrganizerFirstName}}', first(split(first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';')), ' '))), '{{AppUrl}}', 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView')
+replace(replace(replace(replace(replace(replace(first(outputs('Get_ForwardTemplate')?['body/value'])?['BodyHtml'], '{{EventTitle}}', outputs('Cleaned_Subject')), '{{Forwarder}}', triggerOutputs()?['body/from']), '{{Recipient}}', outputs('Recipient_DisplayName')), '{{RecipientEmail}}', if(equals(toLower(trim(string(outputs('Recipient_DisplayName')))), toLower(trim(coalesce(outputs('Recipient_Email'), '')))), '', coalesce(outputs('Recipient_Email'), 'nicht aufgelöst'))), '{{OrganizerFirstName}}', first(split(first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';')), ' '))), '{{AppUrl}}', 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView')
 ```
+
+**12c. Änderung v32.54 — Empfänger-Adresse nicht doppelt (Klick-Anleitung)**
+
+Befund 01.10.2026: Bei Externen steht in der Outlook-Weiterleitungsnotiz statt eines Namens die Adresse (`mia@hogsbro.org`). `Recipient_DisplayName` und `Recipient_Email` sind dann gleich, und die Hinweis-Mail zeigt unter „To“ zweimal dieselbe Adresse. Der neue Ausdruck setzt `{{RecipientEmail}}` leer, wenn er nur den Namen wiederholen würde. Die Vorlage (ab v32.54 nach „Standard-Vorlagen neu einspielen“) hat dafür statt `<br><span>` ein `<div>`, das leer keine Zeile belegt — aber auch mit der alten Vorlage verschwindet die doppelte Adresse.
+
+| # | NEU/GEÄNDERT | Name der Action | Art der Action | Stelle |
+|---|---|---|---|---|
+| 1 | GEÄNDERT | `Rendered_Body` | Compose (Data Operation) | direkt nach `Rendered_Subject`, vor `Create_FYI_Email` |
+
+#### Zeile 1 — Rendered_Body (Compose) · GEÄNDERT
+
+- [ ] 1. Flow `DEX_OutlookForwardHandler` öffnen → **Edit**.
+- [ ] 2. Die Action `Rendered_Body` aufklappen (im **True**-Zweig hinter `Already_Registered` bzw. dort, wo `Rendered_Subject` steht).
+- [ ] 3. Vorher prüfen: Endet der bisherige Ausdruck auf `'{{AppUrl}}', 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView')`? Wenn **ja** → Schritt 4. Wenn er anders aussieht (eigene Ergänzungen), nicht ersetzen, sondern nur den Teil ab `'{{RecipientEmail}}'` bis zum nächsten `'{{OrganizerFirstName}}'` gegen den Abschnitt aus dem Code-Block unten tauschen.
+- [ ] 4. Ins Feld **Inputs** klicken → den alten Ausdruck-Token mit dem **x** entfernen → **Expression**-Tab (fx) → folgenden Ausdruck einfügen → **Add** (über den **Expression**-Tab, nie als Text):
+
+```
+replace(replace(replace(replace(replace(replace(first(outputs('Get_ForwardTemplate')?['body/value'])?['BodyHtml'], '{{EventTitle}}', outputs('Cleaned_Subject')), '{{Forwarder}}', triggerOutputs()?['body/from']), '{{Recipient}}', outputs('Recipient_DisplayName')), '{{RecipientEmail}}', if(equals(toLower(trim(string(outputs('Recipient_DisplayName')))), toLower(trim(coalesce(outputs('Recipient_Email'), '')))), '', coalesce(outputs('Recipient_Email'), 'nicht aufgelöst'))), '{{OrganizerFirstName}}', first(split(first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';')), ' '))), '{{AppUrl}}', 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView')
+```
+
+- [ ] 5. **Save**.
+
+#### Test
+
+- [ ] 6. Einen DEX-Outlook-Termin an eine externe Adresse weiterleiten (oder auf den nächsten echten Fall warten) → **Run history** → der Lauf ist grün → in der Hinweis-Mail steht unter „An“/„To“ die Adresse **einmal**.
+- [ ] 7. Bei einer internen Person (Name „Nachname, Vorname“) stehen weiterhin Name **und** Adresse darunter.
+
+Fehlerbilder: Rot bei `Rendered_Body` mit „InvalidTemplate“ → Ausdruck als Text statt über den **Expression**-Tab eingefügt oder nicht vollständig kopiert. Adresse weiter doppelt → Schritt 4 nicht gespeichert, oder der Name in der Notiz weicht in Groß-/Kleinschreibung bzw. Leerzeichen ab (dann einen Screenshot des Laufs schicken: **Run history** → `Recipient_DisplayName` und `Recipient_Email` → Outputs).
 
 **13. `Create_FYI_Email` (SharePoint Create item, Liste DEX_Emails)**
 
@@ -7037,7 +7065,7 @@ IS_FORWARDNOTIFICATION (If):
                   },
                   "Rendered_Body": {
                     "type": "Compose",
-                    "inputs": "@replace(replace(replace(replace(replace(replace(first(outputs('Get_ForwardTemplate')?['body/value'])?['BodyHtml'], '{{EventTitle}}', outputs('Cleaned_Subject')), '{{Forwarder}}', triggerOutputs()?['body/from']), '{{Recipient}}', outputs('Recipient_DisplayName')), '{{RecipientEmail}}', coalesce(outputs('Recipient_Email'), 'nicht aufgelöst')), '{{OrganizerFirstName}}', first(split(first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';')), ' '))), '{{AppUrl}}', 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView')",
+                    "inputs": "@replace(replace(replace(replace(replace(replace(first(outputs('Get_ForwardTemplate')?['body/value'])?['BodyHtml'], '{{EventTitle}}', outputs('Cleaned_Subject')), '{{Forwarder}}', triggerOutputs()?['body/from']), '{{Recipient}}', outputs('Recipient_DisplayName')), '{{RecipientEmail}}', if(equals(toLower(trim(string(outputs('Recipient_DisplayName')))), toLower(trim(coalesce(outputs('Recipient_Email'), '')))), '', coalesce(outputs('Recipient_Email'), 'nicht aufgelöst'))), '{{OrganizerFirstName}}', first(split(first(split(first(outputs('Get_DEX_Event')?['body/value'])?['Organizer'], ';')), ' '))), '{{AppUrl}}', 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView')",
                     "runAfter": { "Rendered_Subject": ["Succeeded"] }
                   },
                   "Create_FYI_Email": {

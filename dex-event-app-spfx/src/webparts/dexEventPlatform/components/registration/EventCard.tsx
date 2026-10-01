@@ -204,8 +204,6 @@ export const EventCard: React.FC<EventCardProps> = (p) => {
                     ? { width: '100%', maxHeight: 200, height: 'auto', objectFit: 'cover', display: 'block', borderRadius: 'var(--dex-radius)' }
                     : event.imageBanner
                     ? { maxWidth: '100%', maxHeight: 320, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto', borderRadius: 'var(--dex-radius)' }
-                    : event.imageDisplay?.hero
-                    ? { display: 'block', margin: '0 auto', maxWidth: '100%', maxHeight: Math.min(event.imageDisplay.hero.height ?? imgSlotH, imgSlotH), width: 'auto', height: 'auto', objectFit: 'contain', transform: `scale(${Math.min(event.imageDisplay.hero.zoom || 1, 1.5)})`, transformOrigin: 'center center', borderRadius: 'var(--dex-radius)' }
                     : { maxWidth: '100%', maxHeight: imgSlotH, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', borderRadius: 'var(--dex-radius)' }
                   }
                 />
