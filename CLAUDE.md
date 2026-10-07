@@ -498,6 +498,20 @@ Funktion hielt jedes Event bis dahin für eines ohne Bild und lieferte 180 px
 (`await mailLogoFrisch(ev)`). Der Merker `_logosAusgelagert` sagt NICHT, ob
 ein Bild existiert — er wird bei jedem Kommunikations-Write gesetzt.
 
+**Wer bei einer Rundmail in welchem Feld steht, steht an EINER Stelle:
+`utils/rundmailKopf` (v32.58).** Nutzer-Ansage 07.10.2026: Alle Organizer
+und der Absender stehen IMMER im CC und nie im An-Feld; ob die Empfänger
+sichtbar im An-Feld oder verdeckt im BCC stehen, entscheidet der Absender
+(Schalter in Einladung und Massenmail). Verdeckt trägt `NO_REPLY_MAILBOX`
+das An-Feld — der Flow braucht eins, ein Organizer darf es nicht sein.
+`rundmailCc` nimmt nur sichtbare Organizer (v31.10), `ohneCc` nimmt alle
+CC-Adressen aus den Empfängern. Bis v32.57 hatte jeder Dialog seine eigene
+Antwort (Absender im An-Feld UND im CC). Wer einen neuen Rundversand baut,
+ruft dieselben Funktionen; wer Empfänger aus `DEX_Emails` zurückliest
+(`getInvitedRecipients`), liest `Cc` mit — sonst gelten Organizer als „nie
+eingeladen“. Der interne Probeversand („An mich“ etc.) ist ausgenommen: Dort
+ist das An-Feld der Zweck.
+
 **Berechtigungen gelten je Subsite — und jedes Sub-Event hat eine eigene.**
 `ensureOrganizerPermissions` lief bis v30.36 nur über `editEvent.subsiteUrl`.
 Wer bei `createEvent` noch nicht Organizer war, hatte danach Full Control auf

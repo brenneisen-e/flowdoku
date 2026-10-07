@@ -19,6 +19,8 @@ import { DeloitteEvent } from '../../../types';
 import { EventService, SPRegistration } from '../../../services/EventService';
 import { MailHeaderImage, applyHeroImage, hasOwnHeaderImage, kopfBildVorschau, kopfMasseFuerBild, mailHeaderOpts } from '../../../utils/mailHeaderImage';
 import { ladeKopfbild } from '../../../utils/inlineMailImage';
+import { visibleOrganizerEmails } from '../../../utils/organizerVisibility';
+import { NO_REPLY_MAILBOX, ohneCc, rundmailCc } from '../../../utils/rundmailKopf';
 
 export interface InviteComposerModalProps {
   applyInviteHero: (wrappedHtml: string) => string;
@@ -84,6 +86,10 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // (Nutzer-Ansage 29.09.2026); die Zeile nennt Ziel und Anzahl trotzdem.
         const [aufAn, setAufAn] = React.useState(false);
         const [aufBild, setAufBild] = React.useState(false);
+        // v32.58: Empfänger verdeckt im BCC oder sichtbar im An-Feld — der
+        // Absender entscheidet (Nutzer-Ansage 07.10.2026). Vorgabe bleibt BCC,
+        // wie seit v27.11. Nicht im Entwurf: eine Versandart, kein Text.
+        const [verdeckt, setVerdeckt] = React.useState(true);
         // v32.29: „Nur intern“ hat drei Kreise — ich, alle Organizer, Organizer
         // plus Test-Team (Nutzer-Ansage 29.09.2026). Bewusst KEINE zwei neuen
         // Kacheln („das werden dann viele Kacheln“), sondern eine Kachel mit
@@ -228,7 +234,14 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // entdoppelt, ein selbst eingetragenes CC NICHT — sonst verschwindet
         // eine ausdrücklich gewählte Person still, nur weil sie ohnehin
         // Empfänger ist (s. Massenmail).
-        const ccEmails = ((): string[] => {
+        // v32.58: Das gilt nur noch für den internen Probeversand — dort IST
+        // das An-Feld der Zweck (an mich, an die Organizer). Beim echten
+        // Versand stehen alle Organizer und der Absender im CC und nie im
+        // An-Feld (utils/rundmailKopf); die Empfänger werden dort gegen das CC
+        // entdoppelt, nicht umgekehrt.
+        const ccEmails = isBroadcast
+          ? rundmailCc(visibleOrganizerEmails(selectedEvent), myEmail, inviteCc)
+          : ((): string[] => {
           const seen = new Set<string>();
           const out: string[] = [];
           for (const raw of (selectedEvent.organizerEmails || [])) {
@@ -373,17 +386,38 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
             if (out.length > 0) resolvedRecipients = out;
             setInviteSending(false);
           }
+          // v32.58: Wer im CC steht (alle Organizer, du, Zusatz-CC), steht nicht
+          // zusätzlich im An-Feld oder BCC. Die Zahl im Dialog ist die der
+          // Mails an Teilnehmende, das CC wird daneben genannt.
+          const empfaenger = isBroadcast ? ohneCc(resolvedRecipients, ccEmails) : resolvedRecipients;
+          const CHUNK = 450;
+          const teile = Math.max(1, Math.ceil(empfaenger.length / CHUNK));
+          const vorschauListe = `${empfaenger.slice(0, 12).join(', ')}${empfaenger.length > 12 ? `, … (+${empfaenger.length - 12})` : ''}`;
+          const versandDe = (verdeckt
+            ? 'Die Empfänger stehen verdeckt im BCC und sehen einander nicht. Im An-Feld steht das Event-Postfach.'
+            : 'Die Empfänger stehen sichtbar im An-Feld und sehen einander.')
+            + (teile > 1 ? ` Die Mail geht in ${teile} Teilen raus (je höchstens ${CHUNK} Empfänger).` : '')
+            + `\nCC: ${ccEmails.length > 0 ? ccEmails.join(', ') : 'niemand'}`;
+          const versandEn = (verdeckt
+            ? 'Recipients are hidden in BCC and cannot see each other. The To field holds the event mailbox.'
+            : 'Recipients are visible in the To field and can see each other.')
+            + (teile > 1 ? ` The mail goes out in ${teile} parts (at most ${CHUNK} recipients each).` : '')
+            + `\nCC: ${ccEmails.length > 0 ? ccEmails.join(', ') : 'nobody'}`;
           const confirmMsg = isDe
             ? (!isBroadcast
               ? (nurIch
                 ? `Einladungs-Mail an dich selbst (${myEmail}) senden? Du kannst sie anschließend aus Outlook an deinen Verteiler weiterleiten.`
                 : `Einladungs-Mail zur Probe an ${internLabel} senden (${targetEmails.length} Empfänger)?\n\n${targetEmails.join(', ')}\n\nDas ist ein interner Versand — er zählt nicht als Einladung an die Teilnehmenden.`)
-              : `Einladungs-Mail an ${resolvedRecipients.length} aufgelöste Empfänger des Mailverteilers senden?\n\nDie Verteiler wurden in einzelne Mitglieder-Adressen aufgelöst; die Empfänger stehen im Bcc (sehen einander nicht), du selbst im An-Feld.\n\n${resolvedRecipients.slice(0, 12).join(', ')}${resolvedRecipients.length > 12 ? `, … (+${resolvedRecipients.length - 12})` : ''}`)
-            : (inviteTarget === 'organizer'
+              : (empfaenger.length === 0
+                ? `Alle Adressen stehen schon im CC — die Einladung geht nur an das CC.\n\nCC: ${ccEmails.join(', ')}`
+                : `Einladungs-Mail an ${empfaenger.length} Empfänger senden?\n\n${versandDe}\n\nVerteiler sind in einzelne Adressen aufgelöst: ${vorschauListe}`))
+            : (!isBroadcast
               ? (nurIch
                 ? `Send invitation email to yourself (${myEmail})? You can then forward it from Outlook to your distribution list.`
                 : `Send a test invitation to ${internLabel} (${targetEmails.length} recipients)?\n\n${targetEmails.join(', ')}\n\nThis is an internal send — it does not count as an invitation to participants.`)
-              : `Send invitation email to ${resolvedRecipients.length} resolved recipients of the mail distribution?\n\nDistribution lists were resolved into individual member addresses; recipients are on Bcc (cannot see each other), you are in the To field.\n\n${resolvedRecipients.slice(0, 12).join(', ')}${resolvedRecipients.length > 12 ? `, … (+${resolvedRecipients.length - 12})` : ''}`);
+              : (empfaenger.length === 0
+                ? `All addresses are already on CC — the invitation only goes to CC.\n\nCC: ${ccEmails.join(', ')}`
+                : `Send invitation email to ${empfaenger.length} recipients?\n\n${versandEn}\n\nDistribution lists are resolved into individual addresses: ${vorschauListe}`));
           if (!(await confirmDialog(confirmMsg, { confirmLabel: isDe ? 'Senden' : 'Send' }))) return;
           setInviteSending(true);
           const resolvedSubject = replacePlaceholders(inviteSubject, previewVars);
@@ -405,17 +439,19 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
           try {
             if (isBroadcast) {
               // v27.11: Aufgelöste Mitglieder in Chunks (Exchange-Limit ~500
-              // Empfänger/Mail) per Bcc verschicken — wie beim Verteiler sehen
-              // die Mitglieder einander nicht. To = der auslösende Organizer,
-              // CC (übrige Organizer) nur auf dem ersten Chunk.
-              const CHUNK = 450;
-              for (let i = 0; i < resolvedRecipients.length; i += CHUNK) {
-                const chunk = resolvedRecipients.slice(i, i + CHUNK);
+              // Empfänger/Mail), CC nur auf dem ersten Chunk.
+              // v32.58: Das An-Feld trägt nicht mehr den Absender (er steht im
+              // CC), sondern verdeckt das Event-Postfach und offen die
+              // Empfänger selbst. Mindestens EINE Mail — auch wenn alle
+              // Adressen schon im CC stehen.
+              for (let t = 0; t < teile; t++) {
+                const chunk = empfaenger.slice(t * CHUNK, (t + 1) * CHUNK);
+                const offen = !verdeckt && chunk.length > 0;
                 await eventServiceRef.queueEmail(
-                  resolvedSubject, myEmail, recipientName, fullBody,
+                  resolvedSubject, offen ? chunk.join(';') : NO_REPLY_MAILBOX, recipientName, fullBody,
                   'Einladung', selectedEvent.title, selectedEvent.id,
-                  (i === 0 && ccString) ? ccString : undefined,
-                  chunk.join(';'),
+                  (t === 0 && ccString) ? ccString : undefined,
+                  (offen || chunk.length === 0) ? undefined : chunk.join(';'),
                 );
               }
             } else {
@@ -437,8 +473,8 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
             }
             setInviteSending(false);
             showAlert(isDe
-              ? `Einladungs-Mail an ${isBroadcast ? resolvedRecipients.length : targetEmails.length} Empfänger in die Warteschlange eingetragen.`
-              : `Invitation email queued for ${isBroadcast ? resolvedRecipients.length : targetEmails.length} recipient(s).`);
+              ? `Einladungs-Mail an ${isBroadcast ? empfaenger.length : targetEmails.length} Empfänger${isBroadcast ? (verdeckt ? ' (verdeckt im BCC)' : ' (sichtbar im An-Feld)') : ''} in die Warteschlange eingetragen.${isBroadcast && ccEmails.length > 0 ? ` Auf CC: ${ccEmails.join(', ')}.` : ''}`
+              : `Invitation email queued for ${isBroadcast ? empfaenger.length : targetEmails.length} recipient(s)${isBroadcast ? (verdeckt ? ' (hidden in BCC)' : ' (visible in To)') : ''}.${isBroadcast && ccEmails.length > 0 ? ` On CC: ${ccEmails.join(', ')}.` : ''}`);
             setShowInviteModal(false);
           } catch {
             setInviteSending(false);
@@ -689,6 +725,22 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                     {!isBroadcast && intern.size > 0 && !nurIch && (
                       <div className="dex-ui-help" style={{ wordBreak: 'break-word' }}>{targetEmails.join(', ')}</div>
                     )}
+                    {/* v32.58: Versandart — dieselbe Schalter-Zeile wie in der
+                        Massenmail (v31.70). Nur beim echten Versand: Der interne
+                        Probeversand geht ohnehin an die Gewählten im An-Feld. */}
+                    {isBroadcast && (
+                      <label className={cx('dex-ui-toggle-row', verdeckt && 'is-active')} style={{ marginTop: 8 }}>
+                        <input type="checkbox" checked={verdeckt} onChange={e => setVerdeckt(e.target.checked)} disabled={inviteSending} />
+                        <span className="dex-ui-toggle-row-body">
+                          <span className="dex-ui-toggle-row-title">{isDe ? 'Empfänger verdeckt (BCC)' : 'Hide recipients (BCC)'}</span>
+                          <span className="dex-ui-toggle-row-desc">
+                            {isDe
+                              ? 'Niemand sieht die anderen Empfänger: Im An-Feld steht das Event-Postfach, alle Empfänger gehen ins BCC. Ausgeschaltet stehen alle sichtbar im An-Feld. Die Organizer und du stehen in beiden Fällen im CC.'
+                              : 'Nobody sees the other recipients: the To field holds the event mailbox, all recipients go to BCC. Switched off, everyone is visible in the To field. The organizers and you are on CC either way.'}
+                          </span>
+                        </span>
+                      </label>
+                    )}
                     {verteilerZeigen && (() => {
                       const q = sichtSuche.trim().toLowerCase();
                       const treffer = (sichtPersonen || []).filter(x => !q
@@ -918,9 +970,15 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
                           <strong>CC: </strong>
                           <span style={{ wordBreak: 'break-word' }}>{ccEmails.join(', ')}</span>
                           <div className="dex-ui-help" style={{ marginTop: 3 }}>
-                            {isDe
-                              ? 'Alle Organizer dieses Events werden automatisch in CC gesetzt.'
-                              : 'All organizers of this event are automatically added in CC.'}
+                            {/* v32.58: Beim echten Versand gehört der Absender dazu
+                                — und wer im CC steht, steht nicht im An-Feld. */}
+                            {isBroadcast
+                              ? (isDe
+                                ? 'Alle Organizer dieses Events und du als Absender stehen automatisch im CC — nie im An-Feld oder BCC.'
+                                : 'All organizers of this event and you as the sender are automatically on CC — never in To or BCC.')
+                              : (isDe
+                                ? 'Alle Organizer dieses Events werden automatisch in CC gesetzt.'
+                                : 'All organizers of this event are automatically added in CC.')}
                           </div>
                         </div>
                       </div>
@@ -1012,7 +1070,9 @@ export const InviteComposerModal: React.FC<InviteComposerModalProps> = (p) => {
         // sonst widerspricht sie dem Senden-Knopf direkt daneben.
         const previewToLine = !isBroadcast
           ? (nurIch ? myEmail : targetEmails.join(', '))
-          : (isDe
+          // v32.58: Verdeckt steht im An-Feld das Event-Postfach — die Zeile
+          // sagt das, statt die Empfänger als An-Feld auszugeben.
+          : (verdeckt ? `${NO_REPLY_MAILBOX} · BCC: ` : '') + (isDe
             ? `${targetEmails.length} ${targetEmails.length === 1 ? 'Empfänger' : 'Empfänger'}${
               inviteCustomEmails ? ' (angepasste Auswahl)'
                 : inviteTarget === 'uninvited' ? ' — noch nicht eingeladen'
