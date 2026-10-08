@@ -156,12 +156,14 @@ export function MyEventEditForm(p: MyEventEditFormProps): React.ReactElement {
         </React.Suspense>
       );
     }
+    // v32.57: Ohne Platzhalter — wie im Anmeldeformular; dort stand die Frage
+    // ein zweites Mal im Feld.
     return (
       <input
         className={cx('form-input', fehler && 'dex-ui-input--error')}
         value={v}
         onChange={e => setze(f.id, e.target.value)}
-        placeholder={label(f)}
+        aria-label={label(f)}
         type={f.type === 'number' ? 'number' : 'text'}
       />
     );

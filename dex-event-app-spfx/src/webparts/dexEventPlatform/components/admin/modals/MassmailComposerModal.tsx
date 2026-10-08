@@ -18,6 +18,7 @@ import { ladeKopfbild } from '../../../utils/inlineMailImage';
 // v31.10: Dieselbe Rechnung wie die Anmeldeseite — wer dort ausgeblendet ist,
 // steht auch nicht im CC. Die Regel liegt in EINER Datei, nicht hier.
 import { visibleOrganizerEmails } from '../../../utils/organizerVisibility';
+import { NO_REPLY_MAILBOX, ohneCc, rundmailCc } from '../../../utils/rundmailKopf';
 import { PollComposerSection } from '../PollComposerSection';
 // v31.70: Erinnerungs-Empfänger aus dem Verteiler — dieselbe Rechnung wie im Paste-Dialog.
 import { MassmailZielChips, MassmailExtra, massmailEmpfaenger, massmailZielLabel } from './MassmailZielChips';
@@ -167,25 +168,12 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
          * `seen` bleibt: Eine Adresse, die zweimal unter den Organizern steht
          * oder zusätzlich von Hand ins CC getippt wurde, erscheint einmal.
          */
-        const massmailCcPreview = ((): string[] => {
-          const seen = new Set<string>();
-          const out: string[] = [];
-          for (const raw of visibleOrganizerEmails(selectedEvent)) {
-            const e = (raw || '').trim();
-            const lc = e.toLowerCase();
-            if (!e || seen.has(lc)) continue;
-            seen.add(lc);
-            out.push(e);
-          }
-          for (const raw of massmailCc) {
-            const e = (raw || '').trim();
-            const lc = e.toLowerCase();
-            if (!e || seen.has(lc)) continue;
-            seen.add(lc);
-            out.push(e);
-          }
-          return out;
-        })();
+        // v32.58: Die Rechnung steht jetzt in utils/rundmailKopf — dieselbe wie
+        // in der Einladung — und nimmt den Absender mit: Alle Organizer und wer
+        // den Knopf drückt, stehen im CC und nie im An-Feld (Nutzer-Ansage
+        // 07.10.2026). Die Empfänger werden beim Versand gegen das CC
+        // entdoppelt (`ohneCc`), nicht mehr umgekehrt.
+        const massmailCcPreview = rundmailCc(visibleOrganizerEmails(selectedEvent), myEmail, massmailCc);
         const customLogo = (() => {
           try {
             const o = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
@@ -213,23 +201,23 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
             ? replacePlaceholders(massmailSubheading, previewVars)
             : `Event ${selectedEvent.title}`;
           const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, massmailHeaderOpts));
-          const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
           const ccList = massmailCcPreview;
           const ccString = ccList.length > 0 ? ccList.join(';') : undefined;
+          // v32.58: Wer im CC steht, steht nicht zusätzlich im An-Feld/BCC.
+          const empfaenger = ohneCc(recipients.map(r => r.ParticipantEmail), ccList);
+          const allEmails = empfaenger.join(';');
           try {
-            if (bccMode) {
+            if (bccMode || empfaenger.length === 0) {
               // v31.70: BCC-Versand. Der Flow („Send an email from a shared
-              // mailbox") braucht ein An-Feld — das ist die erste CC-Adresse
-              // (ein Organizer); die übrigen bleiben im CC, alle Empfänger
-              // gehen ins BCC. Ohne Organizer-Adresse trägt das Postfach
-              // selbst das An-Feld.
-              const toAddr = ccList[0] || 'no_reply.events@deloitte.de';
-              const restCc = ccList.slice(1);
+              // mailbox") braucht ein An-Feld.
+              // v32.58: Das ist jetzt immer das Event-Postfach — bis v32.57
+              // stand dort der erste Organizer, gegen die Regel „Organizer
+              // nur im CC". Dasselbe, wenn alle Empfänger schon im CC stehen.
               await eventServiceRef.queueEmail(
-                resolvedSubject, toAddr, 'Alle Teilnehmer (BCC)', fullBody,
+                resolvedSubject, NO_REPLY_MAILBOX, 'Alle Teilnehmer (BCC)', fullBody,
                 'Massenmail', selectedEvent.title, selectedEvent.id,
-                restCc.length > 0 ? restCc.join(';') : undefined,
-                allEmails,
+                ccString,
+                allEmails || undefined,
               );
             } else {
             await eventServiceRef.queueEmail(
@@ -245,7 +233,7 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
             // mehr Organizer.
             const ccInfo = ccString
               ? (isDe ? ` Auf CC: ${ccList.join(', ')}.` : ` On CC: ${ccList.join(', ')}.`)
-              : (isDe ? ' Niemand auf CC — alle Organizer stehen schon im An-Feld.' : ' Nobody on CC — all organizers are already in the To field.');
+              : (isDe ? ' Niemand auf CC.' : ' Nobody on CC.');
             showAlert(isDe
               ? `Die Mail an ${recipients.length} Empfänger${bccMode ? ' (alle im BCC)' : ''} steht in der Warteschlange und geht in Kürze raus.${ccInfo}`
               : `The email to ${recipients.length} recipients${bccMode ? ' (all in BCC)' : ''} is queued and goes out shortly.${ccInfo}`);
@@ -366,8 +354,8 @@ export const MassmailComposerModal: React.FC<MassmailComposerModalProps> = (p) =
                       <span className="dex-ui-toggle-row-title">{isDe ? 'Empfänger verdeckt (BCC)' : 'Hide recipients (BCC)'}</span>
                       <span className="dex-ui-toggle-row-desc">
                         {isDe
-                          ? `Eine Mail an alle, aber niemand sieht die anderen Empfänger. Im An-Feld steht ${ccCount > 0 ? massmailCcPreview[0] : 'das Event-Postfach'}, alle Empfänger gehen ins BCC. Aus: alle stehen sichtbar im An-Feld.`
-                          : `One mail to everyone, but nobody sees the other recipients. The To field holds ${ccCount > 0 ? massmailCcPreview[0] : 'the event mailbox'}, all recipients go to BCC. Off: everyone is visible in the To field.`}
+                          ? 'Eine Mail an alle, aber niemand sieht die anderen Empfänger: Im An-Feld steht das Event-Postfach, alle Empfänger gehen ins BCC. Ausgeschaltet stehen alle sichtbar im An-Feld. Die Organizer und du stehen in beiden Fällen im CC.'
+                          : 'One mail to everyone, but nobody sees the other recipients: the To field holds the event mailbox, all recipients go to BCC. Switched off, everyone is visible in the To field. The organizers and you are on CC either way.'}
                       </span>
                     </span>
                   </label>

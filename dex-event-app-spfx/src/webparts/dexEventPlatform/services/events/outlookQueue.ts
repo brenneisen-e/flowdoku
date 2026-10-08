@@ -109,9 +109,14 @@ async function backfillOutlookLocation(svc: EventService, eventId: string): Prom
  * v28.37: Wer hat für dieses Event schon eine Einladungsmail bekommen?
  *
  * Liest die DEX_Emails-Zeilen vom Typ `Einladung` zum Event und sammelt
- * Empfaenger aus `Recipient` und `Bcc` (Massenversand läuft in 450er-Chunks
- * über Bcc, im To steht dann nur der ausloesende Organizer). Adressen
- * lowercase, dedupliziert.
+ * Empfaenger aus `Recipient`, `Cc` und `Bcc` (Massenversand läuft in 450er-
+ * Chunks, die Empfänger stehen im Bcc oder im To). Adressen lowercase,
+ * dedupliziert.
+ *
+ * v32.58: `Cc` gehört dazu. Seit der Rundmail-Regel (utils/rundmailKopf)
+ * stehen Organizer und Absender NUR im CC, nie im To/Bcc; ohne `Cc` hätten
+ * sie nach jeder Runde weiter als „noch nicht eingeladen" gegolten. Wer im
+ * CC stand, hat die Einladung bekommen — das gilt auch für ältere Runden.
  *
  * WICHTIG für den Aufrufer: Alte DEX_Emails-Zeilen werden nach rund einem
  * Monat archiviert. Für länger zurückliegende Versaende ist die Liste
@@ -131,7 +136,7 @@ export async function getInvitedRecipients(svc: EventService, eventId: string | 
   if (!id) return [];
   const out = new Set<string>();
   let url: string | null = `${svc.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`
-    + `?$select=Recipient,Bcc&$filter=EmailType eq 'Einladung' and EventId eq '${id.replace(/'/g, "''")}'&$top=500`;
+    + `?$select=Recipient,Cc,Bcc&$filter=EmailType eq 'Einladung' and EventId eq '${id.replace(/'/g, "''")}'&$top=500`;
   let guard = 0;
   while (url && guard < 20) {
     guard++;
@@ -145,7 +150,7 @@ export async function getInvitedRecipients(svc: EventService, eventId: string | 
     const items = data.value || data.d?.results || [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const it of items as any[]) {
-      const raw = `${it.Recipient || ''};${it.Bcc || ''}`;
+      const raw = `${it.Recipient || ''};${it.Cc || ''};${it.Bcc || ''}`;
       for (const part of raw.split(/[;,]/)) {
         const e = (part || '').trim().toLowerCase();
         if (e.indexOf('@') > 0) out.add(e);

@@ -2728,7 +2728,11 @@ export default function RegistrationPage(): React.ReactElement {
         />
       </React.Suspense>
     ) : (
-      <input className="form-input" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} placeholder={displayLabel} style={inputStyleGreen} />
+      // v32.57: Kein Platzhalter mehr. Hier stand die Frage selbst — direkt
+      // unter derselben Frage als Beschriftung, bei langen Fragen mitten im
+      // Wort abgeschnitten (Screenshot 07.10.2026). Ein Platzhalter ist laut
+      // UI-Leitfaden ein Beispiel; für eine freie Antwort gibt es keins.
+      <input className="form-input" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} aria-label={displayLabel} style={inputStyleGreen} />
     )}
     </div>
   </div>

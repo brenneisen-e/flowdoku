@@ -786,7 +786,8 @@ export function renderPreviewSectionImpl(ctx: RenderPreviewSectionCtx, sectionId
                     ) : field.type === 'checkbox' ? (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem' }}><input type="checkbox" disabled /> {field.label}</label>
                     ) : (
-                      <input className="form-input" disabled placeholder={field.label} type={field.type === 'number' ? 'number' : 'text'} />
+                      // v32.57: ohne Platzhalter, wie die Anmeldeseite selbst
+                      <input className="form-input" disabled type={field.type === 'number' ? 'number' : 'text'} />
                     )}
                   </div>
                 ))

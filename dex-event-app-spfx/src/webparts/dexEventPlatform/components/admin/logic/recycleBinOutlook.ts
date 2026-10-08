@@ -25,6 +25,7 @@
 import { SPHttpClient } from '@microsoft/sp-http';
 import type { EventService, SPEvent } from '../../../services/EventService';
 import type { DeloitteEvent } from '../../../types';
+import { NO_REPLY_MAILBOX } from '../../../utils/rundmailKopf';
 
 export interface PapierkorbTreffer {
   /** GUID des Papierkorb-Eintrags. */
@@ -226,7 +227,9 @@ export async function holeZeileZurueck(svc: EventService, event: DeloitteEvent, 
  * gewählten Termin in die aktuelle Zeile schreiben — der Weg, den der Nutzer
  * am 15.09.2026 „manuell austauschen" nannte, nur ohne Abtippen.
  */
-export const NO_REPLY_MAILBOX = 'no_reply.events@deloitte.de';
+// v32.58: Die Adresse steht seit der Rundmail-Regel in utils/rundmailKopf —
+// hier nur weitergereicht, damit die Modals ihren Import behalten.
+export { NO_REPLY_MAILBOX };
 
 export interface KalenderTermin {
   graphId: string;
