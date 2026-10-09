@@ -17,7 +17,7 @@ Wird aktualisiert wenn Flows geändert werden.
 
 **Trigger:** Neuer Eintrag in DEX_IDReorder
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
-**Letztes Update:** 2026-10-09 (Nachlauf bei Lücke nach dem Lauf: `Verify_IDs_Final` → `Check_IDs_Gap` → `Requeue_Reorder_Gap` hinter `Check Counter Stale` — **Anleitung, im Tenant noch OFFEN**). Davor 2026-09-03 (zwei Korrekturen: SharePoint Online liefert bei Listeneinträgen KEIN `__count` — Zählung über `length(d.results)` mit `$top=5000`; und `if()` wertet BEIDE Zweige aus — Gruppen-Zähler null-sicher gelesen). Davor 2026-09-01 (Platzzähler-Kette: `Count_Seats_Active/Waitlist/Durch/Fun` + `Sync_Seat_Counter` hinter `DEX_IDReorder`; **im Tenant umgesetzt und am 01.09.2026 gegen den Export verifiziert** — alle acht `runAfter` stimmen, alle fünf Uris sind Text ohne `@`). Davor 2026-06-11 (Audit-Fixes: Status-Sortierung in der Renummerierung, Folge-Reorder nach jeder Promotion, Fehler-Sichtbarkeit).
+**Letztes Update:** 2026-10-09 (Nachlauf bei Lücke nach dem Lauf: `Verify_IDs_Final` → `Check_IDs_Gap` → `Requeue_Reorder_Gap` hinter `Check Counter Stale` — **im Tenant umgesetzt, am 09.10.2026 gegen den Export verifiziert; Test offen**). Davor 2026-09-03 (zwei Korrekturen: SharePoint Online liefert bei Listeneinträgen KEIN `__count` — Zählung über `length(d.results)` mit `$top=5000`; und `if()` wertet BEIDE Zweige aus — Gruppen-Zähler null-sicher gelesen). Davor 2026-09-01 (Platzzähler-Kette: `Count_Seats_Active/Waitlist/Durch/Fun` + `Sync_Seat_Counter` hinter `DEX_IDReorder`; **im Tenant umgesetzt und am 01.09.2026 gegen den Export verifiziert** — alle acht `runAfter` stimmen, alle fünf Uris sind Text ohne `@`). Davor 2026-06-11 (Audit-Fixes: Status-Sortierung in der Renummerierung, Folge-Reorder nach jeder Promotion, Fehler-Sichtbarkeit).
 
 > **Der vollständige JSON weiter unten ist der Stand vom 2026-06-11** und enthält
 > die fünf Platzzähler-Actions **nicht**. Wer den Ist-Stand braucht, nimmt die
@@ -26,7 +26,12 @@ Wird aktualisiert wenn Flows geändert werden.
 
 ### UI-Anleitung 2026-10-09 — Nachlauf, wenn nach dem Lauf eine Lücke bleibt
 
-**Status: OFFEN — Anleitung geschrieben, im Tenant noch nicht umgesetzt.**
+**Status: IM TENANT UMGESETZT — am 09.10.2026 gegen den Export verifiziert**
+(JSON am Ende dieses Abschnitts): Uri und Ausdruck zeichengleich mit den
+Kopierblöcken, `runAfter` `Check_Counter_Stale` → `Verify_IDs_Final` →
+Condition stimmt, `Requeue_Reorder_Gap` schreibt in dieselbe Liste wie der
+Trigger und `Requeue_Reorder_N/D/F` (`table` `9d46ff77-…`). **Offen ist nur
+noch der Test** (unten).
 
 **Befund 09.10.2026** (Organizer Center + Run history): Katrin Ruedelstein
 meldet sich um 11:28 ab (ID geleert, Auftrag angelegt). Der Lauf startet um
@@ -231,6 +236,66 @@ Requeue_Reorder_Gap
 | Nach einem Nachlauf kommt noch einer | Title in `Requeue_Reorder_Gap` beginnt nicht genau mit `Reorder: Nachlauf` | Title aus dem Kopierblock neu einfügen |
 | `Verify_IDs_Final` läuft nie (grau) | Die Action steckt in einem Zweig von `Check Counter Stale`, oder **Run after** hängt an etwas anderem | Unter den Kasten ziehen, **Run after** = `Check Counter Stale` · is successful |
 | `Requeue_Reorder_Gap` „Not connected" | Der Designer hat keine Verbindung gewählt | **Change connection** → dieselbe SharePoint-Verbindung wie die übrigen Actions |
+
+#### Export-Stand 2026-10-09 (im Tenant, verifiziert)
+
+`table` ist die Listen-ID von `DEX_IDReorder` — der Designer speichert sie
+statt des Namens, sobald die Liste im Dropdown gewählt wird; dieselbe ID
+tragen Trigger und `Requeue_Reorder_N/D/F`. Der Name der Condition steht im
+Export nicht drin; er wird nirgends referenziert.
+
+```json
+Verify_IDs_Final (HttpRequest):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "@outputs('Settings')?['siteAddress']",
+      "parameters/method": "GET",
+      "parameters/uri": "_api/web/lists/getbytitle('Teilnehmer')/items?$filter=Status ne 'Abgemeldet'&$select=TeilnehmerID&$orderby=TeilnehmerID desc&$top=5000",
+      "parameters/headers": { "Accept": "application/json;odata=nometadata" }
+    },
+    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+  },
+  "runAfter": { "Check_Counter_Stale": [ "SUCCEEDED" ] }
+}
+
+Check_IDs_Gap (If -> Requeue_Reorder_Gap):
+{
+  "type": "If",
+  "expression": {
+    "and": [
+      {
+        "equals": [
+          "@and(or(less(coalesce(first(body('Verify_IDs_Final')?['value'])?['TeilnehmerID'], 0), length(body('Verify_IDs_Final')?['value'])), greater(coalesce(first(body('Verify_IDs_Final')?['value'])?['TeilnehmerID'], 0), length(body('Verify_IDs_Final')?['value']))), not(startsWith(coalesce(triggerOutputs()?['body/Title'], ''), 'Reorder: Nachlauf')))",
+          "@true"
+        ]
+      }
+    ]
+  },
+  "actions": {
+    "Requeue_Reorder_Gap": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+          "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
+          "item/Title": "Reorder: Nachlauf (Anmeldung während des Laufs)",
+          "item/EventId": "@triggerOutputs()?['body/EventId']",
+          "item/EventNumber": "@triggerOutputs()?['body/EventNumber']",
+          "item/SubsiteUrl": "@triggerOutputs()?['body/SubsiteUrl']",
+          "item/Status/Value": "Pending",
+          "item/CancelledName": "@triggerOutputs()?['body/CancelledName']",
+          "item/CancelledEmail": "@triggerOutputs()?['body/CancelledEmail']"
+        },
+        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+      }
+    }
+  },
+  "else": { "actions": {} },
+  "runAfter": { "Verify_IDs_Final": [ "SUCCEEDED" ] }
+}
+```
 
 ### UI-Anleitung 2026-09-02 — Gruppen-Zählung bricht Events ohne Gruppen
 
