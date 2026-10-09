@@ -806,6 +806,12 @@ muss die **App** wechseln (Edge mit Arbeitskonto, Teams mit
 seit v30.33 die **Teilnehmer-ID**: Sie steht unter jedem QR-Code in der Mail und
 ist im Check-in-Suchfeld exakt suchbar. Zur Erwartung: iOS-Scanner läuft in der
 Regel, Android meist nicht.
+Genau das steht seit v32.59 in der Hinweismail an Organizer und Check-in-Team
+nach dem QR-Massenversand (`utils/qrCheckInHinweis`, Link
+`#action=checkin&event=<Id>`). Die Mail zitiert Beschriftungen der
+Check-in-Seite („Live-Scanner", Suchfeld „Teilnehmer-ID, Vorname, Nachname
+oder E-Mail…", „Einchecken", Startseiten-Kachel „Check-In") — wer dort etwas
+umbenennt, zieht die Mail im selben Commit nach.
 
 **Ein `$filter` auf eine fehlende Spalte liefert keine 0 — er wirft.** Am
 01.09.2026 stand in einem Flow-Briefing: „Bei Events ohne Gruppen liefert
