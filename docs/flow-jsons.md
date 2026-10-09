@@ -17,12 +17,220 @@ Wird aktualisiert wenn Flows geändert werden.
 
 **Trigger:** Neuer Eintrag in DEX_IDReorder
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
-**Letztes Update:** 2026-09-03 (zwei Korrekturen: SharePoint Online liefert bei Listeneinträgen KEIN `__count` — Zählung über `length(d.results)` mit `$top=5000`; und `if()` wertet BEIDE Zweige aus — Gruppen-Zähler null-sicher gelesen). Davor 2026-09-01 (Platzzähler-Kette: `Count_Seats_Active/Waitlist/Durch/Fun` + `Sync_Seat_Counter` hinter `DEX_IDReorder`; **im Tenant umgesetzt und am 01.09.2026 gegen den Export verifiziert** — alle acht `runAfter` stimmen, alle fünf Uris sind Text ohne `@`). Davor 2026-06-11 (Audit-Fixes: Status-Sortierung in der Renummerierung, Folge-Reorder nach jeder Promotion, Fehler-Sichtbarkeit).
+**Letztes Update:** 2026-10-09 (Nachlauf bei Lücke nach dem Lauf: `Verify_IDs_Final` → `Check_IDs_Gap` → `Requeue_Reorder_Gap` hinter `Check Counter Stale` — **Anleitung, im Tenant noch OFFEN**). Davor 2026-09-03 (zwei Korrekturen: SharePoint Online liefert bei Listeneinträgen KEIN `__count` — Zählung über `length(d.results)` mit `$top=5000`; und `if()` wertet BEIDE Zweige aus — Gruppen-Zähler null-sicher gelesen). Davor 2026-09-01 (Platzzähler-Kette: `Count_Seats_Active/Waitlist/Durch/Fun` + `Sync_Seat_Counter` hinter `DEX_IDReorder`; **im Tenant umgesetzt und am 01.09.2026 gegen den Export verifiziert** — alle acht `runAfter` stimmen, alle fünf Uris sind Text ohne `@`). Davor 2026-06-11 (Audit-Fixes: Status-Sortierung in der Renummerierung, Folge-Reorder nach jeder Promotion, Fehler-Sichtbarkeit).
 
 > **Der vollständige JSON weiter unten ist der Stand vom 2026-06-11** und enthält
 > die fünf Platzzähler-Actions **nicht**. Wer den Ist-Stand braucht, nimmt die
 > UI-Anleitung direkt darunter — dort steht die vollständige `runAfter`-Tabelle
 > über alle acht beteiligten Actions.
+
+### UI-Anleitung 2026-10-09 — Nachlauf, wenn nach dem Lauf eine Lücke bleibt
+
+**Status: OFFEN — Anleitung geschrieben, im Tenant noch nicht umgesetzt.**
+
+**Befund 09.10.2026** (Organizer Center + Run history): Katrin Ruedelstein
+meldet sich um 11:28 ab (ID geleert, Auftrag angelegt). Der Lauf startet um
+11:29 — in derselben Minute meldet sie Dirk Guttzeit stellvertretend an. Dirk
+zieht aus `DEX_TeilnehmerCounter` die 2, seine Zeile entsteht aber erst, nachdem
+`Load_Participants` die Liste zum letzten Mal gelesen hat. Der Lauf hat also
+nichts umzunummerieren, und beim Zähler-Abgleich stehen Zähler und höchste ID
+beide auf 2 — `Check Counter Stale` ändert nichts. Leonie Daiber zieht um 11:30
+die 3. Ergebnis: aktive IDs 2 und 3, Lücke bei 1. Ein späterer Lauf kommt nicht,
+weil nur Abmeldungen einen Auftrag anlegen.
+
+**Das ist ein Wettlauf, kein Fehler im Flow.** Die App zieht die ID aus dem
+Zähler, BEVOR sie die Zeile schreibt (ein paar Sekunden dazwischen). Fällt das
+in die Sekunden zwischen dem letzten Lesen in `Batch_Until_Clean` und dem
+Zähler-Abgleich, sieht der Lauf die Zeile nie. Verhindern lässt sich das nicht
+(der Lauf kann die Liste nicht sperren), heilen schon: Am Ende des Laufs noch
+einmal lesen und, wenn die Nummern nicht 1…N sind, EINEN Nachlauf anlegen. Der
+Nachlauf startet nach diesem Lauf (Concurrency 1), nummeriert neu und setzt den
+Zähler in beide Richtungen.
+
+**Die Prüfung zählt genau die Menge, die `Batch_Until_Clean` nummeriert:** alle
+Zeilen mit `Status ne 'Abgemeldet'` (`Filter_Sort_Aktive` + `Filter_Sort_Warteliste`).
+Nach einem sauberen Lauf ist die höchste Nummer gleich der Anzahl. Weicht sie
+ab (Lücke oder Zeile ohne Nummer), kommt der Nachlauf. Doppelte Nummern mit
+gleichzeitiger Lücke (1, 1, 3) fallen nicht auf — die Prüfung ist bewusst
+einfach. Verglichen wird mit `less`/`greater` statt `equals`: die beiden
+Zahlen kommen aus verschiedenen Quellen (`length()` und eine SharePoint-Spalte),
+und ein Ganzzahl-gegen-Kommazahl-Vergleich soll nicht still `false` liefern
+(dieselbe Falle wie die Typ-Korrektur an `Check_Promote_OK_*`).
+
+**Schranke gegen Endlosschleifen:** Der Nachlauf trägt den Titel
+`Reorder: Nachlauf …`; ein Lauf, der selbst von so einem Auftrag ausgelöst
+wurde, legt keinen weiteren an — höchstens ein Nachlauf je Auftrag. Die
+Speicher-Warnung „circular loop" kennt der Flow schon von `Requeue_Reorder_*`
+(harmlos, siehe Nachtrag 2026-06-11).
+
+#### Klick-Anleitung als Tabelle
+
+| # | NEU/GEÄNDERT | Name der Action | Art der Action | Stelle |
+|---|---|---|---|---|
+| 1 | NEU | `Verify_IDs_Final` | Send an HTTP request to SharePoint | direkt nach `Check Counter Stale` — auf der obersten Ebene unter dem ganzen Kasten, nicht in einem seiner Zweige |
+| 2 | NEU | `Check_IDs_Gap` | Condition (Control) | direkt nach `Verify_IDs_Final` |
+| 3 | NEU | `Requeue_Reorder_Gap` | SharePoint — Create item | im **True**-Zweig von `Check_IDs_Gap` |
+
+**Vorher:**
+
+- [ ] Flow `DEX_IDReorder_TeilnehmerIDs` öffnen → **Edit**.
+- [ ] Ganz nach unten scrollen. Laut Screenshot vom 09.10.2026 endet die Kette mit `Get Counter Item` → `Get Max TeilnehmerID` → `Compute MaxValue` → `Compute CurrentCounter` → `Check Counter Stale`. Steht unter `Check Counter Stale` noch etwas, bleibt es, wo es ist — die neuen Actions kommen trotzdem direkt unter `Check Counter Stale`.
+
+#### Zeile 1 — `Verify_IDs_Final` (Send an HTTP request to SharePoint) · NEU
+
+Liest nach dem Zähler-Abgleich noch einmal alle Nummern der Teilnehmerliste, höchste zuerst.
+
+- [ ] Auf das **+** direkt unter dem Kasten `Check Counter Stale` klicken (nicht auf ein **+** innerhalb von **True**/**False**) → **Add an action**.
+- [ ] Im Suchfeld **Send an HTTP request to SharePoint** eingeben und auswählen.
+- [ ] **Site Address:** auf das Feld klicken → **Enter custom value** → über den **Expression**-Tab (fx), nie als Text:
+
+```
+outputs('Settings')?['siteAddress']
+```
+
+- [ ] **Method:**
+
+```
+GET
+```
+
+- [ ] **Uri** — als Text einfügen, beginnt mit `_api/`, **kein** `@` davor, **kein** Expression-Tab:
+
+```
+_api/web/lists/getbytitle('Teilnehmer')/items?$filter=Status ne 'Abgemeldet'&$select=TeilnehmerID&$orderby=TeilnehmerID desc&$top=5000
+```
+
+- [ ] **Headers** — eine Zeile, Key:
+
+```
+Accept
+```
+
+- [ ] Value:
+
+```
+application/json;odata=nometadata
+```
+
+- [ ] **Body** bleibt leer.
+- [ ] **⋮ → Rename** (der Name steht im Ausdruck von Zeile 2 — exakt so):
+
+```
+Verify_IDs_Final
+```
+
+- [ ] **⋮ → Configure run after:** bei `Check Counter Stale` nur **is successful**. Ist der Lauf vorher gescheitert, soll kein Nachlauf entstehen.
+
+#### Zeile 2 — `Check_IDs_Gap` (Condition) · NEU
+
+Ist eine Lücke da — und ist dieser Lauf nicht selbst schon ein Nachlauf?
+
+- [ ] **+** direkt unter `Verify_IDs_Final` → **Add an action** → **Condition** (Kategorie **Control**).
+- [ ] Linkes Feld → über den **Expression**-Tab (fx), nie als Text, komplett einfügen → **Update**:
+
+```
+and(or(less(coalesce(first(body('Verify_IDs_Final')?['value'])?['TeilnehmerID'], 0), length(body('Verify_IDs_Final')?['value'])), greater(coalesce(first(body('Verify_IDs_Final')?['value'])?['TeilnehmerID'], 0), length(body('Verify_IDs_Final')?['value']))), not(startsWith(coalesce(triggerOutputs()?['body/Title'], ''), 'Reorder: Nachlauf')))
+```
+
+- [ ] Operator: **is equal to**
+- [ ] Rechtes Feld → über den **Expression**-Tab (fx):
+
+```
+true
+```
+
+- [ ] Kontrolle: links und rechts steht je **eine** lila Kachel, kein schwarzer Text.
+- [ ] **⋮ → Rename**:
+
+```
+Check_IDs_Gap
+```
+
+- [ ] **⋮ → Configure run after:** bei `Verify_IDs_Final` nur **is successful** (setzt der Designer beim Einfügen über das **+** meist selbst).
+- [ ] Der **False**-Zweig bleibt leer.
+
+#### Zeile 3 — `Requeue_Reorder_Gap` (SharePoint — Create item) · NEU
+
+Legt den Nachlauf an — dieselben Felder wie `Requeue_Reorder_N`, nur ein anderer Titel.
+
+- [ ] Im **True**-Zweig von `Check_IDs_Gap` auf **+** → **Add an action** → SharePoint **Create item**.
+- [ ] **Site Address** (Root-Site, NICHT die Subsite; falls Dropdown: **Enter custom value**):
+
+```
+https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform
+```
+
+- [ ] **List Name:**
+
+```
+DEX_IDReorder
+```
+
+- [ ] **Title** — als Text, exakt so (die Schranke in Zeile 2 erkennt den Nachlauf am Anfang `Reorder: Nachlauf`):
+
+```
+Reorder: Nachlauf (Anmeldung während des Laufs)
+```
+
+- [ ] **EventId** (fx):
+
+```
+triggerOutputs()?['body/EventId']
+```
+
+- [ ] **EventNumber** (fx):
+
+```
+triggerOutputs()?['body/EventNumber']
+```
+
+- [ ] **SubsiteUrl** (fx):
+
+```
+triggerOutputs()?['body/SubsiteUrl']
+```
+
+- [ ] **Status** — im Dropdown wählen bzw. **Enter custom value**:
+
+```
+Pending
+```
+
+- [ ] **CancelledName** (fx):
+
+```
+triggerOutputs()?['body/CancelledName']
+```
+
+- [ ] **CancelledEmail** (fx):
+
+```
+triggerOutputs()?['body/CancelledEmail']
+```
+
+- [ ] **⋮ → Rename**:
+
+```
+Requeue_Reorder_Gap
+```
+
+- [ ] Oben rechts **Save**. Die Warnung „Your flow may have a circular loop" ist bekannt und harmlos (Schranke in Zeile 2).
+
+#### Test
+
+- [ ] Auf einem Test-Event eine Person abmelden. **Run history** → der frische Lauf ist **Succeeded**.
+- [ ] Im Lauf `Verify_IDs_Final` aufklappen → **Show raw outputs** → unter `body` → `value` stehen die Nummern der Aktiven und Wartenden, höchste zuerst.
+- [ ] `Check_IDs_Gap` aufklappen → Ergebnis **false** (höchste Nummer = Anzahl). `Requeue_Reorder_Gap` ist grau (skipped), in `DEX_IDReorder` entsteht kein neuer Eintrag.
+- [ ] Der Wettlauf selbst lässt sich nicht zuverlässig nachstellen (wenige Sekunden). Passiert er, sieht es so aus: `Check_IDs_Gap` **true**, `Requeue_Reorder_Gap` grün, in `DEX_IDReorder` ein Eintrag „Reorder: Nachlauf …", etwa eine Minute später ein zweiter Lauf — und in dessen `Check_IDs_Gap` steht **false**.
+
+| Beobachtung im Lauf | Ursache | Abhilfe |
+|---|---|---|
+| `Verify_IDs_Final` rot: „contains invalid expression(s)" | Uri im **Expression**-Tab eingetragen oder mit `@` davor | Uri löschen, als Text neu einfügen, beginnt mit `_api/` |
+| `Check_IDs_Gap` rot: „function 'length' … not valid" | Header fehlt oder steht auf `odata=verbose` — die Antwort heißt dann `d.results` statt `value` | Header **Accept** = `application/json;odata=nometadata` |
+| `Check_IDs_Gap` bei JEDEM Lauf **true**, jedes Mal ein Nachlauf | `$orderby=TeilnehmerID desc` fehlt — `first()` ist dann nicht die höchste Nummer | Uri komplett aus dem Kopierblock neu einfügen |
+| Nach einem Nachlauf kommt noch einer | Title in `Requeue_Reorder_Gap` beginnt nicht genau mit `Reorder: Nachlauf` | Title aus dem Kopierblock neu einfügen |
+| `Verify_IDs_Final` läuft nie (grau) | Die Action steckt in einem Zweig von `Check Counter Stale`, oder **Run after** hängt an etwas anderem | Unter den Kasten ziehen, **Run after** = `Check Counter Stale` · is successful |
+| `Requeue_Reorder_Gap` „Not connected" | Der Designer hat keine Verbindung gewählt | **Change connection** → dieselbe SharePoint-Verbindung wie die übrigen Actions |
 
 ### UI-Anleitung 2026-09-02 — Gruppen-Zählung bricht Events ohne Gruppen
 
