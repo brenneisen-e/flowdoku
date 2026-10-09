@@ -235,7 +235,9 @@ export const QrSendModal: React.FC<QrSendModalProps> = (p) => {
                       </button>)}
                     {stepRow(3,
                       isDe ? 'An alle ohne Code senden' : 'Send to everyone without a code',
-                      isDe ? 'Danach bekommt jede neue Anmeldung ihren Code automatisch.' : 'Afterwards every new registration gets its code automatically.',
+                      // v32.59: Die Hinweismail an Organizer und Check-in-Team gehört
+                      // zu diesem Knopf — sie soll niemanden überraschen.
+                      isDe ? 'Danach bekommt jede neue Anmeldung ihren Code automatisch. Organizer und Check-in-Team erhalten eine Mail mit dem Check-in-Link.' : 'Afterwards every new registration gets its code automatically. Organizers and the check-in team receive an email with the check-in link.',
                       <button
                         className="btn btn-primary dex-ui-btn-sm"
                         onClick={() => { qrFullSendAction().catch(() => { /* */ }); }}

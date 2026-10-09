@@ -5,7 +5,9 @@
  */
 import * as React from 'react';
 import { DeloitteEvent } from '../../../types';
-import { QrEmailOverride, buildQrBlockHtml, getCachedOrbBase64, injectIntoEmailContent, qrCodeEmail, qrEmailDefaults } from '../../../services/EmailTemplates';
+import { QrEmailOverride, buildQrBlockHtml, getCachedOrbBase64, injectIntoEmailContent, qrCodeEmail, qrEmailDefaults, wrapTemplate } from '../../../services/EmailTemplates';
+import { qrCheckInHinweisMail, qrCheckInLink, qrHinweisEmpfaenger } from '../../../utils/qrCheckInHinweis';
+import { eventHeaderImageOptsFrisch } from '../../../utils/mailHeaderImageFrisch';
 import { SAMPLE_QR_ID } from '../../admin/adminConstants';
 import { buildParticipantQrDataUrl } from '../../../utils/qrWithMark';
 import { getCachedImage } from '../../../utils/imageCache';
@@ -456,6 +458,31 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
     // ist die 429 auf dem Reload der Normalfall, die Liste wurde dann `[]`.
     // v31.75: Bei einem Termin als Ziel die Termin-Listen der Klammer.
     if (qrSendTarget) reloadSubEventRegs(); else await reloadRegistrations();
+    // v32.59: Hinweis an Organizer und Check-in-Team — dass die Codes raus
+    // sind, mit dem Check-in-Link und der Anleitung je Gerät (Nutzer-Ansage
+    // 09.10.2026, utils/qrCheckInHinweis). Bei einem Termin als Ziel auch die
+    // Teams der Klammer: Beide tragen eigene Kopien. Ein Fehler hier nimmt
+    // dem Versand nichts weg, die Schlussmeldung nennt ihn nur.
+    let hinweisInfo = '';
+    if (sent > 0) {
+      const empf = qrHinweisEmpfaenger([sendEv, qrSendTarget ? selectedEvent : null]);
+      if (empf.length > 0) {
+        try {
+          const absender = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim();
+          const m = qrCheckInHinweisMail(sendEv, { anzahl: sent, absender, link: qrCheckInLink(eventServiceRef.siteUrl, sendEv) });
+          const body = wrapTemplate('#86bc25', m.heading, m.subheading, m.inner, undefined, await eventHeaderImageOptsFrisch(sendEv));
+          await eventServiceRef.queueEmail(m.subject, empf.join(';'), isDe ? 'Organizer und Check-in-Team' : 'Organizers and check-in team', body, 'QRCheckInHinweis', sendEv.title, sendEv.id);
+          hinweisInfo = isDe
+            ? ` Organizer und Check-in-Team (${empf.length}) bekommen eine Hinweismail mit dem Check-in-Link.`
+            : ` Organizers and the check-in team (${empf.length}) receive a notice with the check-in link.`;
+        } catch (err) {
+          console.warn('[DEX] QR-Massenversand: Hinweismail an Organizer/Check-in-Team nicht eingetragen.', err);
+          hinweisInfo = isDe
+            ? ' Die Hinweismail an Organizer und Check-in-Team konnte nicht eingetragen werden.'
+            : ' The notice to organizers and the check-in team could not be queued.';
+        }
+      }
+    }
     setIsSendingQR(false);
     const idHint = idMissing > 0
       ? (isDe
@@ -483,7 +510,7 @@ export function createQrMailActions(ctx: CreateQrMailActionsCtx): CreateQrMailAc
       ? (isDe
         ? `${sent} QR-Codes verschickt (davon ${extCount} an dich/Organizer umgeleitet — externe Adressen).`
         : `${sent} QR codes sent (${extCount} of them redirected to you/the organizer — external addresses).`)
-      : (isDe ? `${sent} QR-Codes verschickt.` : `${sent} QR codes sent.`)) + failHint + idHint + noIdHint);
+      : (isDe ? `${sent} QR-Codes verschickt.` : `${sent} QR codes sent.`)) + hinweisInfo + failHint + idHint + noIdHint);
   };
 
   const saveSelfCheckInWindow = async (): Promise<void> => {
